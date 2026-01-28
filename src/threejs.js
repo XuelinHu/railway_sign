@@ -174,7 +174,7 @@ function createRailway() {
   // 加载并放置多个铁轨段
   railPositions.forEach((pos, index) => {
     gltfLoader.load(
-      '/src/obj/railway.glb',
+      '/obj/railway.glb',
       (gltf) => {
         const railway = gltf.scene
         railway.scale.set(3, 3, 3) // 调整缩放
@@ -231,7 +231,7 @@ function createSignalLights() {
 
   signalPositions.forEach((pos, index) => {
     gltfLoader.load(
-      '/src/obj/sign.glb',
+      '/obj/sign.glb',
       (gltf) => {
         const signGroup = gltf.scene
         signGroup.scale.set(2, 2, 2) // 调整缩放
@@ -290,7 +290,7 @@ function createTrain() {
   }
 
   gltfLoader.load(
-    '/src/obj/locomotive.glb',
+    '/obj/locomotive.glb',
     (gltf) => {
       train = gltf.scene
       train.scale.set(2, 2, 2) // 调整缩放
@@ -383,7 +383,7 @@ function createStation() {
   }
 
   gltfLoader.load(
-    '/src/obj/station.glb',
+    '/obj/station.glb',
     (gltf) => {
       const station = gltf.scene
       station.scale.set(3, 3, 3) // 调整缩放
