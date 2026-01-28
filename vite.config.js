@@ -5,9 +5,14 @@ export default defineConfig({
   plugins: [cesium()],
   server: {
     port: 3000,
-    open: true
+    open: true,
   },
+  preview: {
+    host: "0.0.0.0", 
+    port: 4173,
+  },
+
   build: {
-    target: 'esnext'
-  }
-})
+    target: "esnext",
+  },
+});
