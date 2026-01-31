@@ -38,6 +38,6 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./dist
-          publish_branch: main
+          publish_branch: gh-pages
           commit_message: "🚀 Deploy ${{ github.sha }}"
           force_orphan: true  # 使用孤立分支，减少历史记录
