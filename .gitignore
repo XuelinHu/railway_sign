@@ -1,6 +1,6 @@
 # 依赖
 node_modules/
-package-lock.json
+# package-lock.json  # 已移除，应提交到仓库以确保依赖版本一致
 yarn.lock
 pnpm-lock.yaml
 
