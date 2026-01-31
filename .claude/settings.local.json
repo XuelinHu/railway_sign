@@ -19,7 +19,12 @@
       "Bash(tree:*)",
       "Bash(mkdir:*)",
       "Bash(touch:*)",
-      "Bash(dir dist /b)"
+      "Bash(dir dist /b)",
+      "Bash(if:*)",
+      "Bash(then echo \"package-lock.json exists\")",
+      "Bash(else:*)",
+      "Bash(fi:*)",
+      "Bash(git check-ignore:*)"
     ],
     "deny": [
       "Bash(rm:*)",
