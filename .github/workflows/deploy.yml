@@ -1,0 +1,43 @@
+name: 部署到 GitHub Pages
+
+on:
+  push:
+    branches:
+      - main  # 推送到 main 分支时触发
+    tags:
+      - 'v*'  # 推送 v 开头的 tag 时触发（如 v1.0.0）
+  workflow_dispatch:  # 允许手动触发
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 🛎️ 检出代码
+        uses: actions/checkout@v4
+
+      - name: ⚙️ 设置 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'  # 使用 Node.js 22 LTS 版本
+          cache: 'npm'  # 启用 npm 缓存加速安装
+
+      - name: 📥 安装依赖
+        run: npm ci
+
+      - name: 🧱 构建项目
+        run: npm run build
+
+      - name: 🚀 部署到 GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+          publish_branch: gh-pages
+          commit_message: "🚀 Deploy ${{ github.sha }}"
+          force_orphan: true  # 使用孤立分支，减少历史记录
