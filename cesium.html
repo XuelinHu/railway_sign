@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Cesium 大地图 - 山区铁道信号灯数字孪生</title>
+  <!-- 引入 ECharts -->
+  <script src="https://cdn.jsdelivr.net/npm/echarts@6.0.0/dist/echarts.min.js"></script>
   <style>
     * {
       margin: 0;
@@ -294,24 +296,7 @@
 
     <div class="panel-section">
       <h2 class="panel-title">📊 运营统计</h2>
-      <div class="data-grid">
-        <div class="data-card">
-          <div class="data-card-label">今日通过列车</div>
-          <div class="data-card-value">128</div>
-        </div>
-        <div class="data-card">
-          <div class="data-card-label">平均速度</div>
-          <div class="data-card-value">75km/h</div>
-        </div>
-        <div class="data-card">
-          <div class="data-card-label">准点率</div>
-          <div class="data-card-value">98.5%</div>
-        </div>
-        <div class="data-card">
-          <div class="data-card-label">设备在线</div>
-          <div class="data-card-value">100%</div>
-        </div>
-      </div>
+      <div id="operationChart" style="width: 100%; height: 160px;"></div>
     </div>
 
     <div class="panel-section">
@@ -376,37 +361,17 @@
 
     <div class="panel-section">
       <h2 class="panel-title">🌡️ 环境监测</h2>
-      <div class="data-grid">
-        <div class="data-card">
-          <div class="data-card-label">温度</div>
-          <div class="data-card-value">-5°C</div>
-        </div>
-        <div class="data-card">
-          <div class="data-card-label">湿度</div>
-          <div class="data-card-value">65%</div>
-        </div>
-        <div class="data-card">
-          <div class="data-card-label">风速</div>
-          <div class="data-card-value">12m/s</div>
-        </div>
-        <div class="data-card">
-          <div class="data-card-label">能见度</div>
-          <div class="data-card-value">500m</div>
-        </div>
-      </div>
+      <div id="envGaugeChart" style="width: 100%; height: 160px;"></div>
     </div>
 
     <div class="panel-section">
-      <h2 class="panel-title">📈 流量统计</h2>
-      <div class="chart-container" id="trafficChart"></div>
-      <div class="stat-item">
-        <span class="stat-label">24小时流量:</span>
-        <span class="stat-value">15,680吨</span>
-      </div>
-      <div class="stat-item">
-        <span class="stat-label">本月累计:</span>
-        <span class="stat-value">458,200吨</span>
-      </div>
+      <h2 class="panel-title">📈 24小时流量统计</h2>
+      <div id="trafficChart" style="width: 100%; height: 180px;"></div>
+    </div>
+
+    <div class="panel-section">
+      <h2 class="panel-title">📊 设备运行趋势</h2>
+      <div id="deviceTrendChart" style="width: 100%; height: 180px;"></div>
     </div>
 
     <div class="panel-section">

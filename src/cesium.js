@@ -392,22 +392,236 @@ function autoCycleSignals() {
 }
 
 function createTrafficChart() {
-  const chartContainer = document.getElementById('trafficChart')
-  if (!chartContainer) return
+  const chartDom = document.getElementById('trafficChart')
+  if (!chartDom) return
 
-  const data = [65, 45, 80, 55, 90, 70, 85, 60, 75, 50, 95, 68]
-  const barWidth = 20
-  const gap = 8
+  const myChart = echarts.init(chartDom)
 
-  data.forEach((value, index) => {
-    const bar = document.createElement('div')
-    bar.className = 'chart-bar'
-    bar.style.height = value + '%'
-    bar.style.left = (index * (barWidth + gap) + 10) + 'px'
-    bar.style.width = barWidth + 'px'
-    bar.title = `时${index}:00 - ${value * 100}吨`
-    chartContainer.appendChild(bar)
-  })
+  const hours = Array.from({ length: 24 }, (_, i) => `${i}:00`)
+  const data = [
+    1200, 800, 450, 300, 250, 400, 850, 1200, 1500, 1800, 1650, 1400,
+    1300, 1450, 1600, 1750, 1900, 2100, 1950, 1700, 1400, 1100, 900, 650
+  ]
+
+  const option = {
+    grid: { top: 10, right: 10, bottom: 20, left: 40 },
+    tooltip: {
+      trigger: 'axis',
+      formatter: '{b}<br/>流量: {c} 吨'
+    },
+    xAxis: {
+      type: 'category',
+      data: hours,
+      axisLabel: { fontSize: 10, color: '#ccc' },
+      axisLine: { lineStyle: { color: '#555' } }
+    },
+    yAxis: {
+      type: 'value',
+      axisLabel: { fontSize: 10, color: '#ccc' },
+      axisLine: { lineStyle: { color: '#555' } },
+      splitLine: { lineStyle: { color: '#333' } }
+    },
+    series: [{
+      data: data,
+      type: 'line',
+      smooth: true,
+      lineStyle: { color: '#00d4ff', width: 2 },
+      areaStyle: {
+        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+          { offset: 0, color: 'rgba(0, 212, 255, 0.5)' },
+          { offset: 1, color: 'rgba(0, 212, 255, 0.05)' }
+        ])
+      },
+      itemStyle: { color: '#00d4ff' }
+    }]
+  }
+
+  myChart.setOption(option)
+  return myChart
+}
+
+function createOperationChart() {
+  const chartDom = document.getElementById('operationChart')
+  if (!chartDom) return
+
+  const myChart = echarts.init(chartDom)
+
+  const option = {
+    grid: { top: 10, right: 10, bottom: 20, left: 10 },
+    tooltip: { trigger: 'item' },
+    legend: {
+      orient: 'vertical',
+      right: 0,
+      top: 'center',
+      textStyle: { fontSize: 11, color: '#ccc' }
+    },
+    series: [{
+      name: '运营统计',
+      type: 'pie',
+      radius: ['40%', '70%'],
+      center: ['35%', '50%'],
+      avoidLabelOverlap: false,
+      itemStyle: { borderRadius: 5, borderColor: '#1a1a1a', borderWidth: 2 },
+      label: { show: false },
+      emphasis: {
+        label: { show: true, fontSize: 14, fontWeight: 'bold', color: '#fff' }
+      },
+      data: [
+        { value: 128, name: '今日列车', itemStyle: { color: '#5470c6' } },
+        { value: 75, name: '平均速度', itemStyle: { color: '#91cc75' } },
+        { value: 98.5, name: '准点率%', itemStyle: { color: '#fac858' } },
+        { value: 100, name: '设备在线%', itemStyle: { color: '#ee6666' } }
+      ]
+    }]
+  }
+
+  myChart.setOption(option)
+  return myChart
+}
+
+function createDeviceTrendChart() {
+  const chartDom = document.getElementById('deviceTrendChart')
+  if (!chartDom) return
+
+  const myChart = echarts.init(chartDom)
+
+  const hours = Array.from({ length: 12 }, (_, i) => `${i * 2}:00`)
+
+  const option = {
+    grid: { top: 15, right: 10, bottom: 20, left: 40 },
+    tooltip: { trigger: 'axis' },
+    legend: {
+      data: ['信号机', '轨道电路', '通信系统'],
+      top: 0,
+      textStyle: { fontSize: 10, color: '#ccc' }
+    },
+    xAxis: {
+      type: 'category',
+      data: hours,
+      axisLabel: { fontSize: 10, color: '#ccc' },
+      axisLine: { lineStyle: { color: '#555' } }
+    },
+    yAxis: {
+      type: 'value',
+      max: 100,
+      axisLabel: { formatter: '{value}%', fontSize: 10, color: '#ccc' },
+      axisLine: { lineStyle: { color: '#555' } },
+      splitLine: { lineStyle: { color: '#333' } }
+    },
+    series: [
+      {
+        name: '信号机',
+        type: 'line',
+        data: [100, 100, 98, 100, 100, 99, 100, 100, 98, 100, 100, 100],
+        smooth: true,
+        lineStyle: { color: '#5470c6', width: 2 },
+        itemStyle: { color: '#5470c6' },
+        symbol: 'circle',
+        symbolSize: 4
+      },
+      {
+        name: '轨道电路',
+        type: 'line',
+        data: [98, 97, 96, 98, 99, 98, 97, 98, 98, 99, 98, 98],
+        smooth: true,
+        lineStyle: { color: '#91cc75', width: 2 },
+        itemStyle: { color: '#91cc75' },
+        symbol: 'circle',
+        symbolSize: 4
+      },
+      {
+        name: '通信系统',
+        type: 'line',
+        data: [100, 100, 99, 100, 100, 100, 99, 100, 100, 100, 100, 100],
+        smooth: true,
+        lineStyle: { color: '#fac858', width: 2 },
+        itemStyle: { color: '#fac858' },
+        symbol: 'circle',
+        symbolSize: 4
+      }
+    ]
+  }
+
+  myChart.setOption(option)
+  return myChart
+}
+
+function createEnvGaugeChart() {
+  const chartDom = document.getElementById('envGaugeChart')
+  if (!chartDom) return
+
+  const myChart = echarts.init(chartDom)
+
+  const option = {
+    grid: { top: 10, right: 10, bottom: 10, left: 10 },
+    tooltip: { formatter: '{b}: {c}%' },
+    series: [
+      {
+        type: 'gauge',
+        center: ['25%', '55%'],
+        radius: '70%',
+        min: -20,
+        max: 40,
+        splitNumber: 6,
+        axisLine: {
+          lineStyle: {
+            width: 6,
+            color: [[0.3, '#5470c6'], [0.7, '#91cc75'], [1, '#ee6666']]
+          }
+        },
+        pointer: { itemStyle: { color: 'auto' } },
+        axisTick: { distance: -6, length: 4, lineStyle: { color: '#fff', width: 1 } },
+        splitLine: { distance: -8, length: 8, lineStyle: { color: '#fff', width: 2 } },
+        axisLabel: { color: 'auto', fontSize: 10, distance: 12 },
+        detail: { valueAnimation: true, formatter: '{value}°C', fontSize: 14, offsetCenter: [0, '70%'], color: '#ccc' },
+        data: [{ value: -5, name: '温度' }]
+      },
+      {
+        type: 'gauge',
+        center: ['75%', '55%'],
+        radius: '70%',
+        min: 0,
+        max: 100,
+        splitNumber: 5,
+        axisLine: {
+          lineStyle: {
+            width: 6,
+            color: [[0.6, '#5470c6'], [1, '#ee6666']]
+          }
+        },
+        pointer: { itemStyle: { color: 'auto' } },
+        axisTick: { distance: -6, length: 4, lineStyle: { color: '#fff', width: 1 } },
+        splitLine: { distance: -8, length: 8, lineStyle: { color: '#fff', width: 2 } },
+        axisLabel: { color: 'auto', fontSize: 10, distance: 12 },
+        detail: { valueAnimation: true, formatter: '{value}%', fontSize: 14, offsetCenter: [0, '70%'], color: '#ccc' },
+        data: [{ value: 65, name: '湿度' }]
+      }
+    ]
+  }
+
+  myChart.setOption(option)
+  return myChart
+}
+
+function updateCharts() {
+  // 更新环境数据
+  const envChart = echarts.getInstanceByDom(document.getElementById('envGaugeChart'))
+  if (envChart) {
+    const option = envChart.getOption()
+    option.series[0].data[0].value = -5 + Math.random() * 10 - 5
+    option.series[1].data[0].value = 60 + Math.random() * 20
+    envChart.setOption(option)
+  }
+
+  // 更新流量数据
+  const trafficChart = echarts.getInstanceByDom(document.getElementById('trafficChart'))
+  if (trafficChart) {
+    const option = trafficChart.getOption()
+    const lastValue = option.series[0].data[23]
+    option.series[0].data.shift()
+    option.series[0].data.push(lastValue + Math.random() * 400 - 200)
+    trafficChart.setOption(option)
+  }
 }
 
 function updateDashboardData() {
@@ -435,7 +649,16 @@ export async function init() {
     createSignalLights(railwayPoints)
     setupInteractions()
     autoCycleSignals()
+
+    // 初始化所有 ECharts 图表
     createTrafficChart()
+    createOperationChart()
+    createDeviceTrendChart()
+    createEnvGaugeChart()
+
+    // 定时更新图表数据
+    setInterval(updateCharts, 3000)
+
     updateDashboardData()
 
     const loading = document.getElementById('loading')
