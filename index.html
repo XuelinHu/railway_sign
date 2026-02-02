@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <link rel="stylesheet" href="/cesium/Widgets/widgets.css">
+  <script src="/cesium/Cesium.js"></script>
+
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>山区铁道信号灯数字孪生系统</title>
+  <script>
+    // 添加图片加载调试日志
+    window.addEventListener('load', function() {
+      console.log('=== 部署信息 ===');
+      console.log('页面加载完成');
+      console.log('当前 URL:', window.location.href);
+      console.log('背景图路径:', '/img/locamotive_bg.png');
+
+      // 检查背景图是否加载成功
+      const bgImage = new Image();
+      bgImage.onload = function() {
+        console.log('✅ 背景图片加载成功:', '/img/locamotive_bg.png');
+        console.log('图片尺寸:', bgImage.width, 'x', bgImage.height);
+      };
+      bgImage.onerror = function() {
+        console.error('❌ 背景图片加载失败:', '/img/locamotive_bg.png');
+        console.log('请检查:');
+        console.log('1. 文件是否在 dist/img/ 目录中');
+        console.log('2. GitHub Pages 是否正确部署');
+      };
+      bgImage.src = '/img/locamotive_bg.png';
+
+      // 检查所有资源
+      console.log('=== 资源检查 ===');
+      const resources = [
+        '/img/locamotive_bg.png',
+        '/obj/locomotive.glb',
+        '/obj/station.glb',
+        '/obj/sign.glb',
+        '/obj/railway.glb',
+        '/obj/bridge.glb'
+      ];
+
+      resources.forEach(resource => {
+        fetch(resource, { method: 'HEAD' })
+          .then(response => {
+            if (response.ok) {
+              console.log('✅', resource, '- 存在');
+            } else {
+              console.error('❌', resource, '- 不存在 (', response.status, ')');
+            }
+          })
+          .catch(error => {
+            console.error('❌', resource, '- 请求失败:', error.message);
+          });
+        });
+      });
+    });
+  </script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Microsoft YaHei', Arial, sans-serif;
+      background: linear-gradient(135deg, #0a1628 0%, #1a2a4a 50%, #0a1628 100%);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* 火车背景图层 - 使用伪元素实现透明度控制 */
+    body::before {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: url('/img/locamotive_bg.png') no-repeat center center;
+      background-size: cover;
+      background-position: center;
+      opacity: 0.35;
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    /* 背景动画 */
+    .bg-animation {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      z-index: 1;
+    }
+
+    .bg-animation::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      background: radial-gradient(circle, rgba(0, 200, 255, 0.1) 1px, transparent 1px);
+      background-size: 50px 50px;
+      animation: bgMove 20s linear infinite;
+    }
+
+    @keyframes bgMove {
+      0% { transform: translate(0, 0); }
+      100% { transform: translate(50px, 50px); }
+    }
+
+    .container {
+      position: relative;
+      z-index: 2;
+      text-align: center;
+      padding: 40px;
+    }
+
+    .title {
+      font-size: 48px;
+      font-weight: bold;
+      color: #00d4ff;
+      margin-bottom: 20px;
+      text-shadow: 0 0 20px rgba(0, 200, 255, 0.5);
+      animation: titleGlow 2s ease-in-out infinite;
+    }
+
+    @keyframes titleGlow {
+      0%, 100% { text-shadow: 0 0 20px rgba(0, 200, 255, 0.5); }
+      50% { text-shadow: 0 0 40px rgba(0, 200, 255, 0.8), 0 0 60px rgba(0, 200, 255, 0.6); }
+    }
+
+    .subtitle {
+      font-size: 24px;
+      color: #ddd;
+      margin-bottom: 60px;
+    }
+
+    .cards-container {
+      display: flex;
+      gap: 40px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .card {
+      width: 380px;
+      background: rgba(0, 20, 40, 0.5);
+      border: 2px solid rgba(0, 200, 255, 0.3);
+      border-radius: 15px;
+      padding: 40px 30px;
+      cursor: pointer;
+      transition: all 0.4s ease;
+      backdrop-filter: blur(10px);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(0, 200, 255, 0.1), transparent);
+      transition: left 0.5s;
+    }
+
+    .card:hover::before {
+      left: 100%;
+    }
+
+    .card:hover {
+      transform: translateY(-10px) scale(1.02);
+      border-color: rgba(0, 200, 255, 0.6);
+      box-shadow: 0 20px 60px rgba(0, 200, 255, 0.3);
+    }
+
+    .card-icon {
+      font-size: 80px;
+      margin-bottom: 20px;
+      display: block;
+    }
+
+    .card-title {
+      font-size: 28px;
+      color: #00d4ff;
+      margin-bottom: 15px;
+      font-weight: bold;
+    }
+
+    .card-description {
+      font-size: 16px;
+      color: #aaa;
+      line-height: 1.6;
+      margin-bottom: 20px;
+    }
+
+    .card-features {
+      text-align: left;
+      margin-top: 20px;
+    }
+
+    .card-features h4 {
+      color: #00d4ff;
+      font-size: 14px;
+      margin-bottom: 10px;
+    }
+
+    .card-features ul {
+      list-style: none;
+      padding: 0;
+    }
+
+    .card-features li {
+      color: #888;
+      font-size: 13px;
+      padding: 5px 0;
+      padding-left: 20px;
+      position: relative;
+    }
+
+    .card-features li::before {
+      content: '▸';
+      position: absolute;
+      left: 0;
+      color: #00d4ff;
+    }
+
+    .footer {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: #888;
+      font-size: 14px;
+      z-index: 2;
+    }
+
+    .footer .powered-by {
+      color: #00d4ff;
+      font-weight: bold;
+      text-shadow: 0 0 10px rgba(0, 200, 255, 0.5);
+      animation: poweredByGlow 2s ease-in-out infinite;
+    }
+
+    @keyframes poweredByGlow {
+      0%, 100% {
+        text-shadow: 0 0 10px rgba(0, 200, 255, 0.5);
+      }
+      50% {
+        text-shadow: 0 0 20px rgba(0, 200, 255, 0.8), 0 0 30px rgba(0, 200, 255, 0.6);
+      }
+    }
+
+    /* 响应式 */
+    @media (max-width: 900px) {
+      .title {
+        font-size: 36px;
+      }
+      .card {
+        width: 100%;
+        max-width: 400px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="bg-animation"></div>
+
+  <div class="container">
+    <h1 class="title">🚂 山区铁道信号灯数字孪生系统</h1>
+    <p class="subtitle">Digital Twin System for Mountain Railway Signal Lights</p>
+
+    <div class="cards-container">
+      <!-- Cesium 大地图卡片 -->
+      <div class="card" onclick="window.location.href='cesium.html'">
+        <span class="card-icon">🌍</span>
+        <h2 class="card-title">Cesium 大地图</h2>
+        <p class="card-description">
+          基于 Cesium 的全球三维地理信息展示平台，支持真实地形、卫星影像和大规模场景渲染
+        </p>
+        <div class="card-features">
+          <h4>核心功能：</h4>
+          <ul>
+            <li>真实地形渲染</li>
+            <li>卫星影像叠加</li>
+            <li>全球坐标定位</li>
+            <li>山区S形铁道</li>
+            <li>5个信号灯监控</li>
+            <li>列车运行模拟</li>
+            <li>实时数据面板</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Three.js 小地图卡片 -->
+      <div class="card" onclick="window.location.href='threejs.html'">
+        <span class="card-icon">🎮</span>
+        <h2 class="card-title">Three.js 小地图</h2>
+        <p class="card-description">
+          基于 Three.js 的轻量级三维场景展示，专注于精细模型渲染和交互体验
+        </p>
+        <div class="card-features">
+          <h4>核心功能：</h4>
+          <ul>
+            <li>自定义3D模型</li>
+            <li>精细场景渲染</li>
+            <li>流畅交互体验</li>
+            <li>信号灯动画效果</li>
+            <li>列车移动展示</li>
+            <li>环境光照系统</li>
+            <li>实时监控数据</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    © 2025 山区铁道信号灯数字孪生系统 | <span class="powered-by">Powered by 柳州铁道职业技术学院 铁道通信信号学院</span>
+  </div>
+</body>
+</html>
