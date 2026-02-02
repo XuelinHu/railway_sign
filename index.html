@@ -4,6 +4,55 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>山区铁道信号灯数字孪生系统</title>
+  <script>
+    // 添加图片加载调试日志
+    window.addEventListener('load', function() {
+      console.log('=== 部署信息 ===');
+      console.log('页面加载完成');
+      console.log('当前 URL:', window.location.href);
+      console.log('背景图路径:', '/img/locamotive_bg.png');
+
+      // 检查背景图是否加载成功
+      const bgImage = new Image();
+      bgImage.onload = function() {
+        console.log('✅ 背景图片加载成功:', '/img/locamotive_bg.png');
+        console.log('图片尺寸:', bgImage.width, 'x', bgImage.height);
+      };
+      bgImage.onerror = function() {
+        console.error('❌ 背景图片加载失败:', '/img/locamotive_bg.png');
+        console.log('请检查:');
+        console.log('1. 文件是否在 dist/img/ 目录中');
+        console.log('2. GitHub Pages 是否正确部署');
+      };
+      bgImage.src = '/img/locamotive_bg.png';
+
+      // 检查所有资源
+      console.log('=== 资源检查 ===');
+      const resources = [
+        '/img/locamotive_bg.png',
+        '/obj/locomotive.glb',
+        '/obj/station.glb',
+        '/obj/sign.glb',
+        '/obj/railway.glb',
+        '/obj/bridge.glb'
+      ];
+
+      resources.forEach(resource => {
+        fetch(resource, { method: 'HEAD' })
+          .then(response => {
+            if (response.ok) {
+              console.log('✅', resource, '- 存在');
+            } else {
+              console.error('❌', resource, '- 不存在 (', response.status, ')');
+            }
+          })
+          .catch(error => {
+            console.error('❌', resource, '- 请求失败:', error.message);
+          });
+        });
+      });
+    });
+  </script>
   <style>
     * {
       margin: 0;
