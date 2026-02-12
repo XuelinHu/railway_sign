@@ -37,7 +37,7 @@
         </div>
         <div class="stat-item">
           <span class="stat-label">信号灯数量:</span>
-          <span class="stat-value" id="signalCount">4</span>
+          <span class="stat-value" id="signalCount">1</span>
         </div>
       </div>
     </div>
@@ -272,15 +272,13 @@ const createSignalLights = () => {
     gltfLoader = new GLTFLoader()
   }
 
+  // 只创建一个信号灯
   const signalPositions = [
-    { x: -40, z: -25 },
-    { x: -10, z: -5 },
-    { x: 20, z: 15 },
-    { x: 40, z: 30 }
+    { x: 0, z: 0 }  // 中心位置
   ]
 
-  const signalStates = ['red', 'green', 'yellow', 'green']
-  const signalNames = ['进站信号', '出站信号', '区间信号1', '区间信号2']
+  const signalStates = ['red']
+  const signalNames = ['主信号灯']
 
   signalPositions.forEach((pos, index) => {
     gltfLoader.load(
@@ -402,6 +400,72 @@ const createModelLabel = (model, name, temperature, humidity, gpsLon, gpsLat) =>
   label.position.set(0, 0, 0)
   model.add(label)
   modelLabels.push({ object: model, label: label })
+
+  // 确保样式被添加到文档中（因为 CSS2DRenderer 的元素不在 Vue scoped 样式作用域内）
+  if (!document.querySelector('#model-label-styles')) {
+    const style = document.createElement('style')
+    style.id = 'model-label-styles'
+    style.textContent = `
+      .model-label {
+        position: absolute;
+        background: rgba(0, 20, 40, 0.9) !important;
+        border: 2px solid rgba(0, 200, 255, 0.5) !important;
+        border-radius: 8px;
+        padding: 12px 16px;
+        color: #fff;
+        font-size: 14px;
+        pointer-events: none;
+        backdrop-filter: blur(5px);
+        box-shadow: 0 4px 15px rgba(0, 150, 200, 0.3);
+        max-width: 280px;
+      }
+      .label-title {
+        font-size: 16px;
+        font-weight: bold;
+        color: #00d4ff;
+        margin-bottom: 8px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid rgba(0, 200, 255, 0.3);
+      }
+      .label-row {
+        display: flex;
+        align-items: center;
+        margin: 6px 0;
+        font-size: 13px;
+      }
+      .label-value {
+        flex: 1;
+        color: #00d4ff;
+        font-weight: bold;
+      }
+      .progress-bg {
+        flex: 1;
+        margin-left: 10px;
+      }
+      .temp-bar {
+        height: 8px;
+        background: rgba(0, 100, 150, 0.3);
+        border-radius: 4px;
+        overflow: hidden;
+        margin: 8px 0;
+      }
+      .temp-bar {
+        height: 100%;
+        border-radius: 4px;
+        transition: width 0.3s;
+      }
+      .temp-low {
+        background: linear-gradient(90deg, #4CAF50, #00d4ff);
+      }
+      .temp-medium {
+        background: linear-gradient(90deg, #FFC107, #FF9800);
+      }
+      .temp-high {
+        background: linear-gradient(90deg, #FF5722, #D32F2F);
+      }
+    `
+    document.head.appendChild(style)
+  }
 }
 
 const createTrees = () => {
