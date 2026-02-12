@@ -252,6 +252,113 @@
     .loading.hidden {
       display: none;
     }
+
+    /* Tab 切换样式 */
+    .camera-tabs {
+      display: flex;
+      gap: 5px;
+      margin-bottom: 10px;
+    }
+
+    .camera-tab {
+      flex: 1;
+      padding: 8px 12px;
+      background: rgba(0, 100, 150, 0.3);
+      border: 1px solid rgba(0, 200, 255, 0.3);
+      border-radius: 5px;
+      color: #aaa;
+      cursor: pointer;
+      font-size: 13px;
+      text-align: center;
+      transition: all 0.3s;
+    }
+
+    .camera-tab:hover {
+      background: rgba(0, 100, 150, 0.5);
+      color: #00d4ff;
+    }
+
+    .camera-tab.active {
+      background: linear-gradient(135deg, #0066cc, #00d4ff);
+      color: #fff;
+      border-color: #00d4ff;
+      font-weight: bold;
+    }
+
+    .camera-content {
+      display: none;
+    }
+
+    .camera-content.active {
+      display: block;
+    }
+
+    /* 3D 模型标签样式 */
+    .model-label {
+      position: absolute;
+      background: rgba(0, 20, 40, 0.9);
+      border: 2px solid rgba(0, 200, 255, 0.5);
+      border-radius: 8px;
+      padding: 12px 16px;
+      color: #fff;
+      font-size: 14px;
+      pointer-events: none;
+      backdrop-filter: blur(5px);
+      box-shadow: 0 4px 15px rgba(0, 150, 200, 0.3);
+      max-width: 280px;
+    }
+
+    .label-title {
+      font-size: 16px;
+      font-weight: bold;
+      color: #00d4ff;
+      margin-bottom: 8px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid rgba(0, 200, 255, 0.3);
+    }
+
+    .label-row {
+      display: flex;
+      align-items: center;
+      margin: 6px 0;
+      font-size: 13px;
+    }
+
+    .label-value {
+      flex: 1;
+      color: #00d4ff;
+      font-weight: bold;
+    }
+
+    .progress-bg {
+      flex: 1;
+      margin-left: 10px;
+    }
+
+    .temp-progress {
+      height: 8px;
+      background: rgba(0, 100, 150, 0.3);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .temp-bar {
+      height: 100%;
+      border-radius: 4px;
+      transition: width 0.3s;
+    }
+
+    .temp-low {
+      background: linear-gradient(90deg, #4CAF50, #00d4ff);
+    }
+
+    .temp-medium {
+      background: linear-gradient(90deg, #FFC107, #FF9800);
+    }
+
+    .temp-high {
+      background: linear-gradient(90deg, #FF5722, #D32F2F);
+    }
   </style>
 </head>
 <body>
@@ -358,15 +465,54 @@
 
     <div class="panel-section">
       <h2 class="panel-title">📹 实时监控</h2>
-      <div class="video-container">
-        <iframe
-          src="//player.bilibili.com/player.html?bvid=BV1AWkWBVE8X&page=1&high_quality=1&danmaku=0"
-          scrolling="no"
-          border="0"
-          frameborder="no"
-          framespacing="0"
-          allowfullscreen="true">
-        </iframe>
+
+      <!-- Tab 切换按钮 -->
+      <div class="camera-tabs">
+        <div class="camera-tab active" onclick="window.switchCamera(1)">监控1</div>
+        <div class="camera-tab" onclick="window.switchCamera(2)">监控2</div>
+        <div class="camera-tab" onclick="window.switchCamera(3)">监控3</div>
+      </div>
+
+      <!-- 摄像头1 -->
+      <div class="camera-content active" id="camera1">
+        <div class="video-container">
+          <iframe
+            src="//player.bilibili.com/player.html?bvid=BV1AWkWBVE8X&page=1&high_quality=1&danmaku=0"
+            scrolling="no"
+            border="0"
+            frameborder="no"
+            framespacing="0"
+            allowfullscreen="true">
+          </iframe>
+        </div>
+      </div>
+
+      <!-- 摄像头2 -->
+      <div class="camera-content" id="camera2">
+        <div class="video-container">
+          <iframe
+            src="//player.bilibili.com/player.html?bvid=BV1GJ4113778&page=1&high_quality=1&danmaku=0"
+            scrolling="no"
+            border="0"
+            frameborder="no"
+            framespacing="0"
+            allowfullscreen="true">
+          </iframe>
+        </div>
+      </div>
+
+      <!-- 摄像头3 -->
+      <div class="camera-content" id="camera3">
+        <div class="video-container">
+          <iframe
+            src="//player.bilibili.com/player.html?bvid=BV1b54y1k7E&page=1&high_quality=1&danmaku=0"
+            scrolling="no"
+            border="0"
+            frameborder="no"
+            framespacing="0"
+            allowfullscreen="true">
+          </iframe>
+        </div>
       </div>
     </div>
 
@@ -414,6 +560,6 @@
     <button class="control-btn" onclick="window.toggleRotation()">🔄 自动旋转</button>
   </div>
 
-  <script type="module" src="/src/threejs.js"></script>
+  <script type="module" src="/src/js/threejs.js"></script>
 </body>
 </html>

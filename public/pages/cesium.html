@@ -281,11 +281,37 @@
   </style>
 </head>
 <body>
-  <div class="loading" id="loading">加载中...</div>
+  <div class="loading" id="loading">
+    <div>
+      <div style="font-size: 24px; margin-bottom: 20px;">🌍 加载中...</div>
+      <div id="loadingStatus" style="font-size: 14px; color: #888;">正在初始化 Cesium</div>
+    </div>
+  </div>
 
   <button class="back-btn" onclick="window.location.href='index.html'">← 返回首页</button>
 
   <div id="cesiumContainer"></div>
+
+  <script>
+    // 添加加载状态更新
+    window.updateLoadingStatus = function(status) {
+      const statusEl = document.getElementById('loadingStatus');
+      if (statusEl) {
+        statusEl.textContent = status;
+        console.log('[加载状态]', status);
+      }
+    };
+
+    // 监听错误
+    window.addEventListener('error', function(e) {
+      console.error('[页面错误]', e.message, e.filename, e.lineno);
+      const statusEl = document.getElementById('loadingStatus');
+      if (statusEl) {
+        statusEl.textContent = '加载失败: ' + e.message;
+        statusEl.style.color = '#ff6666';
+      }
+    });
+  </script>
 
   <!-- 左侧数据面板 -->
   <div class="info-panel">
@@ -401,6 +427,6 @@
     <button class="control-btn" onclick="window.trainSimulation()">🚂 列车模拟</button>
   </div>
 
-  <script type="module" src="/src/cesium.js"></script>
+  <script type="module" src="/src/js/cesium.js"></script>
 </body>
 </html>

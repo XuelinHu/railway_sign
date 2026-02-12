@@ -1,9 +1,10 @@
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import { CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js'
 
 // 全局变量
-let scene, camera, renderer, controls
+let scene, camera, renderer, controls, labelRenderer
 let signals = []
 let train = null
 let isTrainRunning = false
@@ -12,6 +13,7 @@ let clock = new THREE.Clock()
 let startTime = Date.now()
 let mixer = null // 动画混合器
 let gltfLoader = null
+let modelLabels = []  // 存储所有模型标签
 
 // 初始化 Three.js
 function init() {
@@ -37,6 +39,14 @@ function init() {
   renderer.shadowMap.type = THREE.PCFSoftShadowMap
   document.getElementById('threeContainer').appendChild(renderer.domElement)
 
+  // 创建CSS2D渲染器用于HTML标签
+  labelRenderer = new CSS2DRenderer()
+  labelRenderer.setSize(window.innerWidth, window.innerHeight)
+  labelRenderer.domElement.style.position = 'absolute'
+  labelRenderer.domElement.style.top = '0'
+  labelRenderer.domElement.style.pointerEvents = 'none'
+  document.body.appendChild(labelRenderer.domElement)
+
   // 创建控制器
   controls = new OrbitControls(camera, renderer.domElement)
   controls.enableDamping = true
@@ -53,8 +63,8 @@ function init() {
   createMountains()
   createRailway()
   createSignalLights()
-  createTrain()
-  createStation() // 添加火车站模型
+  createTrain()  // 恢复火车头
+  // createStation()  // 已禁用 - 移除火车站
   createTrees()
 
   // 事件监听
@@ -162,22 +172,26 @@ function createRailway() {
     gltfLoader = new GLTFLoader()
   }
 
-  // 定义铁道路径点
+  // 定义铁道路径点 - 9段轨道在一直线上，首尾相接，统一旋转50度
   const railPositions = [
-    { x: -60, z: -40, rotation: 0 },
-    { x: -30, z: -20, rotation: 0 },
-    { x: 0, z: 0, rotation: 0 },
-    { x: 30, z: 20, rotation: 0 },
-    { x: 60, z: 40, rotation: 0 }
+    { x: -80, z: -60, rotation: Math.PI / 3.6 },  // 轨道1
+    { x: -60, z: -45, rotation: Math.PI / 3.6 },  // 轨道2
+    { x: -40, z: -30, rotation: Math.PI / 3.6 },  // 轨道3
+    { x: -20, z: -15, rotation: Math.PI / 3.6 },  // 轨道4
+    { x: 0, z: 0, rotation: Math.PI / 3.6 },      // 轨道5（中心）
+    { x: 20, z: 15, rotation: Math.PI / 3.6 },   // 轨道6
+    { x: 40, z: 30, rotation: Math.PI / 3.6 },   // 轨道7
+    { x: 60, z: 45, rotation: Math.PI / 3.6 },   // 轨道8
+    { x: 80, z: 60, rotation: Math.PI / 3.6 }    // 轨道9
   ]
 
   // 加载并放置多个铁轨段
   railPositions.forEach((pos, index) => {
     gltfLoader.load(
-      '/obj/railway.glb',
+      '/assets/models/railway.glb',
       (gltf) => {
         const railway = gltf.scene
-        railway.scale.set(3, 3, 3) // 调整缩放
+        railway.scale.set(12, 12, 12) // 放大12倍
         railway.position.set(pos.x, 0, pos.z) // 放在地平线上
         railway.rotation.y = pos.rotation
 
@@ -231,10 +245,10 @@ function createSignalLights() {
 
   signalPositions.forEach((pos, index) => {
     gltfLoader.load(
-      '/obj/sign.glb',
+      '/assets/models/sign.glb',
       (gltf) => {
         const signGroup = gltf.scene
-        signGroup.scale.set(2, 2, 2) // 调整缩放
+        signGroup.scale.set(8, 8, 8) // 放大8倍
         signGroup.position.set(pos.x, 0, pos.z) // 放在地平线上
 
         // 启用阴影
@@ -259,6 +273,9 @@ function createSignalLights() {
           state: signalStates[index],
           name: signalNames[index]
         })
+
+        // 创建3D标签
+        createModelLabel(signGroup, signalNames[index], 15, 65, 45, '109.3887, 24.3076')
 
         updateSignalUI()
         console.log(`信号灯 ${signalNames[index]} 加载成功`)
@@ -290,10 +307,10 @@ function createTrain() {
   }
 
   gltfLoader.load(
-    '/obj/locomotive.glb',
+    '/assets/models/locomotive.glb',
     (gltf) => {
       train = gltf.scene
-      train.scale.set(2, 2, 2) // 调整缩放
+      train.scale.set(12, 12, 12) // 放大12倍
       train.position.set(-60, 0.5, -40) // 稍微抬高，放在铁轨上
       train.rotation.y = Math.PI / 2 // 调整朝向
 
@@ -313,6 +330,9 @@ function createTrain() {
         const action = mixer.clipAction(gltf.animations[0])
         action.play()
       }
+
+      // 创建3D标签
+      createModelLabel(train, '火车头', -5, 75, 60, '109.3900, 24.3100')
 
       console.log('火车头模型加载成功')
     },
@@ -383,10 +403,10 @@ function createStation() {
   }
 
   gltfLoader.load(
-    '/obj/station.glb',
+    '/assets/models/station.glb',
     (gltf) => {
       const station = gltf.scene
-      station.scale.set(3, 3, 3) // 调整缩放
+      station.scale.set(20, 20, 20) // 放大20倍
       station.position.set(30, 0, 20) // 在地平线上，与铁轨、信号灯同高
       station.rotation.y = -Math.PI / 4 // 调整朝向
 
@@ -400,6 +420,9 @@ function createStation() {
 
       scene.add(station)
       console.log('火车站模型加载成功')
+
+      // 创建3D标签
+      createModelLabel(station, '柳州火车站', 30, -5, 85, '109.3887, 24.3076')
     },
     (progress) => {
       console.log('火车站加载进度:', (progress.loaded / progress.total * 100) + '%')
@@ -440,6 +463,54 @@ function createTrees() {
 
     scene.add(treeGroup)
   }
+}
+
+// 创建3D模型的HTML标签
+function createModelLabel(model, name, temperature, humidity, gpsLon, gpsLat) {
+  // 创建标签容器div
+  const div = document.createElement('div')
+  div.className = 'model-label'
+
+  // 根据温度确定颜色
+  let tempClass = 'temp-low'
+  if (temperature < 0) tempClass = 'temp-low'
+  else if (temperature < 20) tempClass = 'temp-medium'
+  else tempClass = 'temp-high'
+
+  // 计算温度进度条宽度
+  const tempPercent = Math.min(Math.abs(temperature) / 40 * 100, 100)
+
+  div.innerHTML = `
+    <div class="label-title">${name}</div>
+    <div class="label-row">
+      <span>🌡️ 温度:</span>
+      <span class="label-value">${temperature}°C</span>
+    </div>
+    <div class="label-row">
+      <span>💧 湿度:</span>
+      <span class="label-value">${humidity}%</span>
+    </div>
+    <div class="label-row">
+      <span>📍 GPS:</span>
+      <span class="label-value">${gpsLon}, ${gpsLat}</span>
+    </div>
+    <div class="label-row">
+      <span style="flex: 1; margin-left: 10px;">
+        <span>温度:</span>
+        <span style="flex: 1; margin-left: auto;">
+          <div class="progress-bg">
+            <div class="temp-bar ${tempClass}" style="width: ${tempPercent}%"></div>
+          </div>
+        </span>
+      </span>
+    </div>
+  `
+
+  // 添加到场景和标签渲染器
+  const label = new THREE.CSS2DObject(div)
+  label.position.set(0, 0, 0)
+  model.add(label)
+  modelLabels.push({ object: model, label: label })
 }
 
 // 切换信号灯
@@ -517,11 +588,32 @@ window.resetView = function() {
   controls.update()
 }
 
+// 切换摄像头
+window.switchCamera = function(cameraId) {
+  // 移除所有tab的active类
+  const tabs = document.querySelectorAll('.camera-tab')
+  tabs.forEach(tab => tab.classList.remove('active'))
+
+  // 隐藏所有摄像头内容
+  const contents = document.querySelectorAll('.camera-content')
+  contents.forEach(content => content.classList.remove('active'))
+
+  // 激活选中的tab和内容
+  const selectedTab = document.querySelector(`.camera-tab:nth-child(${cameraId})`)
+  const selectedContent = document.getElementById(`camera${cameraId}`)
+
+  if (selectedTab) selectedTab.classList.add('active')
+  if (selectedContent) selectedContent.classList.add('active')
+
+  console.log(`切换到监控${cameraId}`)
+}
+
 // 窗口大小调整
 function onWindowResize() {
   camera.aspect = window.innerWidth / window.innerHeight
   camera.updateProjectionMatrix()
   renderer.setSize(window.innerWidth, window.innerHeight)
+  labelRenderer.setSize(window.innerWidth, window.innerHeight)
 }
 
 // 更新 UI
@@ -609,6 +701,7 @@ function animate() {
 
   // 渲染
   renderer.render(scene, camera)
+  labelRenderer.render(scene, camera)  // 渲染HTML标签
 }
 
 // 启动应用

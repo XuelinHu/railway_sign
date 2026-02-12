@@ -1,40 +1,41 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>山区铁道信号灯数字孪生系统</title>
   <script>
     // 添加图片加载调试日志
-    window.addEventListener('load', function() {
+    window.addEventListener('load', function () {
       console.log('=== 部署信息 ===');
       console.log('页面加载完成');
       console.log('当前 URL:', window.location.href);
-      console.log('背景图路径:', '/img/locamotive_bg.png');
+      console.log('背景图路径:', '/assets/images/locamotive_bg.png');
 
       // 检查背景图是否加载成功
       const bgImage = new Image();
-      bgImage.onload = function() {
-        console.log('✅ 背景图片加载成功:', '/img/locamotive_bg.png');
+      bgImage.onload = function () {
+        console.log('✅ 背景图片加载成功:', '/assets/images/locamotive_bg.png');
         console.log('图片尺寸:', bgImage.width, 'x', bgImage.height);
       };
-      bgImage.onerror = function() {
-        console.error('❌ 背景图片加载失败:', '/img/locamotive_bg.png');
+      bgImage.onerror = function () {
+        console.error('❌ 背景图片加载失败:', '/assets/images/locamotive_bg.png');
         console.log('请检查:');
-        console.log('1. 文件是否在 dist/img/ 目录中');
+        console.log('1. 文件是否在 dist/assets/images/ 目录中');
         console.log('2. GitHub Pages 是否正确部署');
       };
-      bgImage.src = '/img/locamotive_bg.png';
+      bgImage.src = '/assets/images/locamotive_bg.png';
 
       // 检查所有资源
       console.log('=== 资源检查 ===');
       const resources = [
-        '/img/locamotive_bg.png',
-        '/obj/locomotive.glb',
-        '/obj/station.glb',
-        '/obj/sign.glb',
-        '/obj/railway.glb',
-        '/obj/bridge.glb'
+        '/assets/images/locamotive_bg.png',
+        '/assets/models/locomotive.glb',
+        '/assets/models/station.glb',
+        '/assets/models/sign.glb',
+        '/assets/models/railway.glb',
+        '/assets/models/bridge.glb'
       ];
 
       resources.forEach(resource => {
@@ -49,9 +50,9 @@
           .catch(error => {
             console.error('❌', resource, '- 请求失败:', error.message);
           });
-        });
       });
     });
+
   </script>
   <style>
     * {
@@ -79,7 +80,7 @@
       left: 0;
       width: 100%;
       height: 100%;
-      background: url('/img/locamotive_bg.png') no-repeat center center;
+      background: url('/assets/images/locamotive_bg.png') no-repeat center center;
       background-size: cover;
       background-position: center;
       opacity: 0.35;
@@ -111,8 +112,13 @@
     }
 
     @keyframes bgMove {
-      0% { transform: translate(0, 0); }
-      100% { transform: translate(50px, 50px); }
+      0% {
+        transform: translate(0, 0);
+      }
+
+      100% {
+        transform: translate(50px, 50px);
+      }
     }
 
     .container {
@@ -132,8 +138,15 @@
     }
 
     @keyframes titleGlow {
-      0%, 100% { text-shadow: 0 0 20px rgba(0, 200, 255, 0.5); }
-      50% { text-shadow: 0 0 40px rgba(0, 200, 255, 0.8), 0 0 60px rgba(0, 200, 255, 0.6); }
+
+      0%,
+      100% {
+        text-shadow: 0 0 20px rgba(0, 200, 255, 0.5);
+      }
+
+      50% {
+        text-shadow: 0 0 40px rgba(0, 200, 255, 0.8), 0 0 60px rgba(0, 200, 255, 0.6);
+      }
     }
 
     .subtitle {
@@ -252,9 +265,12 @@
     }
 
     @keyframes poweredByGlow {
-      0%, 100% {
+
+      0%,
+      100% {
         text-shadow: 0 0 10px rgba(0, 200, 255, 0.5);
       }
+
       50% {
         text-shadow: 0 0 20px rgba(0, 200, 255, 0.8), 0 0 30px rgba(0, 200, 255, 0.6);
       }
@@ -265,6 +281,7 @@
       .title {
         font-size: 36px;
       }
+
       .card {
         width: 100%;
         max-width: 400px;
@@ -272,6 +289,7 @@
     }
   </style>
 </head>
+
 <body>
   <div class="bg-animation"></div>
 
@@ -281,7 +299,7 @@
 
     <div class="cards-container">
       <!-- Cesium 大地图卡片 -->
-      <div class="card" onclick="window.location.href='cesium.html'">
+      <div class="card" onclick="window.location.href='/pages/cesium.html'">
         <span class="card-icon">🌍</span>
         <h2 class="card-title">Cesium 大地图</h2>
         <p class="card-description">
@@ -302,7 +320,7 @@
       </div>
 
       <!-- Three.js 小地图卡片 -->
-      <div class="card" onclick="window.location.href='threejs.html'">
+      <div class="card" onclick="window.location.href='/pages/threejs.html'">
         <span class="card-icon">🎮</span>
         <h2 class="card-title">Three.js 小地图</h2>
         <p class="card-description">
@@ -328,4 +346,5 @@
     © 2025 山区铁道信号灯数字孪生系统 | <span class="powered-by">Powered by 柳州铁道职业技术学院 铁道通信信号学院</span>
   </div>
 </body>
+
 </html>

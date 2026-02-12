@@ -24,7 +24,8 @@
       "Bash(then echo \"package-lock.json exists\")",
       "Bash(else:*)",
       "Bash(fi:*)",
-      "Bash(git check-ignore:*)"
+      "Bash(git check-ignore:*)",
+      "Bash(tee:*)"
     ],
     "deny": [
       "Bash(rm:*)",

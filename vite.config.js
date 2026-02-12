@@ -21,8 +21,8 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'index.html'),
-        cesium: resolve(__dirname, 'cesium.html'),
-        threejs: resolve(__dirname, 'threejs.html'),
+        cesium: resolve(__dirname, 'public/pages/cesium.html'),
+        threejs: resolve(__dirname, 'public/pages/threejs.html'),
       },
     },
   },
