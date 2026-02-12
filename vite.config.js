@@ -1,12 +1,13 @@
 import { defineConfig } from 'vite'
 import cesium from 'vite-plugin-cesium'
+import vue from '@vitejs/plugin-vue'
 import { resolve } from 'path'
 import { fileURLToPath } from 'url'
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url))
 
 export default defineConfig({
-  plugins: [cesium()],
+  plugins: [vue(), cesium()],
   server: {
     port: 3000,
     open: true,
@@ -18,12 +19,5 @@ export default defineConfig({
 
   build: {
     target: "esnext",
-    rollupOptions: {
-      input: {
-        main: resolve(__dirname, 'index.html'),
-        cesium: resolve(__dirname, 'public/pages/cesium.html'),
-        threejs: resolve(__dirname, 'public/pages/threejs.html'),
-      },
-    },
   },
 });
