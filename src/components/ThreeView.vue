@@ -397,7 +397,7 @@ const createModelLabel = (model, name, temperature, humidity, gpsLon, gpsLat) =>
   `
 
   const label = new CSS2DObject(div)
-  label.position.set(0, 0, 0)
+  label.position.set(0, 0, 0)  // 在模型顶部
   model.add(label)
   modelLabels.push({ object: model, label: label })
 
@@ -408,30 +408,33 @@ const createModelLabel = (model, name, temperature, humidity, gpsLon, gpsLat) =>
     style.textContent = `
       .model-label {
         position: absolute;
-        background: rgba(0, 20, 40, 0.9) !important;
-        border: 2px solid rgba(0, 200, 255, 0.5) !important;
-        border-radius: 8px;
-        padding: 12px 16px;
+        background: rgba(0, 20, 40, 0.75) !important;
+        border: 1px solid rgba(0, 200, 255, 0.4) !important;
+        border-radius: 6px;
+        padding: 6px 10px;
         color: #fff;
-        font-size: 14px;
+        font-size: 12px;
         pointer-events: none;
-        backdrop-filter: blur(5px);
-        box-shadow: 0 4px 15px rgba(0, 150, 200, 0.3);
-        max-width: 280px;
+        backdrop-filter: blur(8px);
+        box-shadow: 0 3px 10px rgba(0, 150, 200, 0.25);
+        max-width: 200px;
+        min-width: 150px;
+        transform: translate(-50%, -100%);  /* 居中并在上方 */
+        z-index: 0;  /* 确保在模型后面 */
       }
       .label-title {
-        font-size: 16px;
+        font-size: 14px;
         font-weight: bold;
         color: #00d4ff;
-        margin-bottom: 8px;
-        padding-bottom: 8px;
-        border-bottom: 1px solid rgba(0, 200, 255, 0.3);
+        margin-bottom: 6px;
+        padding-bottom: 6px;
+        border-bottom: 1px solid rgba(0, 200, 255, 0.25);
       }
       .label-row {
         display: flex;
         align-items: center;
-        margin: 6px 0;
-        font-size: 13px;
+        margin: 4px 0;
+        font-size: 11px;
       }
       .label-value {
         flex: 1;
@@ -440,18 +443,18 @@ const createModelLabel = (model, name, temperature, humidity, gpsLon, gpsLat) =>
       }
       .progress-bg {
         flex: 1;
-        margin-left: 10px;
+        margin-left: 8px;
       }
       .temp-bar {
-        height: 8px;
+        height: 6px;
         background: rgba(0, 100, 150, 0.3);
-        border-radius: 4px;
+        border-radius: 3px;
         overflow: hidden;
-        margin: 8px 0;
+        margin: 4px 0;
       }
       .temp-bar {
         height: 100%;
-        border-radius: 4px;
+        border-radius: 3px;
         transition: width 0.3s;
       }
       .temp-low {
