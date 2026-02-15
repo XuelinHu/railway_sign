@@ -1,15 +1,28 @@
 <template>
   <div class="three-view">
-    <!-- 加载动画 -->
-    <div v-if="loading" class="loading">
-      <div class="loading-content">
-        <div class="loading-spinner"></div>
-        <div class="loading-text">加载中...</div>
-      </div>
-    </div>
-
     <!-- Three.js 容器 -->
     <div id="threeContainer" ref="threeContainer"></div>
+
+    <!-- 坐标轴图例 -->
+    <div class="axis-legend">
+      <div class="axis-legend-title">📍 坐标轴图例</div>
+      <div class="axis-legend-item">
+        <div class="axis-arrow axis-x-arrow">→</div>
+        <span class="axis-label-x">X轴</span>
+        <span class="axis-desc">东西方向</span>
+      </div>
+      <div class="axis-legend-item">
+        <div class="axis-arrow axis-y-arrow">↑</div>
+        <span class="axis-label-y">Y轴</span>
+        <span class="axis-desc">垂直方向</span>
+      </div>
+      <div class="axis-legend-item">
+        <div class="axis-arrow axis-z-arrow">↗</div>
+        <span class="axis-label-z">Z轴</span>
+        <span class="axis-desc">南北方向</span>
+      </div>
+      <div class="axis-hint">场景左下角有3D坐标轴</div>
+    </div>
 
     <!-- 控制按钮 -->
     <div class="control-panel">
@@ -21,31 +34,178 @@
 
     <!-- 左侧数据面板 -->
     <div class="info-panel">
+      <!-- 装饰边框 -->
+      <div class="panel-border top-left"></div>
+      <div class="panel-border top-right"></div>
+      <div class="panel-border bottom-left"></div>
+      <div class="panel-border bottom-right"></div>
+      <div class="panel-border glow-line"></div>
+
       <div class="panel-section">
-        <h2 class="panel-title">🚦 信号灯监控</h2>
+        <h2 class="panel-title">
+          <span class="title-icon">🚦</span>
+          <span class="title-text">信号灯监控</span>
+          <span class="title-decorator"></span>
+        </h2>
         <div id="signalList"></div>
       </div>
 
+      <!-- 信号灯实时参数 -->
       <div class="panel-section">
-        <h2 class="panel-title">⚡ 设备状态</h2>
+        <h2 class="panel-title">
+          <span class="title-icon">📊</span>
+          <span class="title-text">实时参数</span>
+          <span class="title-decorator"></span>
+        </h2>
+        <!-- 参数选择器 -->
+        <div class="param-selectors">
+          <select v-model="selectedParam" class="param-select" @change="onParamChange">
+            <option value="temperature">🌡️ 温度</option>
+            <option value="humidity">💧 湿度</option>
+            <option value="light">☀️ 光照</option>
+            <option value="voltage">⚡ 电压</option>
+            <option value="current">🔌 电流</option>
+            <option value="signal">📡 信号</option>
+          </select>
+          <select v-model="paramTimeRange" class="param-select" @change="onParamTimeChange">
+            <option value="1h">近1小时</option>
+            <option value="24h">近24小时</option>
+            <option value="week">近一周</option>
+          </select>
+        </div>
+        <!-- 当前值显示 -->
+        <div class="current-value-display">
+          <div class="current-param-icon">{{ paramConfig.icon }}</div>
+          <div class="current-param-info">
+            <div class="current-param-label">{{ paramConfig.label }}</div>
+            <div class="current-param-value" :style="{ color: paramConfig.color }">
+              {{ currentParamValue }}<span class="param-unit">{{ paramConfig.unit }}</span>
+            </div>
+          </div>
+        </div>
+        <!-- 曲线图 -->
+        <div class="param-chart-container">
+          <svg viewBox="0 0 280 100" class="param-chart-svg">
+            <defs>
+              <linearGradient :id="'paramGradient' + selectedParam" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" :style="`stop-color:${paramConfig.color};stop-opacity:0.4`" />
+                <stop offset="100%" :style="`stop-color:${paramConfig.color};stop-opacity:0`" />
+              </linearGradient>
+            </defs>
+            <!-- 网格线 -->
+            <line x1="10" y1="20" x2="270" y2="20" stroke="rgba(255,255,255,0.1)" stroke-width="1" />
+            <line x1="10" y1="50" x2="270" y2="50" stroke="rgba(255,255,255,0.1)" stroke-width="1" />
+            <line x1="10" y1="80" x2="270" y2="80" stroke="rgba(255,255,255,0.1)" stroke-width="1" />
+            <!-- 数据区域 -->
+            <polygon :points="paramAreaPoints" :fill="`url(#paramGradient${selectedParam})`" />
+            <!-- 数据线 -->
+            <polyline :points="paramLinePoints" fill="none" :stroke="paramConfig.color" stroke-width="2" />
+            <!-- 数据点 -->
+            <circle v-for="(point, idx) in paramChartPoints" :key="idx"
+              :cx="point.x" :cy="point.y" r="3" :fill="paramConfig.color"
+              @mouseenter="hoveredParamPoint = idx"
+              @mouseleave="hoveredParamPoint = null" />
+          </svg>
+          <div v-if="hoveredParamPoint !== null" class="param-tooltip">
+            {{ paramTimeLabels[hoveredParamPoint] }}: {{ currentParamData[hoveredParamPoint] }}{{ paramConfig.unit }}
+          </div>
+        </div>
+        <!-- 参数快捷列表 -->
+        <div class="param-quick-list">
+          <div class="param-quick-item" v-for="(p, key) in paramConfigs" :key="key"
+            :class="{ active: selectedParam === key }" @click="selectedParam = key">
+            <span class="pq-icon">{{ p.icon }}</span>
+            <span class="pq-value">{{ signalParams[key] }}{{ p.unit }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 设备状态 -->
+      <div class="panel-section">
+        <h2 class="panel-title">
+          <span class="title-icon">⚙️</span>
+          <span class="title-text">设备状态</span>
+          <span class="title-decorator"></span>
+        </h2>
+        <div class="device-status">
+          <div class="status-row">
+            <span class="status-dot online"></span>
+            <span class="status-label">主控板</span>
+            <span class="status-value online">正常</span>
+          </div>
+          <div class="status-row">
+            <span class="status-dot online"></span>
+            <span class="status-label">通信模块</span>
+            <span class="status-value online">正常</span>
+          </div>
+          <div class="status-row">
+            <span class="status-dot" :class="signalParams.temperature > 50 ? 'warning' : 'online'"></span>
+            <span class="status-label">散热系统</span>
+            <span class="status-value" :class="signalParams.temperature > 50 ? 'warning' : 'online'">{{ signalParams.temperature > 50 ? '告警' : '正常' }}</span>
+          </div>
+          <div class="status-row">
+            <span class="status-dot online"></span>
+            <span class="status-label">电源模块</span>
+            <span class="status-value online">正常</span>
+          </div>
+        </div>
         <div class="stat-item">
           <span class="stat-label">渲染帧率:</span>
-          <span class="stat-value">60 FPS</span>
+          <span class="stat-value highlight">{{ fps }} FPS</span>
         </div>
         <div class="progress-bar">
-          <div class="progress-fill" style="width: 100%"></div>
-        </div>
-        <div class="stat-item">
-          <span class="stat-label">信号灯数量:</span>
-          <span class="stat-value" id="signalCount">1</span>
+          <div class="progress-fill" :style="{ width: Math.min(fps / 60 * 100, 100) + '%' }"></div>
         </div>
       </div>
     </div>
 
-    <!-- 右侧数据面板 -->
+    <!-- 右侧数据面板 - 视频监控 -->
     <div class="stats-panel">
+      <!-- 装饰边框 -->
+      <div class="panel-border top-left"></div>
+      <div class="panel-border top-right"></div>
+      <div class="panel-border bottom-left"></div>
+      <div class="panel-border bottom-right"></div>
+      <div class="panel-border glow-line"></div>
+
       <div class="panel-section">
-        <h2 class="panel-title">🎮 场景信息</h2>
+        <h2 class="panel-title">
+          <span class="title-icon">📹</span>
+          <span class="title-text">实时监控</span>
+          <span class="title-decorator"></span>
+        </h2>
+        <div class="video-grid">
+          <div class="video-card" v-for="(video, index) in videoList" :key="index">
+            <div class="video-header">
+              <span class="video-dot live"></span>
+              <span class="video-title">{{ video.title }}</span>
+            </div>
+            <div class="video-container" @click="loadVideo(index)">
+              <div v-if="!video.loaded" class="video-placeholder">
+                <div class="play-button">▶</div>
+                <div class="video-hint">点击播放</div>
+              </div>
+              <iframe
+                v-else
+                :src="video.src"
+                scrolling="no"
+                border="0"
+                frameborder="no"
+                framespacing="0"
+                allowfullscreen="true"
+                referrerpolicy="no-referrer"
+              ></iframe>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel-section">
+        <h2 class="panel-title">
+          <span class="title-icon">🎮</span>
+          <span class="title-text">场景信息</span>
+          <span class="title-decorator"></span>
+        </h2>
         <div class="stat-item">
           <span class="stat-label">相机位置:</span>
           <span class="stat-value" id="cameraPos">--</span>
@@ -54,10 +214,6 @@
           <span class="stat-label">运行时间:</span>
           <span class="stat-value" id="uptime">0s</span>
         </div>
-      </div>
-
-      <div class="panel-section">
-        <h2 class="panel-title">🔧 系统状态</h2>
         <div class="stat-item">
           <span class="stat-label">最后更新:</span>
           <span class="stat-value" id="lastUpdate">--</span>
@@ -68,14 +224,183 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { CSS2DRenderer, CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js'
+import api from '../services/api.js'
 
 const threeContainer = ref(null)
-const loading = ref(true)
+const fps = ref(60)
+
+// 信号灯实时参数
+const signalParams = ref({
+  temperature: 35,
+  humidity: 65,
+  light: 850,
+  voltage: 220,
+  current: 2.5,
+  signal: -45
+})
+
+// ===== 参数曲线图相关 =====
+const selectedParam = ref('temperature')
+const paramTimeRange = ref('24h')
+const hoveredParamPoint = ref(null)
+
+// 参数配置
+const paramConfigs = {
+  temperature: { icon: '🌡️', label: '温度', unit: '°C', color: '#ff6b6b', min: 0, max: 60 },
+  humidity: { icon: '💧', label: '湿度', unit: '%', color: '#4ecdc4', min: 0, max: 100 },
+  light: { icon: '☀️', label: '光照强度', unit: 'Lux', color: '#ffe66d', min: 0, max: 2000 },
+  voltage: { icon: '⚡', label: '电压', unit: 'V', color: '#a8e6cf', min: 180, max: 250 },
+  current: { icon: '🔌', label: '电流', unit: 'A', color: '#dda0dd', min: 0, max: 5 },
+  signal: { icon: '📡', label: '信号强度', unit: 'dBm', color: '#87ceeb', min: -100, max: 0 }
+}
+
+const paramConfig = computed(() => paramConfigs[selectedParam.value] || paramConfigs.temperature)
+const currentParamValue = computed(() => signalParams.value[selectedParam.value])
+
+// 参数历史数据 - 1小时（每5分钟一个点，12个点）
+const paramData1h = ref({
+  temperature: [32, 33, 34, 35, 34, 33, 35, 36, 35, 34, 35, 35],
+  humidity: [60, 62, 65, 63, 64, 66, 65, 63, 64, 65, 66, 65],
+  light: [800, 850, 900, 880, 860, 870, 850, 840, 850, 860, 850, 850],
+  voltage: [218, 220, 222, 219, 221, 220, 218, 220, 221, 220, 219, 220],
+  current: [2.3, 2.4, 2.5, 2.4, 2.5, 2.6, 2.5, 2.4, 2.5, 2.5, 2.4, 2.5],
+  signal: [-48, -46, -45, -47, -45, -44, -46, -45, -47, -45, -46, -45]
+})
+
+// 参数历史数据 - 24小时（每小时一个点，24个点）
+const paramData24h = ref({
+  temperature: [28, 27, 26, 25, 24, 24, 25, 27, 30, 33, 36, 38, 40, 41, 40, 39, 37, 35, 33, 31, 30, 29, 28, 27],
+  humidity: [75, 78, 80, 82, 85, 85, 83, 78, 70, 65, 60, 58, 55, 53, 55, 58, 62, 65, 68, 70, 72, 74, 75, 76],
+  light: [0, 0, 0, 0, 0, 50, 200, 500, 800, 1100, 1400, 1600, 1800, 1700, 1500, 1200, 900, 600, 300, 100, 20, 0, 0, 0],
+  voltage: [215, 216, 218, 218, 219, 220, 220, 221, 222, 220, 219, 218, 217, 218, 219, 220, 221, 220, 219, 218, 217, 216, 215, 215],
+  current: [2.0, 1.9, 1.8, 1.8, 1.9, 2.0, 2.2, 2.4, 2.6, 2.8, 3.0, 3.1, 3.2, 3.1, 3.0, 2.8, 2.6, 2.4, 2.2, 2.1, 2.0, 2.0, 1.9, 1.9],
+  signal: [-55, -52, -50, -48, -46, -45, -44, -43, -42, -43, -44, -45, -46, -45, -44, -43, -44, -45, -47, -48, -50, -52, -53, -54]
+})
+
+// 参数历史数据 - 一周（每天一个点，7个点）
+const paramDataWeek = ref({
+  temperature: [32, 35, 38, 36, 34, 33, 35],
+  humidity: [70, 65, 60, 62, 68, 72, 65],
+  light: [850, 900, 950, 880, 820, 800, 850],
+  voltage: [220, 218, 222, 219, 221, 220, 220],
+  current: [2.5, 2.6, 2.7, 2.5, 2.4, 2.5, 2.5],
+  signal: [-45, -48, -42, -44, -46, -47, -45]
+})
+
+// 时间标签
+const paramTimeLabels1h = ['00:00', '00:05', '00:10', '00:15', '00:20', '00:25', '00:30', '00:35', '00:40', '00:45', '00:50', '00:55']
+const paramTimeLabels24h = Array.from({ length: 24 }, (_, i) => `${String(i).padStart(2, '0')}:00`)
+const paramTimeLabelsWeek = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
+
+const currentParamData = computed(() => {
+  const dataMap = {
+    '1h': paramData1h.value,
+    '24h': paramData24h.value,
+    'week': paramDataWeek.value
+  }
+  return dataMap[paramTimeRange.value]?.[selectedParam.value] || []
+})
+
+const paramTimeLabels = computed(() => {
+  const labelsMap = {
+    '1h': paramTimeLabels1h,
+    '24h': paramTimeLabels24h,
+    'week': paramTimeLabelsWeek
+  }
+  return labelsMap[paramTimeRange.value] || []
+})
+
+const paramChartPoints = computed(() => {
+  const data = currentParamData.value
+  if (!data || data.length === 0) return []
+
+  const count = data.length
+  const width = 260
+  const height = 70
+  const padding = 10
+  const config = paramConfig.value
+
+  return data.map((v, i) => ({
+    x: padding + (i / (count - 1)) * width,
+    y: padding + 10 + height - ((v - config.min) / (config.max - config.min)) * height
+  }))
+})
+
+const paramLinePoints = computed(() => {
+  return paramChartPoints.value.map(p => `${p.x},${p.y}`).join(' ')
+})
+
+const paramAreaPoints = computed(() => {
+  const points = paramChartPoints.value
+  if (points.length === 0) return ''
+  const bottom = 90
+  const linePoints = points.map(p => `${p.x},${p.y}`).join(' ')
+  const firstX = points[0].x
+  const lastX = points[points.length - 1].x
+  return `${firstX},${bottom} ${linePoints} ${lastX},${bottom}`
+})
+
+const onParamChange = () => {
+  hoveredParamPoint.value = null
+}
+
+const onParamTimeChange = () => {
+  hoveredParamPoint.value = null
+}
+
+// ===== 视频监控相关 =====
+const videoList = ref([
+  {
+    title: '监控点 1 - 站台A',
+    bvid: 'BV1x9yoBUENZ',
+    src: '',
+    loaded: false
+  },
+  {
+    title: '监控点 2 - 信号塔',
+    bvid: 'BV1Zy4y1E7bP',
+    src: '',
+    loaded: false
+  },
+  {
+    title: '监控点 3 - 铁道口',
+    bvid: 'BV17C4y1W77m',
+    src: '',
+    loaded: false
+  }
+])
+
+const loadVideo = (index) => {
+  const video = videoList.value[index]
+  if (!video.loaded) {
+    // 使用B站嵌入播放器，添加必要参数
+    video.src = `https://player.bilibili.com/player.html?bvid=${video.bvid}&autoplay=1&muted=1&high_quality=1&danmaku=0`
+    video.loaded = true
+  }
+}
+
+// 计算属性
+const tempPercent = computed(() => Math.min(signalParams.value.temperature / 60 * 100, 100))
+const lightPercent = computed(() => Math.min(signalParams.value.light / 2000 * 100, 100))
+const voltagePercent = computed(() => Math.min(signalParams.value.voltage / 250 * 100, 100))
+const currentPercent = computed(() => Math.min(signalParams.value.current / 5 * 100, 100))
+const signalPercent = computed(() => Math.min((100 + signalParams.value.signal) / 100 * 100, 100))
+
+const tempClass = computed(() => {
+  if (signalParams.value.temperature < 30) return 'temp-low'
+  if (signalParams.value.temperature < 50) return 'temp-medium'
+  return 'temp-high'
+})
+
+const voltageClass = computed(() => {
+  if (signalParams.value.voltage >= 210 && signalParams.value.voltage <= 230) return 'voltage-normal'
+  return 'voltage-warning'
+})
 
 let scene, camera, renderer, controls, labelRenderer
 let signals = []
@@ -134,16 +459,13 @@ const init = () => {
   setupLights()
   createGround()
   createMountains()
+  createAxisHelper()  // 添加3D坐标轴
   createRailway()
   createSignalLights()
   createTrain()
   createTrees()
 
   window.addEventListener('resize', onWindowResize)
-
-  setTimeout(() => {
-    loading.value = false
-  }, 1000)
 
   animate()
   updateUI()
@@ -174,6 +496,98 @@ const setupLights = () => {
   const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6)
   hemiLight.position.set(0, 200, 0)
   scene.add(hemiLight)
+}
+
+// 创建3D坐标轴辅助器（类似CAD风格的箭头坐标轴）
+const createAxisHelper = () => {
+  const axisGroup = new THREE.Group()
+  const axisLength = 50  // 坐标轴长度
+  const arrowHeadLength = 8
+  const arrowHeadRadius = 3
+  const lineRadius = 1
+
+  // X轴 - 红色 (东-西方向)
+  const xAxisGroup = new THREE.Group()
+  // X轴线
+  const xLineGeom = new THREE.CylinderGeometry(lineRadius, lineRadius, axisLength, 8)
+  const xLineMat = new THREE.MeshBasicMaterial({ color: 0xff4444 })
+  const xLine = new THREE.Mesh(xLineGeom, xLineMat)
+  xLine.rotation.z = -Math.PI / 2
+  xLine.position.x = axisLength / 2
+  xAxisGroup.add(xLine)
+  // X轴箭头
+  const xArrowGeom = new THREE.ConeGeometry(arrowHeadRadius, arrowHeadLength, 8)
+  const xArrowMat = new THREE.MeshBasicMaterial({ color: 0xff4444 })
+  const xArrow = new THREE.Mesh(xArrowGeom, xArrowMat)
+  xArrow.rotation.z = -Math.PI / 2
+  xArrow.position.x = axisLength + arrowHeadLength / 2
+  xAxisGroup.add(xArrow)
+  axisGroup.add(xAxisGroup)
+
+  // Y轴 - 绿色 (垂直方向)
+  const yAxisGroup = new THREE.Group()
+  const yLineGeom = new THREE.CylinderGeometry(lineRadius, lineRadius, axisLength, 8)
+  const yLineMat = new THREE.MeshBasicMaterial({ color: 0x44ff44 })
+  const yLine = new THREE.Mesh(yLineGeom, yLineMat)
+  yLine.position.y = axisLength / 2
+  yAxisGroup.add(yLine)
+  // Y轴箭头
+  const yArrowGeom = new THREE.ConeGeometry(arrowHeadRadius, arrowHeadLength, 8)
+  const yArrowMat = new THREE.MeshBasicMaterial({ color: 0x44ff44 })
+  const yArrow = new THREE.Mesh(yArrowGeom, yArrowMat)
+  yArrow.position.y = axisLength + arrowHeadLength / 2
+  yAxisGroup.add(yArrow)
+  axisGroup.add(yAxisGroup)
+
+  // Z轴 - 蓝色 (南-北方向)
+  const zIndexGroup = new THREE.Group()
+  const zLineGeom = new THREE.CylinderGeometry(lineRadius, lineRadius, axisLength, 8)
+  const zLineMat = new THREE.MeshBasicMaterial({ color: 0x4444ff })
+  const zLine = new THREE.Mesh(zLineGeom, zLineMat)
+  zLine.rotation.x = Math.PI / 2
+  zLine.position.z = axisLength / 2
+  zIndexGroup.add(zLine)
+  // Z轴箭头
+  const zArrowGeom = new THREE.ConeGeometry(arrowHeadRadius, arrowHeadLength, 8)
+  const zArrowMat = new THREE.MeshBasicMaterial({ color: 0x4444ff })
+  const zArrow = new THREE.Mesh(zArrowGeom, zArrowMat)
+  zArrow.rotation.x = Math.PI / 2
+  zArrow.position.z = axisLength + arrowHeadLength / 2
+  zIndexGroup.add(zArrow)
+  axisGroup.add(zIndexGroup)
+
+  // 原点球体
+  const originGeom = new THREE.SphereGeometry(3, 16, 16)
+  const originMat = new THREE.MeshBasicMaterial({ color: 0xffffff })
+  const origin = new THREE.Mesh(originGeom, originMat)
+  axisGroup.add(origin)
+
+  // 添加坐标轴标签 (使用 CSS2DObject)
+  const createAxisLabel = (text, color, position) => {
+    const div = document.createElement('div')
+    div.className = 'axis-label-3d'
+    div.textContent = text
+    div.style.cssText = `
+      color: ${color};
+      font-size: 16px;
+      font-weight: bold;
+      text-shadow: 0 0 5px rgba(0,0,0,0.8);
+      pointer-events: none;
+    `
+    const label = new CSS2DObject(div)
+    label.position.set(position.x, position.y, position.z)
+    return label
+  }
+
+  axisGroup.add(createAxisLabel('X', '#ff4444', { x: axisLength + 15, y: 0, z: 0 }))
+  axisGroup.add(createAxisLabel('Y', '#44ff44', { x: 0, y: axisLength + 15, z: 0 }))
+  axisGroup.add(createAxisLabel('Z', '#4444ff', { x: 0, y: 0, z: axisLength + 15 }))
+
+  // 放置在场景左下角
+  axisGroup.position.set(-120, 0, -100)
+  scene.add(axisGroup)
+
+  console.log('3D坐标轴已创建')
 }
 
 const createGround = () => {
@@ -229,17 +643,25 @@ const createRailway = () => {
     gltfLoader = new GLTFLoader()
   }
 
-  const railPositions = [
-    { x: -80, z: -60, rotation: Math.PI / 3.6 },
-    { x: -60, z: -45, rotation: Math.PI / 3.6 },
-    { x: -40, z: -30, rotation: Math.PI / 3.6 },
-    { x: -20, z: -15, rotation: Math.PI / 3.6 },
-    { x: 0, z: 0, rotation: Math.PI / 3.6 },
-    { x: 20, z: 15, rotation: Math.PI / 3.6 },
-    { x: 40, z: 30, rotation: Math.PI / 3.6 },
-    { x: 60, z: 45, rotation: Math.PI / 3.6 },
-    { x: 80, z: 60, rotation: Math.PI / 3.6 }
-  ]
+  // 铁轨方向：X轴旋转45度 (Math.PI / 4 = 45度)
+  // 沿着X-Z对角线方向放置铁轨，确保在同一条直线上
+  const railAngle = Math.PI / 4  // 45度
+
+  // 铁轨模型缩放12倍后，假设实际有效长度约为15单位
+  // 在45度角方向，X和Z方向的分量相等
+  const segmentSpacing = 14  // 减小间隔，使铁轨更紧密
+
+  // 生成铁轨位置，沿着45度对角线方向 (z = x)
+  const railPositions = []
+  for (let i = -12; i <= 12; i++) {  // 增加铁轨数量
+    railPositions.push({
+      x: i * segmentSpacing,
+      z: i * segmentSpacing,  // 45度角时 z = x
+      rotation: railAngle
+    })
+  }
+
+  console.log('铁轨位置 (45度角, 紧密排列):', railPositions)
 
   railPositions.forEach((pos, index) => {
     gltfLoader.load(
@@ -258,7 +680,7 @@ const createRailway = () => {
         })
 
         scene.add(railway)
-        console.log(`铁轨段 ${index + 1} 加载成功`)
+        console.log(`铁轨段 ${index + 1} 加载成功，位置: (${pos.x}, ${pos.z})`)
       },
       (error) => {
         console.error(`铁轨段 ${index + 1} 加载失败:`, error)
@@ -272,9 +694,11 @@ const createSignalLights = () => {
     gltfLoader = new GLTFLoader()
   }
 
-  // 只创建一个信号灯
+  // 只创建一个信号灯，放在铁轨旁边
+  // 铁轨方向是45度角，信号灯往Z方向挪一点
+  // 铁轨经过 x=-20, z=-28 的位置（45度角），信号灯放在轨道旁边
   const signalPositions = [
-    { x: 0, z: 0 }  // 中心位置
+    { x: -20, z: -38 }  // 往Z方向移动更多，靠近铁轨旁
   ]
 
   const signalStates = ['red']
@@ -309,7 +733,8 @@ const createSignalLights = () => {
           name: signalNames[index]
         })
 
-        createModelLabel(signGroup, signalNames[index], 15, 65, 45, '109.3887, 24.3076')
+        // 信息板位置往下挪一点（降低高度以不遮挡模型）
+        createModelLabel(signGroup, signalNames[index], 15, 65, 45, '109.3887, 24.3076', 3)
 
         updateSignalUI()
         console.log(`信号灯 ${signalNames[index]} 加载成功`)
@@ -331,8 +756,15 @@ const createTrain = () => {
     (gltf) => {
       train = gltf.scene
       train.scale.set(12, 12, 12)
-      train.position.set(-60, 0.5, -40)
-      train.rotation.y = Math.PI / 2
+      // 列车方向：由X轴向Z轴旋转45度，与铁轨方向一致
+      // 铁轨方向是 Math.PI / 4 = 45度
+      // 火车头模型默认朝向+X方向，需要旋转到朝向X-Z对角线方向
+      const railAngle = Math.PI / 4  // 45度
+      // 火车头往Y轴方向抬高，与铁轨平齐
+      // 铁轨位置: z = x (45度对角线)，从 -168 到 168
+      // 火车头放在铁轨上的位置，z 必须等于 x
+      train.position.set(-84, 3, -84)  // 放在铁轨上，Y轴抬高到3，z=x保证在铁轨线上
+      train.rotation.y = -railAngle  // 旋转45度对齐铁轨方向（X向Z旋转45度）
 
       train.traverse((child) => {
         if (child.isMesh) {
@@ -349,9 +781,10 @@ const createTrain = () => {
         action.play()
       }
 
-      createModelLabel(train, '火车头', -5, 75, 60, '109.3900, 24.3100')
+      // 火车头信息板位置也稍微往下挪
+      createModelLabel(train, '火车头', -5, 75, 60, '109.3900, 24.3100', 6)
 
-      console.log('火车头模型加载成功')
+      console.log('火车头模型加载成功 - 45度角方向，Y轴抬高')
     },
     (error) => {
       console.error('火车头模型加载失败:', error)
@@ -359,7 +792,7 @@ const createTrain = () => {
   )
 }
 
-const createModelLabel = (model, name, temperature, humidity, gpsLon, gpsLat) => {
+const createModelLabel = (model, name, temperature, humidity, gpsLon, gpsLat, labelHeight = 8) => {
   const div = document.createElement('div')
   div.className = 'model-label'
 
@@ -397,9 +830,11 @@ const createModelLabel = (model, name, temperature, humidity, gpsLon, gpsLat) =>
   `
 
   const label = new CSS2DObject(div)
-  label.position.set(0, 0, 0)  // 在模型顶部
+  // 文本框位置：使用传入的labelHeight参数
+  label.position.set(0, labelHeight, 0)
   model.add(label)
-  modelLabels.push({ object: model, label: label })
+  // 保存标签信息用于跟随相机
+  modelLabels.push({ object: model, label: label, div: div })
 
   // 确保样式被添加到文档中（因为 CSS2DRenderer 的元素不在 Vue scoped 样式作用域内）
   if (!document.querySelector('#model-label-styles')) {
@@ -584,6 +1019,58 @@ const updateUI = () => {
   }
 }
 
+// 更新信号灯参数（从API获取实时数据）
+const updateSignalParams = async () => {
+  try {
+    // 从API获取信号灯数据
+    const signals = await api.getSignals()
+    if (signals && signals.length > 0) {
+      // 使用第一个信号灯的数据
+      const signal = signals[0]
+      signalParams.value.temperature = Math.round(signal.temperature * 10) / 10
+      signalParams.value.humidity = Math.round(signal.humidity * 10) / 10
+      signalParams.value.light = Math.round(signal.light_intensity)
+      signalParams.value.voltage = Math.round(signal.voltage * 10) / 10
+      signalParams.value.current = Math.round(signal.current * 100) / 100
+      signalParams.value.signal = Math.round(signal.signal_strength)
+    }
+  } catch (error) {
+    console.error('获取信号灯参数失败:', error)
+    // 使用备用模拟数据
+    signalParams.value.temperature = Math.round((30 + Math.random() * 25) * 10) / 10
+    signalParams.value.humidity = Math.round((50 + Math.random() * 40) * 10) / 10
+    signalParams.value.light = Math.round(500 + Math.random() * 1500)
+    signalParams.value.voltage = Math.round((210 + Math.random() * 30) * 10) / 10
+    signalParams.value.current = Math.round((1.5 + Math.random() * 2) * 100) / 100
+    signalParams.value.signal = Math.round(-70 + Math.random() * 50)
+  }
+}
+
+// 加载参数历史数据
+const loadParamHistory = async () => {
+  try {
+    const params = ['temperature', 'humidity', 'light', 'voltage', 'current', 'signal']
+    for (const param of params) {
+      const data = await api.getParamHistory(param, '24h', 1)
+      if (data && data.length > 0) {
+        const values = data.map(d => d.param_value)
+        // 更新对应的时间范围数据
+        if (values.length >= 24) {
+          paramData24h.value[param] = values.slice(-24)
+        }
+        if (values.length >= 12) {
+          paramData1h.value[param] = values.slice(-12)
+        }
+        if (values.length >= 7) {
+          paramDataWeek.value[param] = values.slice(-7)
+        }
+      }
+    }
+  } catch (error) {
+    console.error('加载参数历史失败:', error)
+  }
+}
+
 const animate = () => {
   requestAnimationFrame(animate)
 
@@ -600,12 +1087,17 @@ const animate = () => {
 
   if (isTrainRunning && train) {
     const time = clock.getElapsedTime() * 0.5
+    // 更新路径以匹配新的铁轨位置（45度对角线方向）
+    // 铁轨方向是45度，z = x（对角线上）
+    // 铁轨从 x=-168, z=-168 到 x=168, z=168
     const path = new THREE.CatmullRomCurve3([
-      new THREE.Vector3(-60, 0.5, -40),
-      new THREE.Vector3(-30, 0.5, -20),
-      new THREE.Vector3(0, 0.5, 0),
-      new THREE.Vector3(30, 0.5, 20),
-      new THREE.Vector3(60, 0.5, 40)
+      new THREE.Vector3(-168, 3, -168),
+      new THREE.Vector3(-100, 3, -100),
+      new THREE.Vector3(-50, 3, -50),
+      new THREE.Vector3(0, 3, 0),
+      new THREE.Vector3(50, 3, 50),
+      new THREE.Vector3(100, 3, 100),
+      new THREE.Vector3(168, 3, 168)
     ])
     const position = path.getPoint((time % 1))
     train.position.copy(position)
@@ -622,8 +1114,15 @@ const animate = () => {
   labelRenderer.render(scene, camera)
 }
 
-onMounted(() => {
+onMounted(async () => {
+  // 从API加载参数历史数据
+  await loadParamHistory()
+  await updateSignalParams()
+
   init()
+
+  // 定期更新信号灯参数
+  setInterval(updateSignalParams, 5000)
 })
 
 onBeforeUnmount(() => {
@@ -684,14 +1183,98 @@ onBeforeUnmount(() => {
   left: 20px;
   bottom: 100px;
   width: 320px;
-  background: rgba(0, 20, 40, 0.5);
+  background: rgba(0, 20, 40, 0.55);
   border: 1px solid rgba(0, 200, 255, 0.3);
   border-radius: 8px;
   padding: 20px;
   color: #fff;
   overflow-y: auto;
   backdrop-filter: blur(10px);
-  box-shadow: 0 4px 20px rgba(0, 200, 255, 0.2);
+  box-shadow: 0 4px 20px rgba(0, 200, 255, 0.2),
+              inset 0 0 30px rgba(0, 200, 255, 0.03);
+}
+
+.stats-panel {
+  position: absolute;
+  top: 80px;
+  right: 20px;
+  bottom: 100px;
+  width: 320px;
+  background: rgba(0, 20, 40, 0.55);
+  border: 1px solid rgba(0, 200, 255, 0.3);
+  border-radius: 8px;
+  padding: 20px;
+  color: #fff;
+  overflow-y: auto;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 20px rgba(0, 200, 255, 0.2),
+              inset 0 0 30px rgba(0, 200, 255, 0.03);
+}
+
+/* 面板装饰边框 */
+.panel-border {
+  position: absolute;
+  pointer-events: none;
+}
+
+.panel-border.top-left {
+  top: -1px;
+  left: -1px;
+  width: 30px;
+  height: 30px;
+  border-top: 3px solid #00d4ff;
+  border-left: 3px solid #00d4ff;
+  border-radius: 8px 0 0 0;
+  box-shadow: 0 0 10px rgba(0, 212, 255, 0.5);
+}
+
+.panel-border.top-right {
+  top: -1px;
+  right: -1px;
+  width: 30px;
+  height: 30px;
+  border-top: 3px solid #00d4ff;
+  border-right: 3px solid #00d4ff;
+  border-radius: 0 8px 0 0;
+  box-shadow: 0 0 10px rgba(0, 212, 255, 0.5);
+}
+
+.panel-border.bottom-left {
+  bottom: -1px;
+  left: -1px;
+  width: 30px;
+  height: 30px;
+  border-bottom: 3px solid #00d4ff;
+  border-left: 3px solid #00d4ff;
+  border-radius: 0 0 0 8px;
+  box-shadow: 0 0 10px rgba(0, 212, 255, 0.5);
+}
+
+.panel-border.bottom-right {
+  bottom: -1px;
+  right: -1px;
+  width: 30px;
+  height: 30px;
+  border-bottom: 3px solid #00d4ff;
+  border-right: 3px solid #00d4ff;
+  border-radius: 0 0 8px 0;
+  box-shadow: 0 0 10px rgba(0, 212, 255, 0.5);
+}
+
+.panel-border.glow-line {
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 60%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #00d4ff, transparent);
+  opacity: 0.6;
+  animation: glow-pulse 2s ease-in-out infinite;
+}
+
+@keyframes glow-pulse {
+  0%, 100% { opacity: 0.4; width: 50%; }
+  50% { opacity: 0.8; width: 70%; }
 }
 
 .panel-section {
@@ -703,11 +1286,29 @@ onBeforeUnmount(() => {
 }
 
 .panel-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   color: #00d4ff;
   font-size: 16px;
   margin-bottom: 15px;
   padding-bottom: 8px;
   border-bottom: 1px solid rgba(0, 200, 255, 0.3);
+  position: relative;
+}
+
+.title-icon {
+  font-size: 18px;
+}
+
+.title-text {
+  flex: 1;
+}
+
+.title-decorator {
+  width: 40px;
+  height: 2px;
+  background: linear-gradient(90deg, #00d4ff, transparent);
 }
 
 .signal-item {
@@ -753,21 +1354,6 @@ onBeforeUnmount(() => {
   color: #aaa;
 }
 
-.stats-panel {
-  position: absolute;
-  top: 80px;
-  right: 20px;
-  bottom: 100px;
-  width: 320px;
-  background: rgba(0, 20, 40, 0.5);
-  border: 1px solid rgba(0, 200, 255, 0.3);
-  border-radius: 8px;
-  padding: 20px;
-  color: #fff;
-  overflow-y: auto;
-  backdrop-filter: blur(10px);
-}
-
 .stat-item {
   display: flex;
   justify-content: space-between;
@@ -777,6 +1363,10 @@ onBeforeUnmount(() => {
 
 .stat-label { color: #aaa; }
 .stat-value { color: #00d4ff; font-weight: bold; }
+.stat-value.highlight {
+  color: #33ff33;
+  text-shadow: 0 0 5px rgba(51, 255, 51, 0.5);
+}
 
 .progress-bar {
   width: 100%;
@@ -895,5 +1485,438 @@ onBeforeUnmount(() => {
 
 .temp-high {
   background: linear-gradient(90deg, #FF5722, #D32F2F);
+}
+
+/* 参数网格 */
+.param-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.param-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  background: rgba(0, 100, 150, 0.15);
+  border-radius: 8px;
+  border-left: 3px solid #00d4ff;
+}
+
+.param-icon {
+  font-size: 20px;
+  width: 30px;
+  text-align: center;
+}
+
+.param-info {
+  flex: 1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.param-label {
+  font-size: 12px;
+  color: #aaa;
+}
+
+.param-value {
+  font-size: 14px;
+  font-weight: bold;
+  color: #00d4ff;
+}
+
+.param-bar {
+  width: 60px;
+  height: 6px;
+  background: rgba(0, 100, 150, 0.3);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.5s ease;
+}
+
+.bar-fill.temp { background: linear-gradient(90deg, #4CAF50, #FFC107, #FF5722); }
+.bar-fill.humidity { background: linear-gradient(90deg, #00d4ff, #0066cc); }
+.bar-fill.light { background: linear-gradient(90deg, #FFC107, #FF9800); }
+.bar-fill.voltage { background: linear-gradient(90deg, #33ff33, #00d4ff); }
+.bar-fill.current { background: linear-gradient(90deg, #00d4ff, #ff9900); }
+.bar-fill.signal { background: linear-gradient(90deg, #ff3333, #FFC107, #33ff33); }
+
+/* 参数值颜色 */
+.temp-low { color: #4CAF50 !important; }
+.temp-medium { color: #FFC107 !important; }
+.temp-high { color: #FF5722 !important; }
+.voltage-normal { color: #33ff33 !important; }
+.voltage-warning { color: #FFC107 !important; }
+
+/* 设备状态 */
+.device-status {
+  margin-bottom: 15px;
+}
+
+.status-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: rgba(0, 100, 150, 0.1);
+  border-radius: 6px;
+  margin-bottom: 6px;
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.status-dot.online {
+  background: #33ff33;
+  box-shadow: 0 0 8px rgba(51, 255, 51, 0.6);
+}
+
+.status-dot.warning {
+  background: #FFC107;
+  box-shadow: 0 0 8px rgba(255, 193, 7, 0.6);
+  animation: pulse-warning 1s infinite;
+}
+
+@keyframes pulse-warning {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.status-label {
+  flex: 1;
+  font-size: 12px;
+  color: #aaa;
+}
+
+.status-value {
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.status-value.online { color: #33ff33; }
+.status-value.warning { color: #FFC107; }
+
+/* 视频网格 */
+.video-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.video-card {
+  background: rgba(0, 100, 150, 0.15);
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid rgba(0, 200, 255, 0.2);
+}
+
+.video-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: rgba(0, 200, 255, 0.1);
+  border-bottom: 1px solid rgba(0, 200, 255, 0.2);
+}
+
+.video-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #666;
+}
+
+.video-dot.live {
+  background: #ff3333;
+  box-shadow: 0 0 6px rgba(255, 51, 51, 0.8);
+  animation: live-pulse 1.5s infinite;
+}
+
+@keyframes live-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.video-title {
+  font-size: 11px;
+  color: #00d4ff;
+  font-weight: bold;
+}
+
+.video-container {
+  position: relative;
+  width: 100%;
+  padding-bottom: 56.25%; /* 16:9 */
+  background: #000;
+}
+
+.video-container iframe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* 视频占位符 */
+.video-placeholder {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, rgba(0, 40, 80, 0.8), rgba(0, 20, 40, 0.9));
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.video-placeholder:hover {
+  background: linear-gradient(135deg, rgba(0, 60, 100, 0.8), rgba(0, 30, 60, 0.9));
+}
+
+.video-placeholder:hover .play-button {
+  transform: scale(1.1);
+  box-shadow: 0 0 30px rgba(0, 200, 255, 0.6);
+}
+
+.play-button {
+  width: 50px;
+  height: 50px;
+  background: rgba(0, 200, 255, 0.3);
+  border: 2px solid #00d4ff;
+  border-radius: 50%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 20px;
+  color: #00d4ff;
+  transition: all 0.3s;
+  box-shadow: 0 0 15px rgba(0, 200, 255, 0.4);
+}
+
+.video-hint {
+  margin-top: 10px;
+  font-size: 12px;
+  color: #888;
+}
+
+/* 参数选择器 */
+.param-selectors {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.param-select {
+  flex: 1;
+  background: rgba(0, 100, 150, 0.3);
+  border: 1px solid rgba(0, 200, 255, 0.3);
+  border-radius: 6px;
+  color: #00d4ff;
+  font-size: 12px;
+  padding: 8px 10px;
+  cursor: pointer;
+  outline: none;
+}
+
+.param-select:hover {
+  background: rgba(0, 100, 150, 0.5);
+}
+
+.param-select option {
+  background: rgba(0, 20, 40, 0.95);
+  color: #fff;
+}
+
+/* 当前值显示 */
+.current-value-display {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: rgba(0, 100, 150, 0.15);
+  border-radius: 8px;
+  margin-bottom: 12px;
+  border-left: 3px solid #00d4ff;
+}
+
+.current-param-icon {
+  font-size: 32px;
+}
+
+.current-param-info {
+  flex: 1;
+}
+
+.current-param-label {
+  font-size: 12px;
+  color: #aaa;
+  margin-bottom: 4px;
+}
+
+.current-param-value {
+  font-size: 28px;
+  font-weight: bold;
+}
+
+.param-unit {
+  font-size: 14px;
+  color: #888;
+  margin-left: 4px;
+}
+
+/* 参数曲线图容器 */
+.param-chart-container {
+  background: rgba(0, 50, 80, 0.2);
+  border-radius: 8px;
+  padding: 10px;
+  margin-bottom: 12px;
+}
+
+.param-chart-svg {
+  width: 100%;
+  height: 100px;
+  cursor: crosshair;
+}
+
+.param-tooltip {
+  background: rgba(0, 40, 80, 0.95);
+  border: 1px solid rgba(0, 200, 255, 0.5);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 11px;
+  color: #fff;
+  text-align: center;
+  margin-top: 4px;
+}
+
+/* 参数快捷列表 */
+.param-quick-list {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.param-quick-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 6px;
+  background: rgba(0, 100, 150, 0.15);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.3s;
+  border: 1px solid transparent;
+}
+
+.param-quick-item:hover {
+  background: rgba(0, 100, 150, 0.3);
+}
+
+.param-quick-item.active {
+  background: rgba(0, 200, 255, 0.2);
+  border-color: rgba(0, 200, 255, 0.5);
+}
+
+.pq-icon {
+  font-size: 16px;
+  margin-bottom: 4px;
+}
+
+.pq-value {
+  font-size: 12px;
+  font-weight: bold;
+  color: #00d4ff;
+}
+
+/* 坐标轴图例样式 */
+.axis-legend {
+  position: absolute;
+  bottom: 80px;
+  left: 20px;
+  background: rgba(0, 20, 40, 0.85);
+  border: 1px solid rgba(0, 200, 255, 0.3);
+  border-radius: 8px;
+  padding: 12px 16px;
+  backdrop-filter: blur(10px);
+  z-index: 100;
+}
+
+.axis-legend-title {
+  font-size: 12px;
+  color: #00d4ff;
+  font-weight: bold;
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(0, 200, 255, 0.2);
+}
+
+.axis-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+  font-size: 12px;
+}
+
+.axis-arrow {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: bold;
+}
+
+.axis-x-arrow {
+  background: rgba(255, 68, 68, 0.3);
+  border: 1px solid rgba(255, 68, 68, 0.6);
+  color: #ff4444;
+}
+
+.axis-y-arrow {
+  background: rgba(68, 255, 68, 0.3);
+  border: 1px solid rgba(68, 255, 68, 0.6);
+  color: #44ff44;
+}
+
+.axis-z-arrow {
+  background: rgba(68, 68, 255, 0.3);
+  border: 1px solid rgba(68, 68, 255, 0.6);
+  color: #4444ff;
+}
+
+.axis-label-x { color: #ff4444; font-weight: bold; }
+.axis-label-y { color: #44ff44; font-weight: bold; }
+.axis-label-z { color: #4444ff; font-weight: bold; }
+
+.axis-desc {
+  color: #aaa;
+  font-size: 11px;
+}
+
+.axis-hint {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(0, 200, 255, 0.2);
+  font-size: 10px;
+  color: #666;
 }
 </style>

@@ -1,57 +1,682 @@
 <template>
   <div class="cesium-view">
-    <!-- 加载动画 -->
-    <div v-if="loading" class="loading">
-      <div class="loading-content">
-        <div class="loading-spinner"></div>
-        <div class="loading-text">{{ loadingStatus }}</div>
-      </div>
-    </div>
-
     <!-- Cesium 容器 -->
     <div id="cesiumContainer" ref="cesiumContainer"></div>
 
+    <!-- 坐标轴图例 -->
+    <div class="axis-legend">
+      <div class="axis-legend-title">📍 坐标轴图例</div>
+      <div class="axis-legend-item">
+        <div class="axis-arrow axis-x-arrow">→</div>
+        <span class="axis-label-x">X轴</span>
+        <span class="axis-desc">经度 (东)</span>
+      </div>
+      <div class="axis-legend-item">
+        <div class="axis-arrow axis-y-arrow">↑</div>
+        <span class="axis-label-y">Y轴</span>
+        <span class="axis-desc">纬度 (北)</span>
+      </div>
+      <div class="axis-legend-item">
+        <div class="axis-arrow axis-z-arrow">↗</div>
+        <span class="axis-label-z">Z轴</span>
+        <span class="axis-desc">高度 (上)</span>
+      </div>
+      <div class="axis-hint">3D坐标轴在地图西南角</div>
+    </div>
+
     <!-- 控制按钮 -->
-    <button class="reset-btn" @click="resetView">🎯 复位视角</button>
+    <div class="control-buttons">
+      <button class="reset-btn" @click="resetView">🎯 复位视角</button>
+      <button class="toggle-btn" @click="toggleLeftPanel">
+        {{ leftPanelVisible ? '◀ 隐藏左侧' : '▶ 显示左侧' }}
+      </button>
+      <button class="toggle-btn" @click="toggleRightPanel">
+        {{ rightPanelVisible ? '隐藏右侧 ▶' : '◀ 显示右侧' }}
+      </button>
+    </div>
+
+    <!-- 左侧面板 - 地理信息与铁道数据 -->
+    <transition name="slide-left">
+      <div v-show="leftPanelVisible" class="side-panel left-panel">
+        <!-- 地理震动监测 -->
+        <div class="panel-card">
+          <div class="panel-header">
+            <span class="panel-title">📍 地理震动监测</span>
+            <span class="panel-subtitle">SEISMIC MONITORING</span>
+          </div>
+          <div class="panel-content">
+            <div class="seismic-display">
+              <div class="seismic-gauge">
+                <svg viewBox="0 0 120 80" class="gauge-svg">
+                  <rect x="10" y="60" width="100" height="15" rx="3" fill="rgba(0,200,255,0.1)" />
+                  <rect x="10" y="60" :width="seismicLevel * 10" height="15" rx="3" :fill="seismicColor" />
+                  <line x1="35" y1="55" x2="35" y2="80" stroke="rgba(255,255,255,0.3)" stroke-width="1" />
+                  <line x1="60" y1="55" x2="60" y2="80" stroke="rgba(255,255,255,0.3)" stroke-width="1" />
+                  <line x1="85" y1="55" x2="85" y2="80" stroke="rgba(255,255,255,0.3)" stroke-width="1" />
+                </svg>
+              </div>
+              <div class="seismic-info">
+                <div class="seismic-value">
+                  <span class="value-label">震动等级</span>
+                  <span class="value-num" :style="{ color: seismicColor }">{{ seismicLevel.toFixed(1) }}</span>
+                </div>
+                <div class="seismic-status" :class="seismicStatusClass">
+                  {{ seismicStatus }}
+                </div>
+              </div>
+            </div>
+            <div class="vibration-history">
+              <div class="history-header">
+                <span class="history-label">震动曲线</span>
+                <select v-model="seismicTimeRange" class="time-select" @change="onSeismicTimeChange">
+                  <option value="24h">近24小时</option>
+                  <option value="week">近一周</option>
+                  <option value="month">近一个月</option>
+                </select>
+              </div>
+              <svg viewBox="0 0 280 60" class="history-svg">
+                <defs>
+                  <linearGradient id="seismicGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="0%" style="stop-color:#00d4ff;stop-opacity:0.3" />
+                    <stop offset="100%" style="stop-color:#00d4ff;stop-opacity:0" />
+                  </linearGradient>
+                </defs>
+                <polygon :points="seismicAreaPoints" fill="url(#seismicGradient)" />
+                <polyline :points="seismicLinePoints" fill="none" stroke="#00d4ff" stroke-width="2" />
+                <circle v-for="(point, idx) in seismicChartPoints" :key="idx"
+                  :cx="point.x" :cy="point.y" r="3" fill="#00d4ff"
+                  @mouseenter="hoveredSeismicPoint = idx"
+                  @mouseleave="hoveredSeismicPoint = null" />
+              </svg>
+              <div v-if="hoveredSeismicPoint !== null" class="chart-tooltip">
+                {{ seismicTimeLabels[hoveredSeismicPoint] }}: {{ currentSeismicData[hoveredSeismicPoint]?.toFixed(1) }}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 当前位置信息 -->
+        <div class="panel-card">
+          <div class="panel-header">
+            <span class="panel-title">🗺️ 当前位置</span>
+            <span class="panel-subtitle">CURRENT POSITION</span>
+          </div>
+          <div class="panel-content">
+            <div class="position-grid">
+              <div class="pos-item">
+                <span class="pos-icon">🌐</span>
+                <span class="pos-label">经度</span>
+                <span class="pos-value">{{ currentPosition.lon }}°E</span>
+              </div>
+              <div class="pos-item">
+                <span class="pos-icon">🌐</span>
+                <span class="pos-label">纬度</span>
+                <span class="pos-value">{{ currentPosition.lat }}°N</span>
+              </div>
+              <div class="pos-item">
+                <span class="pos-icon">⛰️</span>
+                <span class="pos-label">海拔</span>
+                <span class="pos-value">{{ currentPosition.altitude }}m</span>
+              </div>
+              <div class="pos-item">
+                <span class="pos-icon">🧭</span>
+                <span class="pos-label">方位角</span>
+                <span class="pos-value">{{ currentPosition.heading }}°</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 铁道信息 -->
+        <div class="panel-card">
+          <div class="panel-header">
+            <span class="panel-title">🚂 铁道信息</span>
+            <span class="panel-subtitle">RAILWAY INFO</span>
+          </div>
+          <div class="panel-content">
+            <div class="railway-info">
+              <div class="railway-name">
+                <span class="rail-label">当前铁道</span>
+                <span class="rail-value">{{ currentRailway.name }}</span>
+              </div>
+              <div class="railway-detail">
+                <div class="detail-item">
+                  <span class="detail-label">起点</span>
+                  <span class="detail-val">{{ currentRailway.start }}</span>
+                </div>
+                <div class="detail-item">
+                  <span class="detail-label">终点</span>
+                  <span class="detail-val">{{ currentRailway.end }}</span>
+                </div>
+                <div class="detail-item">
+                  <span class="detail-label">全程</span>
+                  <span class="detail-val">{{ currentRailway.length }}km</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 今日列车统计 -->
+        <div class="panel-card">
+          <div class="panel-header">
+            <span class="panel-title">📊 今日列车统计</span>
+            <span class="panel-subtitle">TODAY'S TRAINS</span>
+          </div>
+          <div class="panel-content">
+            <div class="train-stats">
+              <div class="stat-circle">
+                <svg viewBox="0 0 80 80">
+                  <circle cx="40" cy="40" r="35" fill="none" stroke="rgba(0,200,255,0.2)" stroke-width="6" />
+                  <circle cx="40" cy="40" r="35" fill="none" stroke="#00d4ff" stroke-width="6"
+                    stroke-dasharray="220" :stroke-dashoffset="220 - (trainStats.passed / trainStats.total) * 220"
+                    transform="rotate(-90 40 40)" />
+                </svg>
+                <div class="stat-num">{{ trainStats.passed }}</div>
+                <div class="stat-label">已通过</div>
+              </div>
+              <div class="stat-details">
+                <div class="stat-row">
+                  <span class="stat-label">计划总数</span>
+                  <span class="stat-val">{{ trainStats.total }}</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">准点率</span>
+                  <span class="stat-val green">{{ trainStats.onTime }}%</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">下一班</span>
+                  <span class="stat-val">{{ trainStats.nextTrain }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </transition>
+
+    <!-- 右侧面板 - 天气与AI -->
+    <transition name="slide-right">
+      <div v-show="rightPanelVisible" class="side-panel right-panel">
+        <!-- 天气指数 -->
+        <div class="panel-card weather-card">
+          <div class="panel-header">
+            <span class="panel-title">🌤️ 天气指数</span>
+            <span class="panel-subtitle">WEATHER INFO</span>
+          </div>
+          <div class="panel-content">
+            <div class="weather-compact">
+              <div class="weather-left">
+                <div class="weather-icon-small">{{ weather.icon }}</div>
+                <div class="weather-info-compact">
+                  <div class="weather-temp-compact">
+                    <span class="temp-value-small">{{ weather.temp }}</span>
+                    <span class="temp-unit-small">°C</span>
+                  </div>
+                  <div class="weather-desc-small">{{ weather.description }}</div>
+                  <div class="weather-location-small">{{ weather.location }}</div>
+                </div>
+              </div>
+              <div class="weather-right">
+                <div class="w-item-compact" v-for="item in weatherCompactItems" :key="item.label">
+                  <span class="w-icon-small">{{ item.icon }}</span>
+                  <span class="w-info">
+                    <span class="w-label-small">{{ item.label }}</span>
+                    <span class="w-value-small">{{ item.value }}</span>
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 天气曲线图 -->
+            <div class="weather-chart-section">
+              <div class="history-header">
+                <span class="history-label">温度趋势</span>
+                <select v-model="weatherTimeRange" class="time-select" @change="onWeatherTimeChange">
+                  <option value="24h">近24小时</option>
+                  <option value="week">近一周</option>
+                  <option value="month">近一个月</option>
+                </select>
+              </div>
+              <svg viewBox="0 0 280 70" class="history-svg">
+                <defs>
+                  <linearGradient id="weatherGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="0%" style="stop-color:#ff9900;stop-opacity:0.4" />
+                    <stop offset="100%" style="stop-color:#ff9900;stop-opacity:0" />
+                  </linearGradient>
+                </defs>
+                <!-- 网格线 -->
+                <line x1="10" y1="15" x2="270" y2="15" stroke="rgba(255,255,255,0.1)" stroke-width="1" />
+                <line x1="10" y1="35" x2="270" y2="35" stroke="rgba(255,255,255,0.1)" stroke-width="1" />
+                <line x1="10" y1="55" x2="270" y2="55" stroke="rgba(255,255,255,0.1)" stroke-width="1" />
+                <polygon :points="weatherAreaPoints" fill="url(#weatherGradient)" />
+                <polyline :points="weatherLinePoints" fill="none" stroke="#ff9900" stroke-width="2" />
+                <circle v-for="(point, idx) in weatherChartPoints" :key="idx"
+                  :cx="point.x" :cy="point.y" r="3" fill="#ff9900"
+                  @mouseenter="hoveredWeatherPoint = idx"
+                  @mouseleave="hoveredWeatherPoint = null" />
+              </svg>
+              <div v-if="hoveredWeatherPoint !== null" class="chart-tooltip weather-tooltip">
+                {{ weatherTimeLabels[hoveredWeatherPoint] }}: {{ currentWeatherData[hoveredWeatherPoint] }}°C
+              </div>
+            </div>
+
+            <button class="refresh-btn" @click="refreshWeather" :disabled="weatherLoading">
+              {{ weatherLoading ? '刷新中...' : '🔄 刷新天气' }}
+            </button>
+          </div>
+        </div>
+
+        <!-- AI 实时对话 -->
+        <div class="panel-card ai-panel">
+          <div class="panel-header">
+            <span class="panel-title">🤖 AI 助手</span>
+            <span class="panel-subtitle">AI ASSISTANT</span>
+          </div>
+          <div class="panel-content">
+            <div class="ai-messages" ref="aiMessages">
+              <div class="ai-msg" v-for="(msg, index) in aiMessages" :key="index" :class="msg.role">
+                <div class="msg-avatar">{{ msg.role === 'user' ? '👤' : '🤖' }}</div>
+                <div class="msg-content">{{ msg.content }}</div>
+              </div>
+              <div v-if="aiThinking" class="ai-msg assistant thinking">
+                <div class="msg-avatar">🤖</div>
+                <div class="msg-content">思考中...</div>
+              </div>
+            </div>
+            <div class="ai-input">
+              <input
+                v-model="aiInput"
+                @keyup.enter="sendAiMessage"
+                placeholder="输入消息..."
+                class="ai-input-field"
+              />
+              <button class="ai-send-btn" @click="sendAiMessage" :disabled="!aiInput.trim() || aiThinking">
+                发送
+              </button>
+            </div>
+            <div class="ai-quick-actions">
+              <button class="quick-btn" @click="quickAsk('当前铁道状况如何？')">铁道状况</button>
+              <button class="quick-btn" @click="quickAsk('未来天气如何？')">天气预报</button>
+              <button class="quick-btn" @click="quickAsk('附近有什么站点？')">附近站点</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 空气质量 -->
+        <div class="panel-card aqi-card">
+          <div class="panel-header">
+            <span class="panel-title">🌬️ 空气质量</span>
+            <span class="panel-subtitle">AIR QUALITY</span>
+          </div>
+          <div class="panel-content">
+            <div class="aqi-display">
+              <div class="aqi-value" :class="aqiClass">{{ airQuality.aqi }}</div>
+              <div class="aqi-level">{{ airQuality.level }}</div>
+            </div>
+            <div class="aqi-bar">
+              <div class="aqi-indicator" :style="{ left: airQuality.aqi + '%' }"></div>
+            </div>
+            <div class="aqi-items">
+              <div class="aqi-item" v-for="item in airQuality.pollutants" :key="item.name">
+                <span class="item-name">{{ item.name }}</span>
+                <span class="item-value">{{ item.value }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </transition>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import * as Cesium from 'cesium'
 import 'cesium/Build/Cesium/Widgets/widgets.css'
+import api from '../services/api.js'
 
 // 设置 Cesium Ion 访问令牌
 Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI1MGE2NjE5OC05YmU5LTRiMTctODYxOC1hZWE0YTU0NDJmM2UiLCJpZCI6Mzg5Mzg5LCJpYXQiOjE3NzA3NzE2MjR9.XlfsTRYLQkmlFzS3Z-rGNLnchNdPlNqZUfzdX4SHtWU'
 
 // 响应式变量
 const cesiumContainer = ref(null)
-const loading = ref(true)
-const loadingStatus = ref('正在初始化 Cesium...')
+const leftPanelVisible = ref(true)
+const rightPanelVisible = ref(true)
 
 let viewer = null
 let beaconPoints = []
 let beaconPopups = []
 let selectedBeacon = null
 
-// 柳州火车站坐标
+// ===== 地理震动数据 =====
+const seismicLevel = ref(2.3)
+const seismicTimeRange = ref('24h')
+const hoveredSeismicPoint = ref(null)
+
+// 地震历史数据 - 近24小时（每小时一个点）
+const seismicData24h = ref([
+  2.1, 1.8, 2.5, 3.1, 2.8, 2.2, 1.9, 2.4, 2.0, 2.3, 2.6, 2.1,
+  1.7, 2.0, 2.4, 2.9, 3.2, 2.7, 2.3, 2.0, 1.8, 2.2, 2.5, 2.1
+])
+
+// 地震历史数据 - 近一周（每天一个点，7个点）
+const seismicDataWeek = ref([2.3, 2.1, 2.8, 3.5, 2.9, 2.4, 2.2])
+
+// 地震历史数据 - 近一个月（每天一个点，30个点）
+const seismicDataMonth = ref([
+  2.1, 2.3, 1.9, 2.5, 2.8, 3.1, 2.6, 2.2, 1.8, 2.4,
+  2.7, 3.0, 2.5, 2.1, 1.7, 2.0, 2.3, 2.6, 2.9, 3.2,
+  2.8, 2.4, 2.0, 1.8, 2.2, 2.5, 2.8, 3.1, 2.7, 2.3
+])
+
+// 时间标签
+const seismicTimeLabels24h = Array.from({ length: 24 }, (_, i) => `${String(i).padStart(2, '0')}:00`)
+const seismicTimeLabelsWeek = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
+const seismicTimeLabelsMonth = Array.from({ length: 30 }, (_, i) => `${i + 1}日`)
+
+const currentSeismicData = computed(() => {
+  switch (seismicTimeRange.value) {
+    case 'week': return seismicDataWeek.value
+    case 'month': return seismicDataMonth.value
+    default: return seismicData24h.value
+  }
+})
+
+const seismicTimeLabels = computed(() => {
+  switch (seismicTimeRange.value) {
+    case 'week': return seismicTimeLabelsWeek
+    case 'month': return seismicTimeLabelsMonth
+    default: return seismicTimeLabels24h
+  }
+})
+
+const seismicChartPoints = computed(() => {
+  const data = currentSeismicData.value
+  const count = data.length
+  const width = 260
+  const height = 50
+  const padding = 10
+
+  return data.map((v, i) => ({
+    x: padding + (i / (count - 1)) * width,
+    y: padding + height - (v / 8) * height  // 假设最大值8
+  }))
+})
+
+const seismicLinePoints = computed(() => {
+  return seismicChartPoints.value.map(p => `${p.x},${p.y}`).join(' ')
+})
+
+const seismicAreaPoints = computed(() => {
+  const points = seismicChartPoints.value
+  if (points.length === 0) return ''
+  const bottom = 60
+  const linePoints = points.map(p => `${p.x},${p.y}`).join(' ')
+  const firstX = points[0].x
+  const lastX = points[points.length - 1].x
+  return `${firstX},${bottom} ${linePoints} ${lastX},${bottom}`
+})
+
+const onSeismicTimeChange = () => {
+  hoveredSeismicPoint.value = null
+}
+
+const seismicColor = computed(() => {
+  if (seismicLevel.value < 3) return '#00d4ff'
+  if (seismicLevel.value < 5) return '#ffcc00'
+  if (seismicLevel.value < 7) return '#ff9933'
+  return '#ff3333'
+})
+
+const seismicStatus = computed(() => {
+  if (seismicLevel.value < 3) return '稳定'
+  if (seismicLevel.value < 5) return '轻微震动'
+  if (seismicLevel.value < 7) return '中等震动'
+  return '强震动'
+})
+
+const seismicStatusClass = computed(() => {
+  if (seismicLevel.value < 3) return 'status-normal'
+  if (seismicLevel.value < 5) return 'status-warning'
+  return 'status-danger'
+})
+
+// ===== 当前位置 =====
+const currentPosition = ref({
+  lon: '109.3887',
+  lat: '24.3076',
+  altitude: '156',
+  heading: '45'
+})
+
+// ===== 铁道信息 =====
+const currentRailway = ref({
+  name: '湘桂铁路',
+  start: '柳州站',
+  end: '南宁站',
+  length: '255'
+})
+
+// ===== 列车统计 =====
+const trainStats = ref({
+  passed: 42,
+  total: 58,
+  onTime: 96.5,
+  nextTrain: 'G1502 14:35'
+})
+
+// ===== 天气数据 =====
+const weather = ref({
+  icon: '⛅',
+  temp: 26,
+  description: '多云',
+  location: '柳州市',
+  windSpeed: '3.2m/s',
+  humidity: '72%',
+  visibility: '15km',
+  pressure: '1013hPa'
+})
+const weatherLoading = ref(false)
+const weatherTimeRange = ref('24h')
+const hoveredWeatherPoint = ref(null)
+
+// 天气紧凑显示项
+const weatherCompactItems = computed(() => [
+  { icon: '💨', label: '风速', value: weather.value.windSpeed },
+  { icon: '💧', label: '湿度', value: weather.value.humidity },
+  { icon: '🌫️', label: '能见度', value: weather.value.visibility },
+  { icon: '🌡️', label: '气压', value: weather.value.pressure }
+])
+
+// 温度历史数据 - 近24小时
+const weatherData24h = ref([
+  22, 21, 20, 19, 18, 18, 19, 21, 23, 25, 27, 28,
+  29, 30, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21
+])
+
+// 温度历史数据 - 近一周
+const weatherDataWeek = ref([25, 27, 26, 28, 30, 29, 26])
+
+// 温度历史数据 - 近一个月
+const weatherDataMonth = ref([
+  24, 25, 26, 27, 28, 27, 26, 25, 24, 26,
+  28, 29, 30, 31, 30, 29, 28, 27, 26, 25,
+  24, 25, 26, 27, 28, 29, 28, 27, 26, 26
+])
+
+const weatherTimeLabels24h = Array.from({ length: 24 }, (_, i) => `${String(i).padStart(2, '0')}:00`)
+const weatherTimeLabelsWeek = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
+const weatherTimeLabelsMonth = Array.from({ length: 30 }, (_, i) => `${i + 1}日`)
+
+const currentWeatherData = computed(() => {
+  switch (weatherTimeRange.value) {
+    case 'week': return weatherDataWeek.value
+    case 'month': return weatherDataMonth.value
+    default: return weatherData24h.value
+  }
+})
+
+const weatherTimeLabels = computed(() => {
+  switch (weatherTimeRange.value) {
+    case 'week': return weatherTimeLabelsWeek
+    case 'month': return weatherTimeLabelsMonth
+    default: return weatherTimeLabels24h
+  }
+})
+
+const weatherChartPoints = computed(() => {
+  const data = currentWeatherData.value
+  const count = data.length
+  const width = 260
+  const height = 50
+  const padding = 10
+  const minTemp = 15
+  const maxTemp = 35
+
+  return data.map((v, i) => ({
+    x: padding + (i / (count - 1)) * width,
+    y: padding + height - ((v - minTemp) / (maxTemp - minTemp)) * height
+  }))
+})
+
+const weatherLinePoints = computed(() => {
+  return weatherChartPoints.value.map(p => `${p.x},${p.y}`).join(' ')
+})
+
+const weatherAreaPoints = computed(() => {
+  const points = weatherChartPoints.value
+  if (points.length === 0) return ''
+  const bottom = 65
+  const linePoints = points.map(p => `${p.x},${p.y}`).join(' ')
+  const firstX = points[0].x
+  const lastX = points[points.length - 1].x
+  return `${firstX},${bottom} ${linePoints} ${lastX},${bottom}`
+})
+
+const onWeatherTimeChange = () => {
+  hoveredWeatherPoint.value = null
+}
+
+const refreshWeather = async () => {
+  weatherLoading.value = true
+  try {
+    // 从API获取当前天气
+    const weatherData = await api.getCurrentWeather()
+    if (weatherData) {
+      weather.value = {
+        icon: weatherData.icon || '⛅',
+        temp: Math.round(weatherData.temperature),
+        description: weatherData.description || '多云',
+        location: weatherData.location || '柳州市',
+        windSpeed: weatherData.wind_speed || '3.2m/s',
+        humidity: weatherData.humidity || '72%',
+        visibility: weatherData.visibility || '15km',
+        pressure: weatherData.pressure || '1013hPa'
+      }
+    }
+  } catch (error) {
+    console.error('获取天气失败:', error)
+    // 使用备用模拟数据
+    weather.value.temp = Math.floor(20 + Math.random() * 10)
+    weather.value.humidity = Math.floor(60 + Math.random() * 20) + '%'
+  } finally {
+    weatherLoading.value = false
+  }
+}
+
+// ===== 空气质量 =====
+const airQuality = ref({
+  aqi: 45,
+  level: '优',
+  pollutants: [
+    { name: 'PM2.5', value: '23μg/m³' },
+    { name: 'PM10', value: '45μg/m³' },
+    { name: 'O3', value: '68μg/m³' },
+    { name: 'NO2', value: '32μg/m³' }
+  ]
+})
+
+const aqiClass = computed(() => {
+  if (airQuality.value.aqi <= 50) return 'aqi-good'
+  if (airQuality.value.aqi <= 100) return 'aqi-moderate'
+  return 'aqi-bad'
+})
+
+// ===== AI 对话 =====
+const aiMessages = ref([
+  { role: 'assistant', content: '您好！我是铁道监控AI助手，有什么可以帮助您的吗？' }
+])
+const aiInput = ref('')
+const aiThinking = ref(false)
+const aiMessagesRef = ref(null)
+
+const sendAiMessage = async () => {
+  if (!aiInput.value.trim() || aiThinking.value) return
+
+  const userMessage = aiInput.value.trim()
+  aiMessages.value.push({ role: 'user', content: userMessage })
+  aiInput.value = ''
+  aiThinking.value = true
+
+  await nextTick()
+  scrollToBottom()
+
+  try {
+    // 模拟AI响应
+    await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 1000))
+
+    let response = '抱歉，我暂时无法回答这个问题。'
+    if (userMessage.includes('铁道') || userMessage.includes('铁路')) {
+      response = `当前您所在的位置是${currentRailway.value.name}，该线路从${currentRailway.value.start}到${currentRailway.value.end}，全程${currentRailway.value.length}公里。目前线路运行正常，今日已通过${trainStats.value.passed}趟列车。`
+    } else if (userMessage.includes('天气')) {
+      response = `当前${weather.value.location}天气${weather.value.description}，气温${weather.value.temp}°C，湿度${weather.value.humidity}，风速${weather.value.windSpeed}。整体天气条件良好，适合列车运行。`
+    } else if (userMessage.includes('站点') || userMessage.includes('附近')) {
+      response = '您附近3公里内有以下站点：柳州站（主站）、柳州北站（货运站）、柳州东站（高铁站）。最近的是柳州站，距离约1.2公里。'
+    } else if (userMessage.includes('你好') || userMessage.includes('您好')) {
+      response = '您好！我是铁道监控系统AI助手。我可以帮您查询铁道信息、天气状况、列车运行状态等。请问有什么需要帮助的吗？'
+    }
+
+    aiMessages.value.push({ role: 'assistant', content: response })
+  } catch (error) {
+    aiMessages.value.push({ role: 'assistant', content: '抱歉，发生了错误，请稍后重试。' })
+  } finally {
+    aiThinking.value = false
+    await nextTick()
+    scrollToBottom()
+  }
+}
+
+const quickAsk = (question) => {
+  aiInput.value = question
+  sendAiMessage()
+}
+
+const scrollToBottom = () => {
+  if (aiMessagesRef.value) {
+    aiMessagesRef.value.scrollTop = aiMessagesRef.value.scrollHeight
+  }
+}
+
+// ===== 面板控制 =====
+const toggleLeftPanel = () => {
+  leftPanelVisible.value = !leftPanelVisible.value
+}
+
+const toggleRightPanel = () => {
+  rightPanelVisible.value = !rightPanelVisible.value
+}
+
+// ===== Cesium 初始化 =====
 const LIUZHOU_STATION = {
   lon: 109.38871,
   lat: 24.30755,
   height: 500
 }
 
-// 更新加载状态
-const updateLoadingStatus = (status) => {
-  loadingStatus.value = status
-}
-
-// 初始化 Cesium
 const initCesium = async () => {
   try {
-    updateLoadingStatus('正在初始化 Cesium...')
-    console.log('开始初始化 Cesium...')
-    console.log('目标位置: 柳州火车站', LIUZHOU_STATION)
+    console.log('正在初始化 Cesium...')
 
     const viewerOptions = {
       animation: false,
@@ -73,62 +698,33 @@ const initCesium = async () => {
       requestWaterMask: true
     })
 
-    console.log('已启用 Cesium World Terrain 3D 地形')
-
-    // 添加 OSM Buildings 3D 建筑图层
     try {
-      updateLoadingStatus('正在加载 3D 建筑图层...')
+      console.log('正在加载 3D 建筑图层...')
       const osmBuildings = await Cesium.createOsmBuildings()
       viewer.scene.primitives.add(osmBuildings)
-      console.log('✅ 已添加 OSM Buildings 3D 建筑图层')
+      console.log('3D 建筑图层加载完成')
     } catch (error) {
-      console.warn('⚠️ OSM Buildings 加载失败:', error)
+      console.warn('OSM Buildings 加载失败:', error)
     }
 
-    console.log('Cesium Viewer 创建成功')
-    updateLoadingStatus('Viewer 创建成功，正在添加地图图层...')
-
-    // 开启大气效果
     viewer.scene.skyAtmosphere.show = true
-    viewer.scene.skyAtmosphere.hueShift = 0.1
-    viewer.scene.skyAtmosphere.saturationShift = 0.1
-    viewer.scene.skyAtmosphere.brightnessShift = 0.1
-
-    // 开启雾效
     viewer.scene.fog.enabled = true
     viewer.scene.fog.density = 0.0001
-
-    // 启用地形照明
     viewer.scene.globe.enableLighting = true
-
-    // 增强地形夸张度
     viewer.terrainExaggeration = 3.0
-    console.log('地形夸张度设置为: 3.0倍')
-
-    // 启用基于地形的遮挡检测
     viewer.scene.globe.depthTestAgainstTerrain = true
-
     viewer.scene.globe.alpha = 1.0
 
-    viewer.scene.globe.atmosphereShift = 0.05
-
-    console.log('Cesium 初始化成功')
-    updateLoadingStatus('初始化完成！')
-
+    console.log('Cesium 初始化完成！')
     return viewer
   } catch (error) {
     console.error('Cesium 初始化失败:', error)
-    updateLoadingStatus('初始化失败: ' + error.message)
     throw error
   }
 }
 
-// 相机飞入到柳州火车站
 const flyToLiuZhou = () => {
   if (!viewer) return
-
-  console.log('相机飞入到柳州火车站...')
-
   viewer.camera.flyTo({
     destination: Cesium.Cartesian3.fromDegrees(
       LIUZHOU_STATION.lon,
@@ -140,15 +736,12 @@ const flyToLiuZhou = () => {
       pitch: Cesium.Math.toRadians(-45),
       roll: 0.0
     },
-    duration: 3.0,
-    easingFunction: Cesium.EasingFunction.CUBIC_IN_OUT
+    duration: 3.0
   })
 }
 
-// 复位视角
 const resetView = () => {
   if (!viewer) return
-
   viewer.camera.flyTo({
     destination: Cesium.Cartesian3.fromDegrees(
       LIUZHOU_STATION.lon,
@@ -164,33 +757,6 @@ const resetView = () => {
   })
 }
 
-// 更新位置信息显示
-const updatePositionDisplay = () => {
-  const lonEl = document.getElementById('longitude')
-  const latEl = document.getElementById('latitude')
-  const altEl = document.getElementById('altitude')
-
-  if (lonEl && latEl && altEl) {
-    const cameraPosition = viewer.camera.positionCartographic
-    const lon = Cesium.Math.toDegrees(cameraPosition.longitude).toFixed(4)
-    const lat = Cesium.Math.toDegrees(cameraPosition.latitude).toFixed(4)
-    const alt = (cameraPosition.height * 1000).toFixed(0)
-
-    lonEl.textContent = lon + '°E'
-    latEl.textContent = lat + '°N'
-    altEl.textContent = alt + 'm'
-  }
-
-  const coordinatesEl = document.getElementById('coordinates')
-  if (coordinatesEl) {
-    const carto = viewer.camera.positionCartographic
-    const lon = Cesium.Math.toDegrees(carto.longitude).toFixed(4)
-    const lat = Cesium.Math.toDegrees(carto.latitude).toFixed(4)
-    coordinatesEl.textContent = `${lon}, ${lat}`
-  }
-}
-
-// 隐藏弹窗函数
 const hidePopup = (beaconId) => {
   if (beaconPopups[beaconId]) {
     beaconPopups[beaconId].style.display = 'none'
@@ -198,7 +764,6 @@ const hidePopup = (beaconId) => {
   selectedBeacon = null
 }
 
-// 设置交互事件
 const setupInteractions = () => {
   const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas)
 
@@ -208,9 +773,14 @@ const setupInteractions = () => {
     if (Cesium.defined(pickedObject)) {
       for (let i = 0; i < beaconPoints.length; i++) {
         const beacon = beaconPoints[i]
-        if (pickedObject.id === beacon.cylinder.id ||
-            pickedObject.id === beacon.point.id ||
-            pickedObject.id === beacon.wave.id) {
+        // 检查是否点击了光柱相关的任何实体
+        const isBeaconEntity =
+          pickedObject.id === beacon.cylinder.id ||
+          pickedObject.id === beacon.innerCylinder.id ||
+          pickedObject.id === beacon.groundPoint.id ||
+          beacon.waves.some(w => pickedObject.id === w.id)
+
+        if (isBeaconEntity) {
           const popup = beaconPopups[i]
           if (selectedBeacon === i) {
             popup.style.display = 'none'
@@ -237,19 +807,22 @@ const setupInteractions = () => {
   })
 }
 
-// 更新弹窗位置
+const updatePositionDisplay = () => {
+  if (!viewer) return
+  const cameraPosition = viewer.camera.positionCartographic
+  currentPosition.value.lon = Cesium.Math.toDegrees(cameraPosition.longitude).toFixed(4)
+  currentPosition.value.lat = Cesium.Math.toDegrees(cameraPosition.latitude).toFixed(4)
+  currentPosition.value.altitude = Math.round(cameraPosition.height)
+  currentPosition.value.heading = Math.round(Cesium.Math.toDegrees(viewer.camera.heading))
+}
+
 const updatePopupPositions = () => {
   beaconPoints.forEach((beacon, index) => {
     const popup = beaconPopups[index]
-    if (!popup || popup.style.display === 'none') {
-      return
-    }
+    if (!popup || popup.style.display === 'none') return
 
     const position = Cesium.Cartesian3.fromDegrees(beacon.lon, beacon.lat, beacon.basePosition.height)
-    const windowCoord = Cesium.SceneTransforms.wgs84ToWindowCoordinates(
-      viewer.scene,
-      position
-    )
+    const windowCoord = Cesium.SceneTransforms.wgs84ToWindowCoordinates(viewer.scene, position)
 
     if (Cesium.defined(windowCoord)) {
       const x = windowCoord.x - popup.offsetWidth / 2
@@ -259,93 +832,103 @@ const updatePopupPositions = () => {
   })
 }
 
-// 更新仪表盘数据
-const updateDashboardData = () => {
-  const lastUpdate = document.getElementById('lastUpdate')
-  if (lastUpdate) {
-    const now = new Date()
-    lastUpdate.textContent = now.toLocaleString('zh-CN')
-  }
-}
-
-// 创建随机发光柱和光波动画
 const createBeaconPoints = () => {
   const pointCount = Math.floor(Math.random() * 4) + 5
 
   for (let i = 0; i < pointCount; i++) {
     const lon = LIUZHOU_STATION.lon + (Math.random() - 0.5) * 0.1
     const lat = LIUZHOU_STATION.lat + (Math.random() - 0.5) * 0.1
-    const height = 200 + Math.random() * 300
-
-    const position = Cesium.Cartesian3.fromDegrees(lon, lat, height)
+    const pillarHeight = 400 + Math.random() * 200  // 光柱高度 400-600米
 
     const eventTypes = ['设备正常', '温度异常', '维护中', '离线', '电压异常']
     const eventMessages = [
-      '信号灯运行正常，所有参数在范围内',
-      '温度超过阈值，当前45°C，请检查设备',
-      '设备正在维护，预计2小时后恢复',
-      '设备离线，最后检查时间：10分钟前',
-      '电压异常，当前220V，需要检查线路'
+      '信号灯运行正常',
+      '温度超过阈值',
+      '设备正在维护',
+      '设备离线',
+      '电压异常'
     ]
     const randomEventIndex = Math.floor(Math.random() * eventTypes.length)
     const eventType = eventTypes[randomEventIndex]
     const eventMessage = eventMessages[randomEventIndex]
-    const eventTime = new Date().toLocaleString('zh-CN')
 
-    const cylinder = viewer.entities.add({
-      position: position,
-      cylinder: {
-        length: height,
-        topRadius: 2,
-        bottomRadius: 2,
-        material: Cesium.Color.fromCssColorString('#00d4ff').withAlpha(0.6),
-        outline: true,
-        outlineColor: Cesium.Color.CYAN,
-        outlineWidth: 2
-      }
-    })
-
-    const point = viewer.entities.add({
-      position: position,
-      point: {
-        pixelSize: 15,
-        color: Cesium.Color.CYAN.withAlpha(0.8),
-        outlineColor: Cesium.Color.WHITE,
-        outlineWidth: 2
-      }
-    })
-
+    // 地面位置
     const groundPosition = Cesium.Cartesian3.fromDegrees(lon, lat, 0)
+    // 光柱底部位置（稍高于地面）
+    const basePosition = Cesium.Cartesian3.fromDegrees(lon, lat, pillarHeight / 2)
 
-    const wave = viewer.entities.add({
-      position: groundPosition,
-      ellipse: {
-        semiMinorAxis: 10,
-        semiMajorAxis: 10,
-        height: 2,
-        material: Cesium.Color.fromCssColorString('#00d4ff').withAlpha(0.6),
+    // 1. 创建主光柱 - 从地面向天空发射，使用渐变透明度
+    const cylinder = viewer.entities.add({
+      position: basePosition,
+      cylinder: {
+        length: pillarHeight,
+        topRadius: 15,           // 顶部更宽
+        bottomRadius: 6,         // 底部较窄
+        material: Cesium.Color.fromCssColorString('#00d4ff').withAlpha(0.5),
         outline: true,
-        outlineColor: Cesium.Color.CYAN.withAlpha(0.8),
-        outlineWidth: 3,
-        rotation: Cesium.Math.toRadians(Math.random() * 360)
+        outlineColor: Cesium.Color.CYAN.withAlpha(0.4),
+        outlineWidth: 2
       }
     })
+
+    // 2. 内层亮芯光柱
+    const innerCylinder = viewer.entities.add({
+      position: Cesium.Cartesian3.fromDegrees(lon, lat, pillarHeight * 0.45),
+      cylinder: {
+        length: pillarHeight * 0.9,
+        topRadius: 5,
+        bottomRadius: 2,
+        material: Cesium.Color.fromCssColorString('#00ffff').withAlpha(0.6),
+        outline: false
+      }
+    })
+
+    // 3. 地面中心发光点
+    const groundPoint = viewer.entities.add({
+      position: groundPosition,
+      point: {
+        pixelSize: 30,
+        color: Cesium.Color.fromCssColorString('#00d4ff').withAlpha(0.9),
+        outlineColor: Cesium.Color.WHITE,
+        outlineWidth: 3,
+        scaleByDistance: new Cesium.NearFarScalar(500, 2, 5000, 1)
+      }
+    })
+
+    // 4. 创建地表扩散光波（平面贴地效果）
+    const waves = []
+    const waveCount = 3
+
+    for (let w = 0; w < waveCount; w++) {
+      const wave = viewer.entities.add({
+        position: groundPosition,
+        ellipse: {
+          semiMinorAxis: 20 + w * 80,
+          semiMajorAxis: 20 + w * 80,
+          heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,  // 贴地
+          material: Cesium.Color.fromCssColorString('#00d4ff').withAlpha(0.6 - w * 0.15),
+          outline: true,
+          outlineColor: Cesium.Color.CYAN.withAlpha(0.8 - w * 0.2),
+          outlineWidth: 2
+        }
+      })
+      waves.push(wave)
+    }
 
     beaconPoints.push({
-      cylinder: cylinder,
-      point: point,
-      wave: wave,
-      basePosition: { lon, lat, height },
-      waveRadius: 10,
-      maxRadius: 200,
-      waveSpeed: 20 + Math.random() * 30,
+      cylinder,           // 主光柱
+      innerCylinder,      // 内芯光柱
+      groundPoint,
+      waves,
+      basePosition: { lon, lat, height: pillarHeight },
+      waveRadius: 20,
+      maxRadius: 400,
+      waveSpeed: 50 + Math.random() * 30,
       waveAlpha: 0.6,
-      waveStartTime: Date.now() + Math.random() * 2000,
-      id: i,
-      lon: lon,
-      lat: lat,
-      eventType: eventType,
-      eventMessage: eventMessage
+      waveStartTime: Date.now() + i * 600,
+      wavePhases: [0, 0.33, 0.66],
+      id: i, lon, lat,
+      eventType, eventMessage
     })
 
     const popupDiv = document.createElement('div')
@@ -353,159 +936,337 @@ const createBeaconPoints = () => {
     popupDiv.innerHTML = `
       <div class="popup-content">
         <div class="popup-title">🚨 信号灯 ${i + 1} - ${eventType}</div>
-        <div class="popup-time">⏰ ${eventTime}</div>
         <div class="popup-message">${eventMessage}</div>
-        <div class="popup-coord">📍 坐标: ${lon.toFixed(4)}, ${lat.toFixed(4)}</div>
+        <div class="popup-coord">📍 ${lon.toFixed(4)}, ${lat.toFixed(4)}</div>
         <div class="popup-close" onclick="event.stopPropagation(); window.vueHidePopup(${i})">✕</div>
       </div>
     `
-    popupDiv.style.cssText = `
-      position: absolute;
-      left: 0;
-      top: 0;
-      display: none;
-      z-index: 1000;
-      pointer-events: auto;
-    `
-
+    popupDiv.style.cssText = 'position:absolute;left:0;top:0;display:none;z-index:1000;pointer-events:auto;'
     viewer.container.appendChild(popupDiv)
     beaconPopups.push(popupDiv)
-
-    console.log(`创建信标点 ${i + 1}: [${lon.toFixed(4)}, ${lat.toFixed(4)}, ${height.toFixed(0)}m]`)
   }
 
   const style = document.createElement('style')
   style.textContent = `
-    .beacon-popup {
-      background: rgba(0, 20, 40, 0.95);
-      border: 2px solid rgba(0, 200, 255, 0.6);
-      border-radius: 8px;
-      padding: 15px;
-      min-width: 280px;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
-      backdrop-filter: blur(10px);
-      font-family: 'Microsoft YaHei', Arial, sans-serif;
-    }
-    .popup-content {
-      color: #fff;
-    }
-    .popup-title {
-      font-size: 16px;
-      font-weight: bold;
-      color: #00d4ff;
-      margin-bottom: 10px;
-      padding-bottom: 8px;
-      border-bottom: 1px solid rgba(0, 200, 255, 0.3);
-    }
-    .popup-time {
-      font-size: 12px;
-      color: #aaa;
-      margin-bottom: 8px;
-    }
-    .popup-message {
-      font-size: 13px;
-      line-height: 1.5;
-      margin-bottom: 10px;
-    }
-    .popup-coord {
-      font-size: 11px;
-      color: #888;
-      font-family: monospace;
-    }
-    .popup-close {
-      position: absolute;
-      top: 8px;
-      right: 8px;
-      cursor: pointer;
-      font-size: 18px;
-      color: #ff6666;
-      background: rgba(255, 255, 255, 0.1);
-      border-radius: 4px;
-      width: 24px;
-      height: 24px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .popup-close:hover {
-      background: rgba(255, 255, 255, 0.2);
-      color: #ff3333;
-    }
+    .beacon-popup { background:rgba(0,20,40,0.95);border:2px solid rgba(0,200,255,0.6);border-radius:8px;padding:15px;min-width:200px;backdrop-filter:blur(10px); }
+    .popup-content { color:#fff;font-size:13px; }
+    .popup-title { color:#00d4ff;font-weight:bold;margin-bottom:8px; }
+    .popup-close { position:absolute;top:5px;right:8px;cursor:pointer;color:#ff6666; }
   `
   document.head.appendChild(style)
 }
 
-// 更新光波动画
 const updateWaveAnimation = () => {
   const currentTime = Date.now()
 
-  beaconPoints.forEach((beacon, index) => {
-    if (currentTime < beacon.waveStartTime) {
-      return
-    }
+  beaconPoints.forEach((beacon) => {
+    if (currentTime < beacon.waveStartTime) return
 
-    const elapsedTime = (currentTime - beacon.waveStartTime) * 0.001
-    const currentRadius = beacon.waveRadius + elapsedTime * beacon.waveSpeed
+    // 计算基准时间
+    const baseTime = (currentTime - beacon.waveStartTime) * 0.001
 
-    if (currentRadius > beacon.maxRadius) {
-      beacon.waveStartTime = currentTime
-      beacon.wave.ellipse.semiMinorAxis = beacon.waveRadius
-      beacon.wave.ellipse.semiMajorAxis = beacon.waveRadius
-      beacon.wave.ellipse.material = Cesium.Color.fromCssColorString('#00d4ff').withAlpha(beacon.waveAlpha)
-    } else {
-      beacon.wave.ellipse.semiMinorAxis = currentRadius
-      beacon.wave.ellipse.semiMajorAxis = currentRadius
+    // 更新多层光波 - 每层有不同相位
+    beacon.waves.forEach((wave, wIndex) => {
+      const phase = beacon.wavePhases[wIndex] || 0
+      const cycleTime = 4.0  // 4秒一个周期
 
-      const progress = (currentRadius - beacon.waveRadius) / (beacon.maxRadius - beacon.waveRadius)
-      const newAlpha = beacon.waveAlpha * (1 - progress * 0.9)
-      beacon.wave.ellipse.material = Cesium.Color.fromCssColorString('#00d4ff').withAlpha(newAlpha)
-    }
+      // 计算当前周期内的进度
+      let progress = ((baseTime / cycleTime) + phase) % 1.0
 
+      // 计算当前半径：从最小值扩散到最大值
+      const minRadius = 20
+      const currentRadius = minRadius + progress * (beacon.maxRadius - minRadius)
+
+      wave.ellipse.semiMinorAxis = currentRadius
+      wave.ellipse.semiMajorAxis = currentRadius
+
+      // 透明度随扩散减小 - 从0.6渐变到接近0
+      const alpha = beacon.waveAlpha * (1 - progress * 0.95)
+      wave.ellipse.material = Cesium.Color.fromCssColorString('#00d4ff').withAlpha(alpha)
+
+      // 边框也随扩散变淡
+      const outlineAlpha = 0.8 * (1 - progress * 0.9)
+      wave.ellipse.outlineColor = Cesium.Color.CYAN.withAlpha(outlineAlpha)
+    })
+
+    // 地面中心点脉冲效果
     const pulseTime = currentTime * 0.003
-    const pulseSize = 12 + Math.sin(pulseTime + index * 2) * 5
-    beacon.point.point.pixelSize = pulseSize
+    const groundPulseSize = 25 + Math.sin(pulseTime * 1.5 + beacon.id) * 8
+    beacon.groundPoint.point.pixelSize = groundPulseSize
+
+    // 光柱脉冲效果
+    const cylinderAlpha = 0.4 + Math.sin(pulseTime * 0.5) * 0.15
+    beacon.cylinder.cylinder.material = Cesium.Color.fromCssColorString('#00d4ff').withAlpha(cylinderAlpha)
+
+    // 内层光柱脉冲效果
+    const innerAlpha = 0.5 + Math.sin(pulseTime * 0.5) * 0.15
+    beacon.innerCylinder.cylinder.material = Cesium.Color.fromCssColorString('#00ffff').withAlpha(innerAlpha)
   })
 }
 
-// 组件挂载时初始化
+// 数据更新定时器
+const updateData = () => {
+  // 模拟震动数据变化
+  seismicLevel.value = Math.max(0.5, Math.min(8, seismicLevel.value + (Math.random() - 0.5) * 0.3))
+  // 更新24小时数据
+  seismicData24h.value.shift()
+  seismicData24h.value.push(seismicLevel.value)
+
+  // 模拟列车数据更新
+  if (Math.random() > 0.95 && trainStats.value.passed < trainStats.value.total) {
+    trainStats.value.passed++
+  }
+}
+
+// 创建3D坐标轴辅助器（在柳州火车站附近显示经度/纬度/高度轴）
+const createAxisHelper = () => {
+  // 在柳州火车站附近创建坐标轴
+  const baseLon = LIUZHOU_STATION.lon - 0.03  // 稍微偏西一点
+  const baseLat = LIUZHOU_STATION.lat - 0.03  // 稍微偏南一点
+  const baseHeight = 0  // 地面
+
+  const axisLength = 0.015  // 经纬度单位，约1.5km
+  const axisHeight = 800    // 高度轴，800米
+
+  // X轴 - 红色 - 经度方向（东）
+  const xAxis = viewer.entities.add({
+    position: Cesium.Cartesian3.fromDegrees(baseLon + axisLength / 2, baseLat, 50),
+    cylinder: {
+      length: axisLength * 111000,  // 转换为米（约）
+      topRadius: 30,
+      bottomRadius: 30,
+      material: Cesium.Color.RED.withAlpha(0.8)
+    }
+  })
+  // X轴箭头
+  viewer.entities.add({
+    position: Cesium.Cartesian3.fromDegrees(baseLon + axisLength, baseLat, 50),
+    cone: {
+      length: 150,
+      topRadius: 0,
+      bottomRadius: 80,
+      material: Cesium.Color.RED.withAlpha(0.8)
+    }
+  })
+  // X轴标签
+  viewer.entities.add({
+    position: Cesium.Cartesian3.fromDegrees(baseLon + axisLength + 0.005, baseLat, 50),
+    label: {
+      text: 'X (经度/东)',
+      font: '16px sans-serif',
+      fillColor: Cesium.Color.RED,
+      outlineColor: Cesium.Color.BLACK,
+      outlineWidth: 2,
+      style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+      verticalOrigin: Cesium.VerticalOrigin.CENTER,
+      pixelOffset: new Cesium.Cartesian2(0, 0)
+    }
+  })
+
+  // Y轴 - 绿色 - 纬度方向（北）
+  const yAxis = viewer.entities.add({
+    position: Cesium.Cartesian3.fromDegrees(baseLon, baseLat + axisLength / 2, 50),
+    cylinder: {
+      length: axisLength * 111000,
+      topRadius: 30,
+      bottomRadius: 30,
+      material: Cesium.Color.GREEN.withAlpha(0.8)
+    }
+  })
+  // Y轴箭头
+  viewer.entities.add({
+    position: Cesium.Cartesian3.fromDegrees(baseLon, baseLat + axisLength, 50),
+    cone: {
+      length: 150,
+      topRadius: 0,
+      bottomRadius: 80,
+      material: Cesium.Color.GREEN.withAlpha(0.8)
+    }
+  })
+  // Y轴标签
+  viewer.entities.add({
+    position: Cesium.Cartesian3.fromDegrees(baseLon, baseLat + axisLength + 0.005, 50),
+    label: {
+      text: 'Y (纬度/北)',
+      font: '16px sans-serif',
+      fillColor: Cesium.Color.GREEN,
+      outlineColor: Cesium.Color.BLACK,
+      outlineWidth: 2,
+      style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+      verticalOrigin: Cesium.VerticalOrigin.CENTER
+    }
+  })
+
+  // Z轴 - 蓝色 - 高度方向（上）
+  viewer.entities.add({
+    position: Cesium.Cartesian3.fromDegrees(baseLon, baseLat, axisHeight / 2),
+    cylinder: {
+      length: axisHeight,
+      topRadius: 30,
+      bottomRadius: 30,
+      material: Cesium.Color.BLUE.withAlpha(0.8)
+    }
+  })
+  // Z轴箭头
+  viewer.entities.add({
+    position: Cesium.Cartesian3.fromDegrees(baseLon, baseLat, axisHeight),
+    cone: {
+      length: 150,
+      topRadius: 0,
+      bottomRadius: 80,
+      material: Cesium.Color.BLUE.withAlpha(0.8)
+    }
+  })
+  // Z轴标签
+  viewer.entities.add({
+    position: Cesium.Cartesian3.fromDegrees(baseLon, baseLat, axisHeight + 100),
+    label: {
+      text: 'Z (高度)',
+      font: '16px sans-serif',
+      fillColor: Cesium.Color.BLUE,
+      outlineColor: Cesium.Color.BLACK,
+      outlineWidth: 2,
+      style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+      verticalOrigin: Cesium.VerticalOrigin.CENTER
+    }
+  })
+
+  // 原点球
+  viewer.entities.add({
+    position: Cesium.Cartesian3.fromDegrees(baseLon, baseLat, 0),
+    ellipsoid: {
+      radii: new Cesium.Cartesian3(50, 50, 50),
+      material: Cesium.Color.WHITE.withAlpha(0.8)
+    }
+  })
+
+  console.log('3D坐标轴已创建 (位于柳州火车站西南方向)')
+}
+
+// 从API加载仪表盘数据
+const loadDashboardData = async () => {
+  try {
+    const data = await api.getDashboard()
+    if (data) {
+      // 更新天气数据
+      if (data.weather) {
+        weather.value = {
+          icon: data.weather.icon || '⛅',
+          temp: Math.round(data.weather.temperature),
+          description: data.weather.description || '多云',
+          location: data.weather.location || '柳州市',
+          windSpeed: data.weather.wind_speed || '3.2m/s',
+          humidity: data.weather.humidity || '72%',
+          visibility: data.weather.visibility || '15km',
+          pressure: data.weather.pressure || '1013hPa'
+        }
+      }
+
+      // 更新空气质量
+      if (data.airQuality) {
+        airQuality.value = {
+          aqi: data.airQuality.aqi || 45,
+          level: data.airQuality.level || '优',
+          pollutants: [
+            { name: 'PM2.5', value: `${data.airQuality.pm25 || 23}μg/m³` },
+            { name: 'PM10', value: `${data.airQuality.pm10 || 45}μg/m³` },
+            { name: 'O3', value: `${data.airQuality.o3 || 68}μg/m³` },
+            { name: 'NO2', value: `${data.airQuality.no2 || 32}μg/m³` }
+          ]
+        }
+      }
+
+      // 更新列车统计
+      if (data.trainStats) {
+        trainStats.value = {
+          passed: data.trainStats.passed_count || 42,
+          total: data.trainStats.total_count || 58,
+          onTime: data.trainStats.on_time_rate || 96.5,
+          nextTrain: data.trainStats.next_train || 'G1502 14:35'
+        }
+      }
+
+      // 更新铁道信息
+      if (data.railway) {
+        currentRailway.value = {
+          name: data.railway.name || '湘桂铁路',
+          start: data.railway.start_station || '柳州站',
+          end: data.railway.end_station || '南宁站',
+          length: data.railway.length_km || '255'
+        }
+      }
+
+      // 更新地震数据
+      if (data.seismic && data.seismic.length > 0) {
+        const latestSeismic = data.seismic[data.seismic.length - 1]
+        seismicLevel.value = latestSeismic.level
+      }
+    }
+  } catch (error) {
+    console.error('加载仪表盘数据失败:', error)
+  }
+}
+
+// 从API加载地震历史数据
+const loadSeismicData = async (range = '24h') => {
+  try {
+    const data = await api.getSeismicData(range)
+    if (data && data.length > 0) {
+      const values = data.map(d => d.level)
+      if (range === '24h') {
+        seismicData24h.value = values.slice(-24)
+      } else if (range === 'week') {
+        seismicDataWeek.value = values.slice(-7)
+      } else if (range === 'month') {
+        seismicDataMonth.value = values.slice(-30)
+      }
+    }
+  } catch (error) {
+    console.error('加载地震数据失败:', error)
+  }
+}
+
+// 从API加载天气历史数据
+const loadWeatherHistory = async (range = '24h') => {
+  try {
+    const data = await api.getWeatherData(range)
+    if (data && data.length > 0) {
+      const temps = data.map(d => Math.round(d.temperature))
+      if (range === '24h') {
+        weatherData24h.value = temps.slice(-24)
+      } else if (range === 'week') {
+        weatherDataWeek.value = temps.slice(-7)
+      } else if (range === 'month') {
+        weatherDataMonth.value = temps.slice(-30)
+      }
+    }
+  } catch (error) {
+    console.error('加载天气历史数据失败:', error)
+  }
+}
+
 onMounted(async () => {
   try {
-    console.log('=== Cesium 大地图初始化开始 ===')
+    // 从API加载数据
+    await loadDashboardData()
+    await loadSeismicData('24h')
+    await loadWeatherHistory('24h')
 
     await initCesium()
+    createAxisHelper()  // 创建3D坐标轴
     createBeaconPoints()
-
-    updateLoadingStatus('正在飞向柳州火车站...')
-
-    setTimeout(() => {
-      flyToLiuZhou()
-    }, 500)
-
+    setTimeout(() => flyToLiuZhou(), 500)
     setupInteractions()
-
     viewer.clock.onTick.addEventListener(updateWaveAnimation)
-
-    setInterval(updateDashboardData, 1000)
-
-    setTimeout(() => {
-      loading.value = false
-      console.log('=== Cesium 大地图初始化完成 ===')
-    }, 2000)
-
+    setInterval(updateData, 2000)
   } catch (error) {
     console.error('初始化失败:', error)
-    updateLoadingStatus('初始化失败: ' + error.message)
   }
-
-  // 全局暴露隐藏弹窗函数
   window.vueHidePopup = hidePopup
 })
 
-// 组件卸载时清理资源
 onBeforeUnmount(() => {
-  if (viewer) {
-    viewer.destroy()
-  }
+  if (viewer) viewer.destroy()
 })
 </script>
 
@@ -521,36 +1282,544 @@ onBeforeUnmount(() => {
   height: 100%;
 }
 
-.reset-btn {
+/* 控制按钮 */
+.control-buttons {
   position: absolute;
   bottom: 20px;
   left: 50%;
   transform: translateX(-50%);
-  padding: 12px 24px;
+  display: flex;
+  gap: 12px;
+  z-index: 100;
+}
+
+.reset-btn, .toggle-btn {
+  padding: 10px 18px;
   background: rgba(0, 20, 40, 0.85);
   border: 2px solid rgba(0, 200, 255, 0.3);
   border-radius: 8px;
   color: #00d4ff;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: bold;
   transition: all 0.3s;
   backdrop-filter: blur(10px);
-  z-index: 100;
 }
 
-.reset-btn:hover {
+.reset-btn:hover, .toggle-btn:hover {
   background: rgba(0, 40, 80, 0.9);
   box-shadow: 0 0 15px rgba(0, 200, 255, 0.5);
-  transform: translateX(-50%) translateY(-2px);
 }
 
+/* 侧边面板 */
+.side-panel {
+  position: absolute;
+  top: 70px;
+  width: 340px;
+  max-height: calc(100% - 90px);
+  overflow-y: auto;
+  z-index: 50;
+}
+
+.left-panel { left: 15px; }
+.right-panel { right: 15px; }
+
+.side-panel::-webkit-scrollbar { width: 4px; }
+.side-panel::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); }
+.side-panel::-webkit-scrollbar-thumb { background: rgba(0,200,255,0.4); border-radius: 2px; }
+
+/* 历史记录头部 */
+.history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.time-select {
+  background: rgba(0, 100, 150, 0.3);
+  border: 1px solid rgba(0, 200, 255, 0.3);
+  border-radius: 4px;
+  color: #00d4ff;
+  font-size: 11px;
+  padding: 4px 8px;
+  cursor: pointer;
+  outline: none;
+}
+
+.time-select:hover {
+  background: rgba(0, 100, 150, 0.5);
+}
+
+.time-select option {
+  background: rgba(0, 20, 40, 0.95);
+  color: #fff;
+}
+
+/* 图表提示 */
+.chart-tooltip {
+  position: relative;
+  display: inline-block;
+  background: rgba(0, 40, 80, 0.95);
+  border: 1px solid rgba(0, 200, 255, 0.5);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 11px;
+  color: #fff;
+  margin-top: 4px;
+}
+
+.vibration-history {
+  margin-top: 10px;
+  position: relative;
+}
+
+.history-svg {
+  width: 100%;
+  height: 60px;
+  cursor: crosshair;
+}
+
+/* 面板卡片 */
+.panel-card {
+  background: rgba(0, 20, 40, 0.85);
+  border: 1px solid rgba(0, 200, 255, 0.25);
+  border-radius: 10px;
+  margin-bottom: 12px;
+  backdrop-filter: blur(10px);
+  overflow: hidden;
+}
+
+.panel-header {
+  padding: 12px 15px;
+  border-bottom: 1px solid rgba(0, 200, 255, 0.2);
+  background: rgba(0, 200, 255, 0.08);
+}
+
+.panel-title {
+  font-size: 14px;
+  font-weight: bold;
+  color: #fff;
+}
+
+.panel-subtitle {
+  font-size: 10px;
+  color: #666;
+  letter-spacing: 0.5px;
+}
+
+.panel-content {
+  padding: 15px;
+}
+
+/* 震动监测 */
+.seismic-display {
+  display: flex;
+  gap: 15px;
+  margin-bottom: 12px;
+}
+
+.seismic-gauge { flex: 1; }
+.gauge-svg { width: 100%; height: auto; }
+
+.seismic-info { flex: 1; }
+.seismic-value { margin-bottom: 8px; }
+.value-label { font-size: 11px; color: #888; display: block; }
+.value-num { font-size: 28px; font-weight: bold; }
+
+.seismic-status {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.status-normal { background: rgba(0,200,255,0.2); color: #00d4ff; }
+.status-warning { background: rgba(255,200,0,0.2); color: #ffcc00; }
+.status-danger { background: rgba(255,50,50,0.2); color: #ff3333; }
+
+.vibration-history { margin-top: 10px; }
+.history-label { font-size: 11px; color: #888; display: block; margin-bottom: 5px; }
+.history-svg { width: 100%; height: 50px; }
+
+/* 位置信息 */
+.position-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.pos-item {
+  background: rgba(0, 200, 255, 0.08);
+  padding: 10px;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.pos-icon { font-size: 18px; margin-bottom: 4px; }
+.pos-label { font-size: 11px; color: #888; }
+.pos-value { font-size: 14px; color: #00d4ff; font-weight: bold; margin-top: 2px; }
+
+/* 铁道信息 */
+.railway-name {
+  background: rgba(0, 200, 255, 0.1);
+  padding: 12px;
+  border-radius: 6px;
+  text-align: center;
+  margin-bottom: 12px;
+}
+
+.rail-label { font-size: 11px; color: #888; display: block; }
+.rail-value { font-size: 18px; color: #00d4ff; font-weight: bold; margin-top: 4px; }
+
+.railway-detail { display: flex; flex-direction: column; gap: 8px; }
+.detail-item { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+.detail-label { color: #888; font-size: 12px; }
+.detail-val { color: #fff; font-size: 12px; }
+
+/* 列车统计 */
+.train-stats {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+}
+
+.stat-circle {
+  position: relative;
+  width: 80px;
+  height: 80px;
+}
+
+.stat-circle svg { width: 100%; height: 100%; }
+.stat-circle .stat-num {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 20px;
+  font-weight: bold;
+  color: #00d4ff;
+}
+.stat-circle .stat-label {
+  position: absolute;
+  bottom: -5px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 10px;
+  color: #888;
+}
+
+.stat-details { flex: 1; }
+.stat-row { display: flex; justify-content: space-between; padding: 5px 0; font-size: 12px; }
+.stat-row .stat-label { color: #888; }
+.stat-row .stat-val { color: #fff; }
+.stat-row .stat-val.green { color: #33ff33; }
+
+/* 天气紧凑布局 */
+.weather-compact {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.weather-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+}
+
+.weather-icon-small {
+  font-size: 36px;
+}
+
+.weather-info-compact {
+  flex: 1;
+}
+
+.weather-temp-compact {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+}
+
+.temp-value-small {
+  font-size: 28px;
+  font-weight: bold;
+  color: #fff;
+}
+
+.temp-unit-small {
+  font-size: 14px;
+  color: #888;
+}
+
+.weather-desc-small {
+  font-size: 12px;
+  color: #00d4ff;
+}
+
+.weather-location-small {
+  font-size: 10px;
+  color: #888;
+  margin-top: 2px;
+}
+
+.weather-right {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  flex: 1;
+}
+
+.w-item-compact {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: rgba(255,255,255,0.03);
+  border-radius: 4px;
+}
+
+.w-icon-small {
+  font-size: 14px;
+}
+
+.w-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.w-label-small {
+  font-size: 9px;
+  color: #888;
+}
+
+.w-value-small {
+  font-size: 11px;
+  color: #fff;
+}
+
+/* 天气曲线图区域 */
+.weather-chart-section {
+  margin-top: 10px;
+}
+
+.weather-tooltip {
+  background: rgba(80, 40, 0, 0.95);
+  border-color: rgba(255, 153, 0, 0.5);
+}
+
+/* 天气 - 保留原样式用于其他地方 */
+.weather-main {
+  text-align: center;
+  padding: 15px;
+  background: rgba(0, 200, 255, 0.05);
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+
+.weather-icon { font-size: 48px; }
+.weather-temp { margin: 8px 0; }
+.temp-value { font-size: 36px; font-weight: bold; color: #fff; }
+.temp-unit { font-size: 16px; color: #888; }
+.weather-desc { font-size: 14px; color: #00d4ff; }
+.weather-location { font-size: 12px; color: #888; margin-top: 4px; }
+
+.weather-details {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.w-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  background: rgba(255,255,255,0.03);
+  border-radius: 6px;
+}
+
+.w-icon { font-size: 16px; }
+.w-label { flex: 1; font-size: 11px; color: #888; }
+.w-value { font-size: 12px; color: #fff; }
+
+.refresh-btn {
+  width: 100%;
+  margin-top: 12px;
+  padding: 8px;
+  background: rgba(0, 200, 255, 0.15);
+  border: 1px solid rgba(0, 200, 255, 0.3);
+  border-radius: 6px;
+  color: #00d4ff;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.3s;
+}
+
+.refresh-btn:hover:not(:disabled) { background: rgba(0, 200, 255, 0.25); }
+.refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* 空气质量 */
+.aqi-display { text-align: center; padding: 8px 0; }
+.aqi-value { font-size: 32px; font-weight: bold; }
+.aqi-value.aqi-good { color: #33ff33; }
+.aqi-value.aqi-moderate { color: #ffcc00; }
+.aqi-value.aqi-bad { color: #ff3333; }
+.aqi-level { font-size: 14px; color: #888; margin-top: 4px; }
+
+.aqi-bar {
+  height: 8px;
+  background: linear-gradient(90deg, #33ff33, #ffcc00, #ff9933, #ff3333);
+  border-radius: 4px;
+  margin: 10px 0;
+  position: relative;
+}
+
+.aqi-indicator {
+  position: absolute;
+  top: -3px;
+  width: 14px;
+  height: 14px;
+  background: #fff;
+  border-radius: 50%;
+  transform: translateX(-50%);
+  box-shadow: 0 0 5px rgba(0,0,0,0.3);
+}
+
+.aqi-items { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.aqi-item { display: flex; justify-content: space-between; font-size: 11px; padding: 4px 8px; background: rgba(255,255,255,0.03); border-radius: 4px; }
+.item-name { color: #888; }
+.item-value { color: #fff; }
+
+/* AI 面板 */
+.ai-panel .panel-content { padding: 12px; }
+
+.ai-messages {
+  height: 200px;
+  overflow-y: auto;
+  background: rgba(0,0,0,0.2);
+  border-radius: 8px;
+  padding: 10px;
+  margin-bottom: 10px;
+}
+
+.ai-messages::-webkit-scrollbar { width: 4px; }
+.ai-messages::-webkit-scrollbar-thumb { background: rgba(0,200,255,0.3); border-radius: 2px; }
+
+.ai-msg {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.ai-msg.user { flex-direction: row-reverse; }
+
+.msg-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(0,200,255,0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.ai-msg.user .msg-avatar { background: rgba(255,200,0,0.2); }
+
+.msg-content {
+  max-width: 80%;
+  padding: 8px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  background: rgba(0, 200, 255, 0.15);
+  color: #fff;
+}
+
+.ai-msg.user .msg-content { background: rgba(255, 200, 0, 0.15); }
+
+.ai-msg.thinking .msg-content { opacity: 0.6; }
+
+.ai-input {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.ai-input-field {
+  flex: 1;
+  padding: 10px 12px;
+  background: rgba(0,0,0,0.3);
+  border: 1px solid rgba(0, 200, 255, 0.3);
+  border-radius: 6px;
+  color: #fff;
+  font-size: 12px;
+  outline: none;
+}
+
+.ai-input-field:focus { border-color: #00d4ff; }
+.ai-input-field::placeholder { color: #666; }
+
+.ai-send-btn {
+  padding: 10px 16px;
+  background: rgba(0, 200, 255, 0.2);
+  border: 1px solid rgba(0, 200, 255, 0.4);
+  border-radius: 6px;
+  color: #00d4ff;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.3s;
+}
+
+.ai-send-btn:hover:not(:disabled) { background: rgba(0, 200, 255, 0.3); }
+.ai-send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.ai-quick-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.quick-btn {
+  padding: 6px 10px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 12px;
+  color: #aaa;
+  cursor: pointer;
+  font-size: 10px;
+  transition: all 0.3s;
+}
+
+.quick-btn:hover {
+  background: rgba(0, 200, 255, 0.15);
+  border-color: rgba(0, 200, 255, 0.3);
+  color: #00d4ff;
+}
+
+/* 过渡动画 */
+.slide-left-enter-active, .slide-left-leave-active,
+.slide-right-enter-active, .slide-right-leave-active {
+  transition: all 0.3s ease;
+}
+
+.slide-left-enter-from, .slide-left-leave-to {
+  transform: translateX(-100%);
+  opacity: 0;
+}
+
+.slide-right-enter-from, .slide-right-leave-to {
+  transform: translateX(100%);
+  opacity: 0;
+}
+
+/* 加载动画 */
 .loading {
   position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
   background: #000;
   display: flex;
   justify-content: center;
@@ -558,13 +1827,10 @@ onBeforeUnmount(() => {
   z-index: 9999;
 }
 
-.loading-content {
-  text-align: center;
-}
+.loading-content { text-align: center; }
 
 .loading-spinner {
-  width: 60px;
-  height: 60px;
+  width: 60px; height: 60px;
   border: 4px solid rgba(0, 200, 255, 0.3);
   border-top-color: #00d4ff;
   border-radius: 50%;
@@ -572,12 +1838,83 @@ onBeforeUnmount(() => {
   margin: 0 auto 20px;
 }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.loading-text { color: #00d4ff; font-size: 18px; }
+
+/* 坐标轴图例样式 */
+.axis-legend {
+  position: absolute;
+  bottom: 80px;
+  left: 20px;
+  background: rgba(0, 20, 40, 0.85);
+  border: 1px solid rgba(0, 200, 255, 0.3);
+  border-radius: 8px;
+  padding: 12px 16px;
+  backdrop-filter: blur(10px);
+  z-index: 100;
 }
 
-.loading-text {
+.axis-legend-title {
+  font-size: 12px;
   color: #00d4ff;
-  font-size: 18px;
+  font-weight: bold;
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(0, 200, 255, 0.2);
+}
+
+.axis-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+  font-size: 12px;
+}
+
+.axis-arrow {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: bold;
+}
+
+.axis-x-arrow {
+  background: rgba(255, 68, 68, 0.3);
+  border: 1px solid rgba(255, 68, 68, 0.6);
+  color: #ff4444;
+}
+
+.axis-y-arrow {
+  background: rgba(68, 255, 68, 0.3);
+  border: 1px solid rgba(68, 255, 68, 0.6);
+  color: #44ff44;
+}
+
+.axis-z-arrow {
+  background: rgba(68, 68, 255, 0.3);
+  border: 1px solid rgba(68, 68, 255, 0.6);
+  color: #4444ff;
+}
+
+.axis-label-x { color: #ff4444; font-weight: bold; }
+.axis-label-y { color: #44ff44; font-weight: bold; }
+.axis-label-z { color: #4444ff; font-weight: bold; }
+
+.axis-desc {
+  color: #aaa;
+  font-size: 11px;
+}
+
+.axis-hint {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(0, 200, 255, 0.2);
+  font-size: 10px;
+  color: #666;
 }
 </style>

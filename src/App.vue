@@ -6,13 +6,19 @@
         :class="['tab-btn', { active: currentTab === 'cesium' }]"
         @click="switchTab('cesium')"
       >
-        🌍 Cesium 大地图
+        🌍 地理信息可视化
       </button>
       <button
         :class="['tab-btn', { active: currentTab === 'three' }]"
         @click="switchTab('three')"
       >
-        🎮 Three.js 小地图
+        🎮 铁道信号孪生面板
+      </button>
+      <button
+        class="tab-btn admin-btn"
+        @click="openAdmin"
+      >
+        ⚙️ 后台管理
       </button>
     </div>
 
@@ -33,6 +39,10 @@ const currentTab = ref('cesium')
 
 const switchTab = (tab) => {
   currentTab.value = tab
+}
+
+const openAdmin = () => {
+  window.open('/admin/index.html', '_blank')
 }
 </script>
 
@@ -96,6 +106,17 @@ html, body, #app {
   color: #fff;
   border-color: #00d4ff;
   box-shadow: 0 0 20px rgba(0, 200, 255, 0.5);
+}
+
+.tab-btn.admin-btn {
+  background: rgba(255, 150, 50, 0.3);
+  border-color: rgba(255, 150, 50, 0.5);
+}
+
+.tab-btn.admin-btn:hover {
+  background: rgba(255, 150, 50, 0.5);
+  color: #ffaa33;
+  box-shadow: 0 0 15px rgba(255, 150, 50, 0.5);
 }
 
 /* 内容区域 */
