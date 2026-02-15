@@ -267,61 +267,44 @@
           </div>
         </div>
 
-        <!-- AI 实时对话 -->
-        <div class="panel-card ai-panel">
-          <div class="panel-header">
-            <span class="panel-title">🤖 AI 助手</span>
-            <span class="panel-subtitle">AI ASSISTANT</span>
-          </div>
-          <div class="panel-content">
-            <div class="ai-messages" ref="aiMessages">
-              <div class="ai-msg" v-for="(msg, index) in aiMessages" :key="index" :class="msg.role">
-                <div class="msg-avatar">{{ msg.role === 'user' ? '👤' : '🤖' }}</div>
-                <div class="msg-content">{{ msg.content }}</div>
-              </div>
-              <div v-if="aiThinking" class="ai-msg assistant thinking">
-                <div class="msg-avatar">🤖</div>
-                <div class="msg-content">思考中...</div>
-              </div>
-            </div>
-            <div class="ai-input">
-              <input
-                v-model="aiInput"
-                @keyup.enter="sendAiMessage"
-                placeholder="输入消息..."
-                class="ai-input-field"
-              />
-              <button class="ai-send-btn" @click="sendAiMessage" :disabled="!aiInput.trim() || aiThinking">
-                发送
-              </button>
-            </div>
-            <div class="ai-quick-actions">
-              <button class="quick-btn" @click="quickAsk('当前铁道状况如何？')">铁道状况</button>
-              <button class="quick-btn" @click="quickAsk('未来天气如何？')">天气预报</button>
-              <button class="quick-btn" @click="quickAsk('附近有什么站点？')">附近站点</button>
-            </div>
-          </div>
-        </div>
-
         <!-- 空气质量 -->
         <div class="panel-card aqi-card">
           <div class="panel-header">
-            <span class="panel-title">🌬️ 空气质量</span>
+            <span class="panel-title">空气质量</span>
             <span class="panel-subtitle">AIR QUALITY</span>
           </div>
           <div class="panel-content">
-            <div class="aqi-display">
+            <div class="aqi-summary">
               <div class="aqi-value" :class="aqiClass">{{ airQuality.aqi }}</div>
               <div class="aqi-level">{{ airQuality.level }}</div>
+              <div class="aqi-unit">AQI</div>
             </div>
-            <div class="aqi-bar">
-              <div class="aqi-indicator" :style="{ left: airQuality.aqi + '%' }"></div>
+            <div class="history-header">
+              <span class="history-label">????</span>
+              <select v-model="airQualityTimeRange" class="time-select" @change="onAirQualityTimeChange">
+                <option value="day">天</option>
+                <option value="week">周</option>
+              </select>
             </div>
-            <div class="aqi-items">
-              <div class="aqi-item" v-for="item in airQuality.pollutants" :key="item.name">
-                <span class="item-name">{{ item.name }}</span>
-                <span class="item-value">{{ item.value }}</span>
-              </div>
+            <svg viewBox="0 0 280 70" class="history-svg aqi-chart">
+              <defs>
+                <linearGradient id="aqiGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                  <stop offset="0%" :style="`stop-color:${airQualityColor};stop-opacity:0.35`" />
+                  <stop offset="100%" :style="`stop-color:${airQualityColor};stop-opacity:0`" />
+                </linearGradient>
+              </defs>
+              <line x1="10" y1="15" x2="270" y2="15" stroke="rgba(255,255,255,0.1)" stroke-width="1" />
+              <line x1="10" y1="35" x2="270" y2="35" stroke="rgba(255,255,255,0.1)" stroke-width="1" />
+              <line x1="10" y1="55" x2="270" y2="55" stroke="rgba(255,255,255,0.1)" stroke-width="1" />
+              <polygon :points="airQualityAreaPoints" fill="url(#aqiGradient)" />
+              <polyline :points="airQualityLinePoints" fill="none" :stroke="airQualityColor" stroke-width="2" />
+              <circle v-for="(point, idx) in airQualityChartPoints" :key="idx"
+                :cx="point.x" :cy="point.y" r="3" :fill="airQualityColor"
+                @mouseenter="hoveredAirQualityPoint = idx"
+                @mouseleave="hoveredAirQualityPoint = null" />
+            </svg>
+            <div v-if="hoveredAirQualityPoint !== null" class="chart-tooltip aqi-tooltip">
+              {{ airQualityTimeLabels[hoveredAirQualityPoint] }}: {{ currentAirQualityData[hoveredAirQualityPoint] }}
             </div>
           </div>
         </div>
@@ -348,6 +331,31 @@ let viewer = null
 let beaconPoints = []
 let beaconPopups = []
 let selectedBeacon = null
+
+let pillarGradientCanvas = null
+const getPillarGradientCanvas = () => {
+  if (pillarGradientCanvas) return pillarGradientCanvas
+  const canvas = document.createElement('canvas')
+  canvas.width = 1
+  canvas.height = 256
+  const ctx = canvas.getContext('2d')
+  const gradient = ctx.createLinearGradient(0, canvas.height, 0, 0)
+  gradient.addColorStop(0, 'rgba(255, 255, 255, 1)')
+  gradient.addColorStop(0.6, 'rgba(255, 255, 255, 0.6)')
+  gradient.addColorStop(1, 'rgba(255, 255, 255, 0)')
+  ctx.fillStyle = gradient
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
+  pillarGradientCanvas = canvas
+  return pillarGradientCanvas
+}
+
+const createPillarMaterial = (hexColor, alpha) => {
+  return new Cesium.ImageMaterialProperty({
+    image: getPillarGradientCanvas(),
+    transparent: true,
+    color: Cesium.Color.fromCssColorString(hexColor).withAlpha(alpha)
+  })
+}
 
 // ===== 地理震动数据 =====
 const seismicLevel = ref(2.3)
@@ -603,6 +611,72 @@ const aqiClass = computed(() => {
   return 'aqi-bad'
 })
 
+const airQualityTimeRange = ref('day')
+const hoveredAirQualityPoint = ref(null)
+
+const airQualityDataDay = ref([
+  42, 40, 38, 36, 35, 34, 36, 40, 48, 55, 62, 68,
+  72, 75, 70, 66, 60, 55, 50, 48, 46, 45, 44, 43
+])
+
+const airQualityDataWeek = ref([45, 52, 60, 58, 50, 47, 43])
+
+const airQualityTimeLabelsDay = Array.from({ length: 24 }, (_, i) => `${String(i).padStart(2, '0')}:00`)
+const airQualityTimeLabelsWeek = ['??', '??', '??', '??', '??', '??', '??']
+
+const currentAirQualityData = computed(() => {
+  return airQualityTimeRange.value === 'week'
+    ? airQualityDataWeek.value
+    : airQualityDataDay.value
+})
+
+const airQualityTimeLabels = computed(() => {
+  return airQualityTimeRange.value === 'week'
+    ? airQualityTimeLabelsWeek
+    : airQualityTimeLabelsDay
+})
+
+const airQualityColor = computed(() => {
+  if (airQuality.value.aqi <= 50) return '#33ff33'
+  if (airQuality.value.aqi <= 100) return '#ffcc00'
+  return '#ff3333'
+})
+
+const airQualityChartPoints = computed(() => {
+  const data = currentAirQualityData.value
+  if (!data || data.length === 0) return []
+  const count = data.length
+  const width = 260
+  const height = 50
+  const padding = 10
+  const min = 0
+  const max = Math.max(120, ...data)
+  const range = Math.max(1, max - min)
+
+  return data.map((v, i) => ({
+    x: padding + (i / (count - 1)) * width,
+    y: padding + height - ((v - min) / range) * height
+  }))
+})
+
+const airQualityLinePoints = computed(() => {
+  return airQualityChartPoints.value.map(p => `${p.x},${p.y}`).join(' ')
+})
+
+const airQualityAreaPoints = computed(() => {
+  const points = airQualityChartPoints.value
+  if (points.length === 0) return ''
+  const bottom = 60
+  const linePoints = points.map(p => `${p.x},${p.y}`).join(' ')
+  const firstX = points[0].x
+  const lastX = points[points.length - 1].x
+  return `${firstX},${bottom} ${linePoints} ${lastX},${bottom}`
+})
+
+const onAirQualityTimeChange = () => {
+  hoveredAirQualityPoint.value = null
+}
+
 // ===== AI 对话 =====
 const aiMessages = ref([
   { role: 'assistant', content: '您好！我是铁道监控AI助手，有什么可以帮助您的吗？' }
@@ -833,12 +907,21 @@ const updatePopupPositions = () => {
 }
 
 const createBeaconPoints = () => {
-  const pointCount = Math.floor(Math.random() * 4) + 5
+  const nearCount = Math.floor(Math.random() * 4) + 5
+  const horizonCount = 6
+  const pointCount = nearCount + horizonCount
 
   for (let i = 0; i < pointCount; i++) {
-    const lon = LIUZHOU_STATION.lon + (Math.random() - 0.5) * 0.1
-    const lat = LIUZHOU_STATION.lat + (Math.random() - 0.5) * 0.1
-    const pillarHeight = 400 + Math.random() * 200  // 光柱高度 400-600米
+    const isHorizon = i >= nearCount
+    const spread = isHorizon ? 0.35 : 0.1
+    const lon = LIUZHOU_STATION.lon + (Math.random() - 0.5) * spread
+    const lat = LIUZHOU_STATION.lat + (Math.random() - 0.5) * spread
+    const pillarHeight = isHorizon ? 1200 + Math.random() * 800 : 400 + Math.random() * 200
+    const radiusScale = isHorizon ? 1.6 : 1
+    const waveCount = isHorizon ? 2 : 3
+    const maxWaveRadius = isHorizon ? 900 : 400
+    const waveAlpha = isHorizon ? 0.45 : 0.6
+    const wavePhases = Array.from({ length: waveCount }, (_, idx) => idx / waveCount)
 
     const eventTypes = ['设备正常', '温度异常', '维护中', '离线', '电压异常']
     const eventMessages = [
@@ -857,16 +940,22 @@ const createBeaconPoints = () => {
     // 光柱底部位置（稍高于地面）
     const basePosition = Cesium.Cartesian3.fromDegrees(lon, lat, pillarHeight / 2)
 
+    const pillarMaterial = createPillarMaterial('#00d4ff', isHorizon ? 0.7 : 0.85)
+    const innerPillarMaterial = createPillarMaterial('#00ffff', isHorizon ? 0.8 : 0.95)
+    const pillarAlphaBase = isHorizon ? 0.6 : 0.8
+    const innerAlphaBase = isHorizon ? 0.7 : 0.9
+
     // 1. 创建主光柱 - 从地面向天空发射，使用渐变透明度
     const cylinder = viewer.entities.add({
       position: basePosition,
       cylinder: {
         length: pillarHeight,
-        topRadius: 15,           // 顶部更宽
-        bottomRadius: 6,         // 底部较窄
-        material: Cesium.Color.fromCssColorString('#00d4ff').withAlpha(0.5),
+        topRadius: 15 * radiusScale,           // 顶部更宽
+        bottomRadius: 6 * radiusScale,         // 底部较窄
+        heightReference: Cesium.HeightReference.RELATIVE_TO_GROUND,
+        material: pillarMaterial,
         outline: true,
-        outlineColor: Cesium.Color.CYAN.withAlpha(0.4),
+        outlineColor: Cesium.Color.CYAN.withAlpha(isHorizon ? 0.25 : 0.4),
         outlineWidth: 2
       }
     })
@@ -876,9 +965,10 @@ const createBeaconPoints = () => {
       position: Cesium.Cartesian3.fromDegrees(lon, lat, pillarHeight * 0.45),
       cylinder: {
         length: pillarHeight * 0.9,
-        topRadius: 5,
-        bottomRadius: 2,
-        material: Cesium.Color.fromCssColorString('#00ffff').withAlpha(0.6),
+        topRadius: 5 * radiusScale,
+        bottomRadius: 2 * radiusScale,
+        heightReference: Cesium.HeightReference.RELATIVE_TO_GROUND,
+        material: innerPillarMaterial,
         outline: false
       }
     })
@@ -887,17 +977,17 @@ const createBeaconPoints = () => {
     const groundPoint = viewer.entities.add({
       position: groundPosition,
       point: {
-        pixelSize: 30,
+        pixelSize: isHorizon ? 22 : 30,
         color: Cesium.Color.fromCssColorString('#00d4ff').withAlpha(0.9),
         outlineColor: Cesium.Color.WHITE,
         outlineWidth: 3,
+        heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
         scaleByDistance: new Cesium.NearFarScalar(500, 2, 5000, 1)
       }
     })
 
     // 4. 创建地表扩散光波（平面贴地效果）
     const waves = []
-    const waveCount = 3
 
     for (let w = 0; w < waveCount; w++) {
       const wave = viewer.entities.add({
@@ -905,8 +995,9 @@ const createBeaconPoints = () => {
         ellipse: {
           semiMinorAxis: 20 + w * 80,
           semiMajorAxis: 20 + w * 80,
-          heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,  // 贴地
-          material: Cesium.Color.fromCssColorString('#00d4ff').withAlpha(0.6 - w * 0.15),
+          height: 2,
+          heightReference: Cesium.HeightReference.RELATIVE_TO_GROUND,
+          material: Cesium.Color.fromCssColorString('#00d4ff').withAlpha(waveAlpha - w * 0.15),
           outline: true,
           outlineColor: Cesium.Color.CYAN.withAlpha(0.8 - w * 0.2),
           outlineWidth: 2
@@ -917,16 +1008,22 @@ const createBeaconPoints = () => {
 
     beaconPoints.push({
       cylinder,           // 主光柱
-      innerCylinder,      // 内芯光柱
+      innerCylinder,
+      pillarMaterial,
+      innerPillarMaterial,
+      pillarColor: '#00d4ff',
+      innerColor: '#00ffff',
+      pillarAlphaBase,
+      innerAlphaBase,      // 内芯光柱
       groundPoint,
       waves,
       basePosition: { lon, lat, height: pillarHeight },
       waveRadius: 20,
-      maxRadius: 400,
+      maxRadius: maxWaveRadius,
       waveSpeed: 50 + Math.random() * 30,
-      waveAlpha: 0.6,
+      waveAlpha,
       waveStartTime: Date.now() + i * 600,
-      wavePhases: [0, 0.33, 0.66],
+      wavePhases,
       id: i, lon, lat,
       eventType, eventMessage
     })
@@ -995,12 +1092,20 @@ const updateWaveAnimation = () => {
     beacon.groundPoint.point.pixelSize = groundPulseSize
 
     // 光柱脉冲效果
-    const cylinderAlpha = 0.4 + Math.sin(pulseTime * 0.5) * 0.15
-    beacon.cylinder.cylinder.material = Cesium.Color.fromCssColorString('#00d4ff').withAlpha(cylinderAlpha)
+    const cylinderAlpha = beacon.pillarAlphaBase * (0.85 + Math.sin(pulseTime * 0.5) * 0.15)
+    if (beacon.pillarMaterial) {
+      beacon.pillarMaterial.color = Cesium.Color.fromCssColorString(beacon.pillarColor).withAlpha(cylinderAlpha)
+    } else {
+      beacon.cylinder.cylinder.material = Cesium.Color.fromCssColorString('#00d4ff').withAlpha(cylinderAlpha)
+    }
 
-    // 内层光柱脉冲效果
-    const innerAlpha = 0.5 + Math.sin(pulseTime * 0.5) * 0.15
-    beacon.innerCylinder.cylinder.material = Cesium.Color.fromCssColorString('#00ffff').withAlpha(innerAlpha)
+    // ????????????
+    const innerAlpha = beacon.innerAlphaBase * (0.9 + Math.sin(pulseTime * 0.6) * 0.1)
+    if (beacon.innerPillarMaterial) {
+      beacon.innerPillarMaterial.color = Cesium.Color.fromCssColorString(beacon.innerColor).withAlpha(innerAlpha)
+    } else {
+      beacon.innerCylinder.cylinder.material = Cesium.Color.fromCssColorString('#00ffff').withAlpha(innerAlpha)
+    }
   })
 }
 
@@ -1665,6 +1770,14 @@ onBeforeUnmount(() => {
 .refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* 空气质量 */
+.aqi-summary {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 8px;
+  padding: 4px 0 8px;
+}
+.aqi-unit { font-size: 11px; color: #888; }
 .aqi-display { text-align: center; padding: 8px 0; }
 .aqi-value { font-size: 32px; font-weight: bold; }
 .aqi-value.aqi-good { color: #33ff33; }
@@ -1695,6 +1808,9 @@ onBeforeUnmount(() => {
 .aqi-item { display: flex; justify-content: space-between; font-size: 11px; padding: 4px 8px; background: rgba(255,255,255,0.03); border-radius: 4px; }
 .item-name { color: #888; }
 .item-value { color: #fff; }
+
+.aqi-chart { height: 70px; }
+.aqi-tooltip { background: rgba(0, 40, 80, 0.95); border-color: rgba(0, 200, 255, 0.5); }
 
 /* AI 面板 */
 .ai-panel .panel-content { padding: 12px; }
