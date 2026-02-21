@@ -1,8 +1,8 @@
-# claud.md
+# CLAUDE.md
 
-Reference `AGENT.md` for the repository overview, commands, structure, and conventions.
+仓库概览、命令、结构与约定请参考 `AGENT.md`。
 
-Guidelines:
-- Read `AGENT.md` before making changes.
-- Keep edits aligned with the stack and patterns described there.
-- Update `AGENT.md` if project structure, commands, or environment variables change.
+指南：
+- 修改前先阅读 `AGENT.md`。
+- 编辑内容需与其中描述的技术栈与代码模式保持一致。
+- 若项目结构、命令或环境变量发生变化，请同步更新 `AGENT.md`。

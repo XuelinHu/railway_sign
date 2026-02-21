@@ -3,33 +3,17 @@
     <!-- Three.js 容器 -->
     <div id="threeContainer" ref="threeContainer"></div>
 
-    <!-- 坐标轴图例 -->
-    <div class="axis-legend">
-      <div class="axis-legend-title">📍 坐标轴图例</div>
-      <div class="axis-legend-item">
-        <div class="axis-arrow axis-x-arrow">→</div>
-        <span class="axis-label-x">X轴</span>
-        <span class="axis-desc">东西方向</span>
-      </div>
-      <div class="axis-legend-item">
-        <div class="axis-arrow axis-y-arrow">↑</div>
-        <span class="axis-label-y">Y轴</span>
-        <span class="axis-desc">垂直方向</span>
-      </div>
-      <div class="axis-legend-item">
-        <div class="axis-arrow axis-z-arrow">↗</div>
-        <span class="axis-label-z">Z轴</span>
-        <span class="axis-desc">南北方向</span>
-      </div>
-      <div class="axis-hint">场景左下角有3D坐标轴</div>
-    </div>
-
     <!-- 控制按钮 -->
     <div class="control-panel">
       <button class="control-btn" @click="resetView">🎯 复位视角</button>
       <button class="control-btn" @click="toggleSignals">🚦 切换信号</button>
       <button class="control-btn" @click="trainAnimation">🚂 列车动画</button>
       <button class="control-btn" @click="toggleRotation">🔄 自动旋转</button>
+      <div class="speed-control">
+        <span class="speed-label">列车速度</span>
+        <input v-model.number="trainSpeed" type="range" min="0.05" max="0.6" step="0.01" class="speed-slider" />
+        <span class="speed-value">{{ trainSpeed.toFixed(2) }}</span>
+      </div>
     </div>
 
     <!-- 左侧数据面板 -->
@@ -407,11 +391,39 @@ let signals = []
 let train = null
 let isTrainRunning = false
 let autoRotate = false
+const trainSpeed = ref(0.2)
 let clock = new THREE.Clock()
 let startTime = Date.now()
 let mixer = null
 let gltfLoader = null
 let modelLabels = []
+let trainProgress = 0
+const trainPath = new THREE.CatmullRomCurve3([
+  new THREE.Vector3(-168, 3, -168),
+  new THREE.Vector3(-100, 3, -100),
+  new THREE.Vector3(-50, 3, -50),
+  new THREE.Vector3(0, 3, 0),
+  new THREE.Vector3(50, 3, 50),
+  new THREE.Vector3(100, 3, 100),
+  new THREE.Vector3(168, 3, 168),
+])
+
+const getClosestPathProgress = (position, samples = 300) => {
+  let bestProgress = 0
+  let minDistance = Infinity
+
+  for (let index = 0; index <= samples; index++) {
+    const progress = index / samples
+    const point = trainPath.getPoint(progress)
+    const distance = point.distanceTo(position)
+    if (distance < minDistance) {
+      minDistance = distance
+      bestProgress = progress
+    }
+  }
+
+  return bestProgress
+}
 
 const getColorByState = (state) => {
   switch (state) {
@@ -510,14 +522,14 @@ const createAxisHelper = () => {
   const xAxisGroup = new THREE.Group()
   // X轴线
   const xLineGeom = new THREE.CylinderGeometry(lineRadius, lineRadius, axisLength, 8)
-  const xLineMat = new THREE.MeshBasicMaterial({ color: 0xff4444 })
+  const xLineMat = new THREE.MeshBasicMaterial({ color: 0xff4444, transparent: true, opacity: 0.45 })
   const xLine = new THREE.Mesh(xLineGeom, xLineMat)
   xLine.rotation.z = -Math.PI / 2
   xLine.position.x = axisLength / 2
   xAxisGroup.add(xLine)
   // X轴箭头
   const xArrowGeom = new THREE.ConeGeometry(arrowHeadRadius, arrowHeadLength, 8)
-  const xArrowMat = new THREE.MeshBasicMaterial({ color: 0xff4444 })
+  const xArrowMat = new THREE.MeshBasicMaterial({ color: 0xff4444, transparent: true, opacity: 0.45 })
   const xArrow = new THREE.Mesh(xArrowGeom, xArrowMat)
   xArrow.rotation.z = -Math.PI / 2
   xArrow.position.x = axisLength + arrowHeadLength / 2
@@ -527,13 +539,13 @@ const createAxisHelper = () => {
   // Y轴 - 绿色 (垂直方向)
   const yAxisGroup = new THREE.Group()
   const yLineGeom = new THREE.CylinderGeometry(lineRadius, lineRadius, axisLength, 8)
-  const yLineMat = new THREE.MeshBasicMaterial({ color: 0x44ff44 })
+  const yLineMat = new THREE.MeshBasicMaterial({ color: 0x44ff44, transparent: true, opacity: 0.45 })
   const yLine = new THREE.Mesh(yLineGeom, yLineMat)
   yLine.position.y = axisLength / 2
   yAxisGroup.add(yLine)
   // Y轴箭头
   const yArrowGeom = new THREE.ConeGeometry(arrowHeadRadius, arrowHeadLength, 8)
-  const yArrowMat = new THREE.MeshBasicMaterial({ color: 0x44ff44 })
+  const yArrowMat = new THREE.MeshBasicMaterial({ color: 0x44ff44, transparent: true, opacity: 0.45 })
   const yArrow = new THREE.Mesh(yArrowGeom, yArrowMat)
   yArrow.position.y = axisLength + arrowHeadLength / 2
   yAxisGroup.add(yArrow)
@@ -583,8 +595,8 @@ const createAxisHelper = () => {
   axisGroup.add(createAxisLabel('Y', '#44ff44', { x: 0, y: axisLength + 15, z: 0 }))
   axisGroup.add(createAxisLabel('Z', '#4444ff', { x: 0, y: 0, z: axisLength + 15 }))
 
-  // 放置在场景左下角
-  axisGroup.position.set(-120, 0, -100)
+  // 放置在场景右下角
+  axisGroup.position.set(120, 0, -100)
   scene.add(axisGroup)
 
   console.log('3D坐标轴已创建')
@@ -621,7 +633,6 @@ const createMountains = () => {
   })
 
   const positions = [
-    { x: -80, z: -80 },
     { x: -100, z: 50 },
     { x: 80, z: -100 },
     { x: 100, z: 60 },
@@ -649,7 +660,7 @@ const createRailway = () => {
 
   // 铁轨模型缩放12倍后，假设实际有效长度约为15单位
   // 在45度角方向，X和Z方向的分量相等
-  const segmentSpacing = 14  // 减小间隔，使铁轨更紧密
+  const segmentSpacing = 8  // 在当前基础上再缩小约 1.5 倍
 
   // 生成铁轨位置，沿着45度对角线方向 (z = x)
   const railPositions = []
@@ -709,7 +720,9 @@ const createSignalLights = () => {
       '/assets/models/sign.glb',
       (gltf) => {
         const signGroup = gltf.scene
-        signGroup.scale.set(8, 8, 8)
+        // 信号灯在原有基础上放大 3 倍
+        // 信号灯在当前基础上缩小 1.5 倍
+        signGroup.scale.set(16, 16, 16)
         signGroup.position.set(pos.x, 0, pos.z)
 
         signGroup.traverse((child) => {
@@ -722,8 +735,8 @@ const createSignalLights = () => {
         scene.add(signGroup)
 
         const color = getColorByState(signalStates[index])
-        const light = new THREE.PointLight(color, 3, 40)
-        light.position.set(pos.x, 5, pos.z)
+        const light = new THREE.PointLight(color, 3, 80)
+        light.position.set(pos.x, 10, pos.z)
         scene.add(light)
 
         signals.push({
@@ -734,8 +747,7 @@ const createSignalLights = () => {
         })
 
         // 信息板位置往下挪一点（降低高度以不遮挡模型）
-        createModelLabel(signGroup, signalNames[index], 15, 65, 45, '109.3887, 24.3076', 3)
-
+        createModelLabel(signGroup, signalNames[index], 15, 65, 45, '109.3887, 24.3076', 6)
         updateSignalUI()
         console.log(`信号灯 ${signalNames[index]} 加载成功`)
       },
@@ -764,7 +776,8 @@ const createTrain = () => {
       // 铁轨位置: z = x (45度对角线)，从 -168 到 168
       // 火车头放在铁轨上的位置，z 必须等于 x
       train.position.set(-84, 3, -84)  // 放在铁轨上，Y轴抬高到3，z=x保证在铁轨线上
-      train.rotation.y = -railAngle  // 旋转45度对齐铁轨方向（X向Z旋转45度）
+      // 火车头由 Z 向 X 方向旋转 90°（在原有对齐铁轨方向的基础上偏转 90°）
+      train.rotation.y = -railAngle + Math.PI / 2
 
       train.traverse((child) => {
         if (child.isMesh) {
@@ -782,6 +795,7 @@ const createTrain = () => {
       }
 
       // 火车头信息板位置也稍微往下挪
+      // 火车头面板高度与主信号灯面板一致
       createModelLabel(train, '火车头', -5, 75, 60, '109.3900, 24.3100', 6)
 
       console.log('火车头模型加载成功 - 45度角方向，Y轴抬高')
@@ -926,8 +940,23 @@ const createTrees = () => {
     leaves.castShadow = true
     treeGroup.add(leaves)
 
-    const x = (Math.random() - 0.5) * 200
-    const z = (Math.random() - 0.5) * 200
+    // 树木大小随机分布
+    const treeScale = 0.7 + Math.random() * 1.1
+    treeGroup.scale.set(treeScale, treeScale * (0.85 + Math.random() * 0.4), treeScale)
+    leaves.scale.set(1, 0.8 + Math.random() * 0.8, 1)
+
+    // 树木位置不能落在铁轨上（铁轨沿 z = x 的 45° 对角线分布）
+    // 点到直线 z=x 的距离：|z-x|/sqrt(2)
+    const railClearance = 10
+    let x = 0
+    let z = 0
+    let attempts = 0
+    do {
+      x = (Math.random() - 0.5) * 200
+      z = (Math.random() - 0.5) * 200
+      attempts++
+    } while ((Math.abs(z - x) / Math.SQRT2) < railClearance && attempts < 80)
+
     treeGroup.position.set(x, 0, z)
 
     scene.add(treeGroup)
@@ -981,7 +1010,11 @@ const toggleSignals = () => {
 }
 
 const trainAnimation = () => {
-  isTrainRunning = !isTrainRunning
+  const nextState = !isTrainRunning
+  if (nextState && train) {
+    trainProgress = getClosestPathProgress(train.position)
+  }
+  isTrainRunning = nextState
 }
 
 const toggleRotation = () => {
@@ -1086,23 +1119,11 @@ const animate = () => {
   }
 
   if (isTrainRunning && train) {
-    const time = clock.getElapsedTime() * 0.5
-    // 更新路径以匹配新的铁轨位置（45度对角线方向）
-    // 铁轨方向是45度，z = x（对角线上）
-    // 铁轨从 x=-168, z=-168 到 x=168, z=168
-    const path = new THREE.CatmullRomCurve3([
-      new THREE.Vector3(-168, 3, -168),
-      new THREE.Vector3(-100, 3, -100),
-      new THREE.Vector3(-50, 3, -50),
-      new THREE.Vector3(0, 3, 0),
-      new THREE.Vector3(50, 3, 50),
-      new THREE.Vector3(100, 3, 100),
-      new THREE.Vector3(168, 3, 168)
-    ])
-    const position = path.getPoint((time % 1))
+    trainProgress = (trainProgress + delta * trainSpeed.value) % 1
+    const position = trainPath.getPoint(trainProgress)
     train.position.copy(position)
 
-    const nextPoint = path.getPoint(((time + 0.01) % 1))
+    const nextPoint = trainPath.getPoint((trainProgress + 0.01) % 1)
     train.lookAt(nextPoint)
   }
 
@@ -1157,6 +1178,7 @@ onBeforeUnmount(() => {
   color: #fff;
   display: flex;
   gap: 15px;
+  flex-wrap: wrap;
   backdrop-filter: blur(10px);
   z-index: 100;
 }
@@ -1175,6 +1197,33 @@ onBeforeUnmount(() => {
 .control-btn:hover {
   background: linear-gradient(135deg, #0088ff, #00ffff);
   box-shadow: 0 0 15px rgba(0, 200, 255, 0.5);
+}
+
+.speed-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid rgba(0, 200, 255, 0.3);
+  border-radius: 6px;
+  background: rgba(0, 40, 80, 0.45);
+}
+
+.speed-label {
+  font-size: 12px;
+  color: #a8ddff;
+}
+
+.speed-slider {
+  width: 110px;
+}
+
+.speed-value {
+  min-width: 34px;
+  text-align: right;
+  font-size: 12px;
+  color: #00d4ff;
+  font-weight: bold;
 }
 
 .info-panel {
@@ -1226,6 +1275,7 @@ onBeforeUnmount(() => {
   border-left: 3px solid #00d4ff;
   border-radius: 8px 0 0 0;
   box-shadow: 0 0 10px rgba(0, 212, 255, 0.5);
+  animation: corner-float-tl 3.2s ease-in-out infinite;
 }
 
 .panel-border.top-right {
@@ -1237,6 +1287,7 @@ onBeforeUnmount(() => {
   border-right: 3px solid #00d4ff;
   border-radius: 0 8px 0 0;
   box-shadow: 0 0 10px rgba(0, 212, 255, 0.5);
+  animation: corner-float-tr 3.6s ease-in-out infinite;
 }
 
 .panel-border.bottom-left {
@@ -1248,6 +1299,7 @@ onBeforeUnmount(() => {
   border-left: 3px solid #00d4ff;
   border-radius: 0 0 0 8px;
   box-shadow: 0 0 10px rgba(0, 212, 255, 0.5);
+  animation: corner-float-bl 3.4s ease-in-out infinite;
 }
 
 .panel-border.bottom-right {
@@ -1259,6 +1311,7 @@ onBeforeUnmount(() => {
   border-right: 3px solid #00d4ff;
   border-radius: 0 0 8px 0;
   box-shadow: 0 0 10px rgba(0, 212, 255, 0.5);
+  animation: corner-float-br 3.8s ease-in-out infinite;
 }
 
 .panel-border.glow-line {
@@ -1275,6 +1328,26 @@ onBeforeUnmount(() => {
 @keyframes glow-pulse {
   0%, 100% { opacity: 0.4; width: 50%; }
   50% { opacity: 0.8; width: 70%; }
+}
+
+@keyframes corner-float-tl {
+  0%, 100% { transform: translate(0, 0); opacity: 0.85; }
+  50% { transform: translate(-2px, -2px); opacity: 1; }
+}
+
+@keyframes corner-float-tr {
+  0%, 100% { transform: translate(0, 0); opacity: 0.85; }
+  50% { transform: translate(2px, -2px); opacity: 1; }
+}
+
+@keyframes corner-float-bl {
+  0%, 100% { transform: translate(0, 0); opacity: 0.85; }
+  50% { transform: translate(-2px, 2px); opacity: 1; }
+}
+
+@keyframes corner-float-br {
+  0%, 100% { transform: translate(0, 0); opacity: 0.85; }
+  50% { transform: translate(2px, 2px); opacity: 1; }
 }
 
 .panel-section {

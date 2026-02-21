@@ -5,11 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:server": "node server/index.js",
-    "dev:all": "concurrently \"npm run dev:server\" \"npm run dev\"",
     "build": "vite build",
-    "preview": "vite preview",
-    "init-db": "node server/scripts/initDatabase.js"
+    "preview": "vite preview"
   },
   "keywords": [],
   "author": "",
@@ -26,7 +23,6 @@
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^6.0.4",
-    "concurrently": "^8.2.2",
     "typescript": "^5.9.3",
     "vite": "^7.3.1",
     "vite-plugin-cesium": "^1.2.23"

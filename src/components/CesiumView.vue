@@ -3,27 +3,6 @@
     <!-- Cesium 容器 -->
     <div id="cesiumContainer" ref="cesiumContainer"></div>
 
-    <!-- 坐标轴图例 -->
-    <div class="axis-legend">
-      <div class="axis-legend-title">📍 坐标轴图例</div>
-      <div class="axis-legend-item">
-        <div class="axis-arrow axis-x-arrow">→</div>
-        <span class="axis-label-x">X轴</span>
-        <span class="axis-desc">经度 (东)</span>
-      </div>
-      <div class="axis-legend-item">
-        <div class="axis-arrow axis-y-arrow">↑</div>
-        <span class="axis-label-y">Y轴</span>
-        <span class="axis-desc">纬度 (北)</span>
-      </div>
-      <div class="axis-legend-item">
-        <div class="axis-arrow axis-z-arrow">↗</div>
-        <span class="axis-label-z">Z轴</span>
-        <span class="axis-desc">高度 (上)</span>
-      </div>
-      <div class="axis-hint">3D坐标轴在地图西南角</div>
-    </div>
-
     <!-- 控制按钮 -->
     <div class="control-buttons">
       <button class="reset-btn" @click="resetView">🎯 复位视角</button>
@@ -157,41 +136,6 @@
           </div>
         </div>
 
-        <!-- 今日列车统计 -->
-        <div class="panel-card">
-          <div class="panel-header">
-            <span class="panel-title">📊 今日列车统计</span>
-            <span class="panel-subtitle">TODAY'S TRAINS</span>
-          </div>
-          <div class="panel-content">
-            <div class="train-stats">
-              <div class="stat-circle">
-                <svg viewBox="0 0 80 80">
-                  <circle cx="40" cy="40" r="35" fill="none" stroke="rgba(0,200,255,0.2)" stroke-width="6" />
-                  <circle cx="40" cy="40" r="35" fill="none" stroke="#00d4ff" stroke-width="6"
-                    stroke-dasharray="220" :stroke-dashoffset="220 - (trainStats.passed / trainStats.total) * 220"
-                    transform="rotate(-90 40 40)" />
-                </svg>
-                <div class="stat-num">{{ trainStats.passed }}</div>
-                <div class="stat-label">已通过</div>
-              </div>
-              <div class="stat-details">
-                <div class="stat-row">
-                  <span class="stat-label">计划总数</span>
-                  <span class="stat-val">{{ trainStats.total }}</span>
-                </div>
-                <div class="stat-row">
-                  <span class="stat-label">准点率</span>
-                  <span class="stat-val green">{{ trainStats.onTime }}%</span>
-                </div>
-                <div class="stat-row">
-                  <span class="stat-label">下一班</span>
-                  <span class="stat-val">{{ trainStats.nextTrain }}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
     </transition>
 
@@ -267,6 +211,42 @@
           </div>
         </div>
 
+        <!-- 今日列车统计 -->
+        <div class="panel-card">
+          <div class="panel-header">
+            <span class="panel-title">📊 今日列车统计</span>
+            <span class="panel-subtitle">TODAY'S TRAINS</span>
+          </div>
+          <div class="panel-content">
+            <div class="train-stats">
+              <div class="stat-circle">
+                <svg viewBox="0 0 80 80">
+                  <circle cx="40" cy="40" r="35" fill="none" stroke="rgba(0,200,255,0.2)" stroke-width="6" />
+                  <circle cx="40" cy="40" r="35" fill="none" stroke="#00d4ff" stroke-width="6"
+                    stroke-dasharray="220" :stroke-dashoffset="220 - (trainStats.passed / trainStats.total) * 220"
+                    transform="rotate(-90 40 40)" />
+                </svg>
+                <div class="stat-num">{{ trainStats.passed }}</div>
+                <div class="stat-label">已通过</div>
+              </div>
+              <div class="stat-details">
+                <div class="stat-row">
+                  <span class="stat-label">计划总数</span>
+                  <span class="stat-val">{{ trainStats.total }}</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">准点率</span>
+                  <span class="stat-val green">{{ trainStats.onTime }}%</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">下一班</span>
+                  <span class="stat-val">{{ trainStats.nextTrain }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- 空气质量 -->
         <div class="panel-card aqi-card">
           <div class="panel-header">
@@ -280,7 +260,7 @@
               <div class="aqi-unit">AQI</div>
             </div>
             <div class="history-header">
-              <span class="history-label">????</span>
+              <span class="history-label">空气质量趋势</span>
               <select v-model="airQualityTimeRange" class="time-select" @change="onAirQualityTimeChange">
                 <option value="day">天</option>
                 <option value="week">周</option>
@@ -331,31 +311,8 @@ let viewer = null
 let beaconPoints = []
 let beaconPopups = []
 let selectedBeacon = null
-
-let pillarGradientCanvas = null
-const getPillarGradientCanvas = () => {
-  if (pillarGradientCanvas) return pillarGradientCanvas
-  const canvas = document.createElement('canvas')
-  canvas.width = 1
-  canvas.height = 256
-  const ctx = canvas.getContext('2d')
-  const gradient = ctx.createLinearGradient(0, canvas.height, 0, 0)
-  gradient.addColorStop(0, 'rgba(255, 255, 255, 1)')
-  gradient.addColorStop(0.6, 'rgba(255, 255, 255, 0.6)')
-  gradient.addColorStop(1, 'rgba(255, 255, 255, 0)')
-  ctx.fillStyle = gradient
-  ctx.fillRect(0, 0, canvas.width, canvas.height)
-  pillarGradientCanvas = canvas
-  return pillarGradientCanvas
-}
-
-const createPillarMaterial = (hexColor, alpha) => {
-  return new Cesium.ImageMaterialProperty({
-    image: getPillarGradientCanvas(),
-    transparent: true,
-    color: Cesium.Color.fromCssColorString(hexColor).withAlpha(alpha)
-  })
-}
+let globalBreathStage = null
+let globalBreathStartTime = Date.now()
 
 // ===== 地理震动数据 =====
 const seismicLevel = ref(2.3)
@@ -748,6 +705,45 @@ const LIUZHOU_STATION = {
   height: 500
 }
 
+const setupGlobalBreathingGlow = () => {
+  if (!viewer) return
+  if (globalBreathStage) {
+    viewer.scene.postProcessStages.remove(globalBreathStage)
+    globalBreathStage = null
+  }
+
+  globalBreathStartTime = Date.now()
+  globalBreathStage = new Cesium.PostProcessStage({
+    name: 'global-breathing-glow',
+    fragmentShader: `
+      uniform sampler2D colorTexture;
+      in vec2 v_textureCoordinates;
+      uniform float u_time;
+      uniform float u_strength;
+
+      void main() {
+        vec4 color = texture(colorTexture, v_textureCoordinates);
+        vec2 centered = v_textureCoordinates - vec2(0.5, 0.5);
+        float radius = length(centered);
+        float radial = smoothstep(0.75, 0.0, radius);
+        float breath = 0.55 + 0.45 * sin(u_time * 0.45);
+        float lift = radial * breath * u_strength;
+
+        vec3 glow = vec3(0.06, 0.22, 0.36) * lift;
+        vec3 boosted = color.rgb + glow;
+        boosted = mix(boosted, boosted * (1.0 + 0.08 * lift), 0.8);
+
+        out_FragColor = vec4(boosted, color.a);
+      }
+    `,
+    uniforms: {
+      u_time: () => (Date.now() - globalBreathStartTime) * 0.001,
+      u_strength: 0.9
+    }
+  })
+  viewer.scene.postProcessStages.add(globalBreathStage)
+}
+
 const initCesium = async () => {
   try {
     console.log('正在初始化 Cesium...')
@@ -774,7 +770,7 @@ const initCesium = async () => {
 
     try {
       console.log('正在加载 3D 建筑图层...')
-      const osmBuildings = await Cesium.createOsmBuildings()
+      const osmBuildings = await Cesium.createOsmBuildingsAsync()
       viewer.scene.primitives.add(osmBuildings)
       console.log('3D 建筑图层加载完成')
     } catch (error) {
@@ -788,6 +784,7 @@ const initCesium = async () => {
     viewer.terrainExaggeration = 3.0
     viewer.scene.globe.depthTestAgainstTerrain = true
     viewer.scene.globe.alpha = 1.0
+    setupGlobalBreathingGlow()
 
     console.log('Cesium 初始化完成！')
     return viewer
@@ -850,9 +847,13 @@ const setupInteractions = () => {
         // 检查是否点击了光柱相关的任何实体
         const isBeaconEntity =
           pickedObject.id === beacon.cylinder.id ||
+          pickedObject.id === beacon.outerCylinder.id ||
+          pickedObject.id === beacon.coreCylinder.id ||
           pickedObject.id === beacon.innerCylinder.id ||
           pickedObject.id === beacon.groundPoint.id ||
-          beacon.waves.some(w => pickedObject.id === w.id)
+          pickedObject.id === beacon.groundHalo.id ||
+          pickedObject.id === beacon.topBurst.id ||
+          beacon.waves.some(w => pickedObject.id === w.main.id || w.trails.some(t => pickedObject.id === t.id))
 
         if (isBeaconEntity) {
           const popup = beaconPopups[i]
@@ -907,8 +908,8 @@ const updatePopupPositions = () => {
 }
 
 const createBeaconPoints = () => {
-  const nearCount = Math.floor(Math.random() * 4) + 5
-  const horizonCount = 6
+  const nearCount = Math.floor(Math.random() * 3) + 6
+  const horizonCount = 5
   const pointCount = nearCount + horizonCount
 
   for (let i = 0; i < pointCount; i++) {
@@ -916,11 +917,11 @@ const createBeaconPoints = () => {
     const spread = isHorizon ? 0.35 : 0.1
     const lon = LIUZHOU_STATION.lon + (Math.random() - 0.5) * spread
     const lat = LIUZHOU_STATION.lat + (Math.random() - 0.5) * spread
-    const pillarHeight = isHorizon ? 1200 + Math.random() * 800 : 400 + Math.random() * 200
-    const radiusScale = isHorizon ? 1.6 : 1
-    const waveCount = isHorizon ? 2 : 3
-    const maxWaveRadius = isHorizon ? 900 : 400
-    const waveAlpha = isHorizon ? 0.45 : 0.6
+    const pillarHeight = isHorizon ? 2200 + Math.random() * 1000 : 1400 + Math.random() * 700
+    const radiusScale = isHorizon ? 1.35 : 1
+    const waveCount = isHorizon ? 3 : 4
+    const maxWaveRadius = isHorizon ? 2200 : 1300
+    const waveAlpha = isHorizon ? 0.32 : 0.45
     const wavePhases = Array.from({ length: waveCount }, (_, idx) => idx / waveCount)
 
     const eventTypes = ['设备正常', '温度异常', '维护中', '离线', '电压异常']
@@ -935,92 +936,152 @@ const createBeaconPoints = () => {
     const eventType = eventTypes[randomEventIndex]
     const eventMessage = eventMessages[randomEventIndex]
 
-    // 地面位置
     const groundPosition = Cesium.Cartesian3.fromDegrees(lon, lat, 0)
-    // 光柱底部位置（稍高于地面）
     const basePosition = Cesium.Cartesian3.fromDegrees(lon, lat, pillarHeight / 2)
+    const topPosition = Cesium.Cartesian3.fromDegrees(lon, lat, pillarHeight)
 
-    const pillarMaterial = createPillarMaterial('#00d4ff', isHorizon ? 0.7 : 0.85)
-    const innerPillarMaterial = createPillarMaterial('#00ffff', isHorizon ? 0.8 : 0.95)
-    const pillarAlphaBase = isHorizon ? 0.6 : 0.8
-    const innerAlphaBase = isHorizon ? 0.7 : 0.9
+    const pillarAlphaBase = isHorizon ? 0.42 : 0.55
+    const outerAlphaBase = isHorizon ? 0.18 : 0.24
+    const coreAlphaBase = isHorizon ? 0.68 : 0.82
+    const innerAlphaBase = isHorizon ? 0.78 : 0.9
 
-    // 1. 创建主光柱 - 从地面向天空发射，使用渐变透明度
+    // 主光柱
     const cylinder = viewer.entities.add({
       position: basePosition,
       cylinder: {
         length: pillarHeight,
-        topRadius: 15 * radiusScale,           // 顶部更宽
-        bottomRadius: 6 * radiusScale,         // 底部较窄
-        heightReference: Cesium.HeightReference.RELATIVE_TO_GROUND,
-        material: pillarMaterial,
+        topRadius: 26 * radiusScale,
+        bottomRadius: 14 * radiusScale,
+        material: Cesium.Color.fromCssColorString('#37d7ff').withAlpha(pillarAlphaBase),
         outline: true,
-        outlineColor: Cesium.Color.CYAN.withAlpha(isHorizon ? 0.25 : 0.4),
+        outlineColor: Cesium.Color.CYAN.withAlpha(0.35),
         outlineWidth: 2
       }
     })
 
-    // 2. 内层亮芯光柱
-    const innerCylinder = viewer.entities.add({
-      position: Cesium.Cartesian3.fromDegrees(lon, lat, pillarHeight * 0.45),
+    // 外层体积光
+    const outerCylinder = viewer.entities.add({
+      position: basePosition,
       cylinder: {
-        length: pillarHeight * 0.9,
-        topRadius: 5 * radiusScale,
-        bottomRadius: 2 * radiusScale,
-        heightReference: Cesium.HeightReference.RELATIVE_TO_GROUND,
-        material: innerPillarMaterial,
+        length: pillarHeight * 1.05,
+        topRadius: 52 * radiusScale,
+        bottomRadius: 36 * radiusScale,
+        material: Cesium.Color.fromCssColorString('#1c8bff').withAlpha(outerAlphaBase),
         outline: false
       }
     })
 
-    // 3. 地面中心发光点
+    // 核心高亮光柱
+    const coreCylinder = viewer.entities.add({
+      position: Cesium.Cartesian3.fromDegrees(lon, lat, pillarHeight * 0.52),
+      cylinder: {
+        length: pillarHeight * 1.04,
+        topRadius: 8 * radiusScale,
+        bottomRadius: 4 * radiusScale,
+        material: Cesium.Color.fromCssColorString('#8bffff').withAlpha(coreAlphaBase),
+        outline: false
+      }
+    })
+
+    // 内层亮芯
+    const innerCylinder = viewer.entities.add({
+      position: Cesium.Cartesian3.fromDegrees(lon, lat, pillarHeight * 0.45),
+      cylinder: {
+        length: pillarHeight * 0.92,
+        topRadius: 5 * radiusScale,
+        bottomRadius: 2 * radiusScale,
+        material: Cesium.Color.fromCssColorString('#00ffff').withAlpha(innerAlphaBase),
+        outline: false
+      }
+    })
+
+    // 地面核心发光点
     const groundPoint = viewer.entities.add({
       position: groundPosition,
       point: {
-        pixelSize: isHorizon ? 22 : 30,
+        pixelSize: isHorizon ? 24 : 34,
         color: Cesium.Color.fromCssColorString('#00d4ff').withAlpha(0.9),
         outlineColor: Cesium.Color.WHITE,
         outlineWidth: 3,
-        heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
         scaleByDistance: new Cesium.NearFarScalar(500, 2, 5000, 1)
       }
     })
 
-    // 4. 创建地表扩散光波（平面贴地效果）
+    // 地面常驻光晕
+    const groundHalo = viewer.entities.add({
+      position: groundPosition,
+      ellipse: {
+        semiMinorAxis: isHorizon ? 180 : 120,
+        semiMajorAxis: isHorizon ? 180 : 120,
+        height: 0,
+        material: Cesium.Color.fromCssColorString('#00b7ff').withAlpha(isHorizon ? 0.18 : 0.25),
+        outline: false
+      }
+    })
+
+    // 顶部爆光层
+    const topBurst = viewer.entities.add({
+      position: topPosition,
+      ellipse: {
+        semiMinorAxis: isHorizon ? 95 : 70,
+        semiMajorAxis: isHorizon ? 95 : 70,
+        height: pillarHeight,
+        material: Cesium.Color.fromCssColorString('#a7ffff').withAlpha(isHorizon ? 0.28 : 0.35),
+        outline: false
+      }
+    })
+
+    // 地表扩散冲击波
     const waves = []
 
     for (let w = 0; w < waveCount; w++) {
-      const wave = viewer.entities.add({
+      const mainWave = viewer.entities.add({
         position: groundPosition,
         ellipse: {
-          semiMinorAxis: 20 + w * 80,
-          semiMajorAxis: 20 + w * 80,
-          height: 2,
-          heightReference: Cesium.HeightReference.RELATIVE_TO_GROUND,
+          semiMinorAxis: 30 + w * 120,
+          semiMajorAxis: 30 + w * 120,
+          height: 0,
           material: Cesium.Color.fromCssColorString('#00d4ff').withAlpha(waveAlpha - w * 0.15),
           outline: true,
-          outlineColor: Cesium.Color.CYAN.withAlpha(0.8 - w * 0.2),
-          outlineWidth: 2
+          outlineColor: Cesium.Color.CYAN.withAlpha(0.75 - w * 0.15),
+          outlineWidth: 3
         }
       })
-      waves.push(wave)
+      const trails = Array.from({ length: 2 }, (_, trailIndex) => viewer.entities.add({
+        position: groundPosition,
+        ellipse: {
+          semiMinorAxis: 30 + w * 120,
+          semiMajorAxis: 30 + w * 120,
+          height: 0,
+          material: Cesium.Color.fromCssColorString('#00d4ff').withAlpha(0.0),
+          outline: true,
+          outlineColor: Cesium.Color.CYAN.withAlpha(0.0),
+          outlineWidth: 2 - trailIndex * 0.5
+        }
+      }))
+
+      waves.push({
+        main: mainWave,
+        trails
+      })
     }
 
     beaconPoints.push({
-      cylinder,           // 主光柱
+      cylinder,
+      outerCylinder,
+      coreCylinder,
       innerCylinder,
-      pillarMaterial,
-      innerPillarMaterial,
-      pillarColor: '#00d4ff',
-      innerColor: '#00ffff',
       pillarAlphaBase,
-      innerAlphaBase,      // 内芯光柱
+      outerAlphaBase,
+      coreAlphaBase,
+      innerAlphaBase,
       groundPoint,
+      groundHalo,
+      topBurst,
       waves,
       basePosition: { lon, lat, height: pillarHeight },
-      waveRadius: 20,
       maxRadius: maxWaveRadius,
-      waveSpeed: 50 + Math.random() * 30,
+      waveSpeed: 0.18 + Math.random() * 0.1,
       waveAlpha,
       waveStartTime: Date.now() + i * 600,
       wavePhases,
@@ -1059,53 +1120,68 @@ const updateWaveAnimation = () => {
   beaconPoints.forEach((beacon) => {
     if (currentTime < beacon.waveStartTime) return
 
-    // 计算基准时间
     const baseTime = (currentTime - beacon.waveStartTime) * 0.001
 
-    // 更新多层光波 - 每层有不同相位
-    beacon.waves.forEach((wave, wIndex) => {
+    beacon.waves.forEach((waveLayer, wIndex) => {
       const phase = beacon.wavePhases[wIndex] || 0
-      const cycleTime = 4.0  // 4秒一个周期
-
-      // 计算当前周期内的进度
-      let progress = ((baseTime / cycleTime) + phase) % 1.0
-
-      // 计算当前半径：从最小值扩散到最大值
-      const minRadius = 20
+      const progress = ((baseTime * beacon.waveSpeed) + phase) % 1.0
+      const minRadius = 40
       const currentRadius = minRadius + progress * (beacon.maxRadius - minRadius)
 
-      wave.ellipse.semiMinorAxis = currentRadius
-      wave.ellipse.semiMajorAxis = currentRadius
+      waveLayer.main.ellipse.semiMinorAxis = currentRadius
+      waveLayer.main.ellipse.semiMajorAxis = currentRadius
 
-      // 透明度随扩散减小 - 从0.6渐变到接近0
-      const alpha = beacon.waveAlpha * (1 - progress * 0.95)
-      wave.ellipse.material = Cesium.Color.fromCssColorString('#00d4ff').withAlpha(alpha)
+      const alpha = beacon.waveAlpha * (1 - progress * 0.92)
+      waveLayer.main.ellipse.material = Cesium.Color.fromCssColorString('#00d4ff').withAlpha(alpha)
 
-      // 边框也随扩散变淡
-      const outlineAlpha = 0.8 * (1 - progress * 0.9)
-      wave.ellipse.outlineColor = Cesium.Color.CYAN.withAlpha(outlineAlpha)
+      const outlineAlpha = 0.75 * (1 - progress * 0.86)
+      waveLayer.main.ellipse.outlineColor = Cesium.Color.CYAN.withAlpha(outlineAlpha)
+
+      waveLayer.trails.forEach((trailWave, trailIndex) => {
+        const trailOffset = (trailIndex + 1) * 0.11
+        const trailProgress = progress - trailOffset
+        if (trailProgress <= 0) {
+          trailWave.ellipse.material = Cesium.Color.fromCssColorString('#00d4ff').withAlpha(0.0)
+          trailWave.ellipse.outlineColor = Cesium.Color.CYAN.withAlpha(0.0)
+          return
+        }
+
+        const trailRadius = minRadius + trailProgress * (beacon.maxRadius - minRadius)
+        trailWave.ellipse.semiMinorAxis = trailRadius
+        trailWave.ellipse.semiMajorAxis = trailRadius
+        const trailAlpha = beacon.waveAlpha * 0.55 * (1 - trailProgress * 0.92) * (1 - trailIndex * 0.22)
+        trailWave.ellipse.material = Cesium.Color.fromCssColorString('#00d4ff').withAlpha(Math.max(0, trailAlpha))
+        trailWave.ellipse.outlineColor = Cesium.Color.CYAN.withAlpha(Math.max(0, trailAlpha * 0.9))
+      })
     })
 
-    // 地面中心点脉冲效果
-    const pulseTime = currentTime * 0.003
-    const groundPulseSize = 25 + Math.sin(pulseTime * 1.5 + beacon.id) * 8
+    const pulseTime = currentTime * 0.0022
+    const pulseA = 0.5 + 0.5 * Math.sin(pulseTime + beacon.id * 0.7)
+    const pulseB = 0.5 + 0.5 * Math.sin(pulseTime * 1.35 + beacon.id * 1.1)
+
+    const groundPulseSize = 26 + pulseA * 16
     beacon.groundPoint.point.pixelSize = groundPulseSize
 
-    // 光柱脉冲效果
-    const cylinderAlpha = beacon.pillarAlphaBase * (0.85 + Math.sin(pulseTime * 0.5) * 0.15)
-    if (beacon.pillarMaterial) {
-      beacon.pillarMaterial.color = Cesium.Color.fromCssColorString(beacon.pillarColor).withAlpha(cylinderAlpha)
-    } else {
-      beacon.cylinder.cylinder.material = Cesium.Color.fromCssColorString('#00d4ff').withAlpha(cylinderAlpha)
-    }
+    beacon.cylinder.cylinder.material = Cesium.Color.fromCssColorString('#37d7ff')
+      .withAlpha(beacon.pillarAlphaBase * (0.8 + pulseA * 0.3))
+    beacon.outerCylinder.cylinder.material = Cesium.Color.fromCssColorString('#1c8bff')
+      .withAlpha(beacon.outerAlphaBase * (0.7 + pulseB * 0.35))
+    beacon.coreCylinder.cylinder.material = Cesium.Color.fromCssColorString('#9effff')
+      .withAlpha(beacon.coreAlphaBase * (0.82 + pulseA * 0.25))
+    beacon.innerCylinder.cylinder.material = Cesium.Color.fromCssColorString('#00ffff')
+      .withAlpha(beacon.innerAlphaBase * (0.85 + pulseB * 0.2))
 
-    // ????????????
-    const innerAlpha = beacon.innerAlphaBase * (0.9 + Math.sin(pulseTime * 0.6) * 0.1)
-    if (beacon.innerPillarMaterial) {
-      beacon.innerPillarMaterial.color = Cesium.Color.fromCssColorString(beacon.innerColor).withAlpha(innerAlpha)
-    } else {
-      beacon.innerCylinder.cylinder.material = Cesium.Color.fromCssColorString('#00ffff').withAlpha(innerAlpha)
-    }
+    const haloSize = 90 + pulseA * 120
+    beacon.groundHalo.ellipse.semiMajorAxis = haloSize
+    beacon.groundHalo.ellipse.semiMinorAxis = haloSize
+    beacon.groundHalo.ellipse.material = Cesium.Color.fromCssColorString('#00b7ff')
+      .withAlpha(0.14 + pulseB * 0.18)
+
+    const burstSize = 56 + pulseB * 55
+    beacon.topBurst.ellipse.semiMajorAxis = burstSize
+    beacon.topBurst.ellipse.semiMinorAxis = burstSize
+    beacon.topBurst.ellipse.material = Cesium.Color.fromCssColorString('#b9ffff')
+      .withAlpha(0.2 + pulseA * 0.26)
   })
 }
 
@@ -1358,7 +1434,6 @@ onMounted(async () => {
     await loadWeatherHistory('24h')
 
     await initCesium()
-    createAxisHelper()  // 创建3D坐标轴
     createBeaconPoints()
     setTimeout(() => flyToLiuZhou(), 500)
     setupInteractions()
@@ -1371,6 +1446,10 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  if (viewer && globalBreathStage) {
+    viewer.scene.postProcessStages.remove(globalBreathStage)
+    globalBreathStage = null
+  }
   if (viewer) viewer.destroy()
 })
 </script>

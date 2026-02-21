@@ -49,7 +49,7 @@ npm install
 npm run dev
 ```
 
-访问 http://localhost:3000 查看入口页面，选择：
+访问 http://localhost:5173 查看入口页面，选择：
 - **Cesium 大地图** - 真实地理信息系统
 - **Three.js 小地图** - 精细3D场景
 
