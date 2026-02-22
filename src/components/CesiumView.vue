@@ -1199,131 +1199,6 @@ const updateData = () => {
   }
 }
 
-// 创建3D坐标轴辅助器（在柳州火车站附近显示经度/纬度/高度轴）
-const createAxisHelper = () => {
-  // 在柳州火车站附近创建坐标轴
-  const baseLon = LIUZHOU_STATION.lon - 0.03  // 稍微偏西一点
-  const baseLat = LIUZHOU_STATION.lat - 0.03  // 稍微偏南一点
-  const baseHeight = 0  // 地面
-
-  const axisLength = 0.015  // 经纬度单位，约1.5km
-  const axisHeight = 800    // 高度轴，800米
-
-  // X轴 - 红色 - 经度方向（东）
-  const xAxis = viewer.entities.add({
-    position: Cesium.Cartesian3.fromDegrees(baseLon + axisLength / 2, baseLat, 50),
-    cylinder: {
-      length: axisLength * 111000,  // 转换为米（约）
-      topRadius: 30,
-      bottomRadius: 30,
-      material: Cesium.Color.RED.withAlpha(0.8)
-    }
-  })
-  // X轴箭头
-  viewer.entities.add({
-    position: Cesium.Cartesian3.fromDegrees(baseLon + axisLength, baseLat, 50),
-    cone: {
-      length: 150,
-      topRadius: 0,
-      bottomRadius: 80,
-      material: Cesium.Color.RED.withAlpha(0.8)
-    }
-  })
-  // X轴标签
-  viewer.entities.add({
-    position: Cesium.Cartesian3.fromDegrees(baseLon + axisLength + 0.005, baseLat, 50),
-    label: {
-      text: 'X (经度/东)',
-      font: '16px sans-serif',
-      fillColor: Cesium.Color.RED,
-      outlineColor: Cesium.Color.BLACK,
-      outlineWidth: 2,
-      style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-      verticalOrigin: Cesium.VerticalOrigin.CENTER,
-      pixelOffset: new Cesium.Cartesian2(0, 0)
-    }
-  })
-
-  // Y轴 - 绿色 - 纬度方向（北）
-  const yAxis = viewer.entities.add({
-    position: Cesium.Cartesian3.fromDegrees(baseLon, baseLat + axisLength / 2, 50),
-    cylinder: {
-      length: axisLength * 111000,
-      topRadius: 30,
-      bottomRadius: 30,
-      material: Cesium.Color.GREEN.withAlpha(0.8)
-    }
-  })
-  // Y轴箭头
-  viewer.entities.add({
-    position: Cesium.Cartesian3.fromDegrees(baseLon, baseLat + axisLength, 50),
-    cone: {
-      length: 150,
-      topRadius: 0,
-      bottomRadius: 80,
-      material: Cesium.Color.GREEN.withAlpha(0.8)
-    }
-  })
-  // Y轴标签
-  viewer.entities.add({
-    position: Cesium.Cartesian3.fromDegrees(baseLon, baseLat + axisLength + 0.005, 50),
-    label: {
-      text: 'Y (纬度/北)',
-      font: '16px sans-serif',
-      fillColor: Cesium.Color.GREEN,
-      outlineColor: Cesium.Color.BLACK,
-      outlineWidth: 2,
-      style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-      verticalOrigin: Cesium.VerticalOrigin.CENTER
-    }
-  })
-
-  // Z轴 - 蓝色 - 高度方向（上）
-  viewer.entities.add({
-    position: Cesium.Cartesian3.fromDegrees(baseLon, baseLat, axisHeight / 2),
-    cylinder: {
-      length: axisHeight,
-      topRadius: 30,
-      bottomRadius: 30,
-      material: Cesium.Color.BLUE.withAlpha(0.8)
-    }
-  })
-  // Z轴箭头
-  viewer.entities.add({
-    position: Cesium.Cartesian3.fromDegrees(baseLon, baseLat, axisHeight),
-    cone: {
-      length: 150,
-      topRadius: 0,
-      bottomRadius: 80,
-      material: Cesium.Color.BLUE.withAlpha(0.8)
-    }
-  })
-  // Z轴标签
-  viewer.entities.add({
-    position: Cesium.Cartesian3.fromDegrees(baseLon, baseLat, axisHeight + 100),
-    label: {
-      text: 'Z (高度)',
-      font: '16px sans-serif',
-      fillColor: Cesium.Color.BLUE,
-      outlineColor: Cesium.Color.BLACK,
-      outlineWidth: 2,
-      style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-      verticalOrigin: Cesium.VerticalOrigin.CENTER
-    }
-  })
-
-  // 原点球
-  viewer.entities.add({
-    position: Cesium.Cartesian3.fromDegrees(baseLon, baseLat, 0),
-    ellipsoid: {
-      radii: new Cesium.Cartesian3(50, 50, 50),
-      material: Cesium.Color.WHITE.withAlpha(0.8)
-    }
-  })
-
-  console.log('3D坐标轴已创建 (位于柳州火车站西南方向)')
-}
-
 // 从API加载仪表盘数据
 const loadDashboardData = async () => {
   try {
@@ -1434,10 +1309,8 @@ onMounted(async () => {
     await loadWeatherHistory('24h')
 
     await initCesium()
-    createBeaconPoints()
     setTimeout(() => flyToLiuZhou(), 500)
     setupInteractions()
-    viewer.clock.onTick.addEventListener(updateWaveAnimation)
     setInterval(updateData, 2000)
   } catch (error) {
     console.error('初始化失败:', error)
@@ -1478,13 +1351,13 @@ onBeforeUnmount(() => {
 }
 
 .reset-btn, .toggle-btn {
-  padding: 10px 18px;
+  padding: 7px 12px;
   background: rgba(0, 20, 40, 0.85);
   border: 2px solid rgba(0, 200, 255, 0.3);
   border-radius: 8px;
   color: #00d4ff;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: bold;
   transition: all 0.3s;
   backdrop-filter: blur(10px);
@@ -1498,9 +1371,9 @@ onBeforeUnmount(() => {
 /* 侧边面板 */
 .side-panel {
   position: absolute;
-  top: 70px;
+  top: 56px;
   width: 340px;
-  max-height: calc(100% - 90px);
+  max-height: calc(100% - 66px);
   overflow-y: auto;
   z-index: 50;
 }
@@ -1689,7 +1562,7 @@ onBeforeUnmount(() => {
 }
 .stat-circle .stat-label {
   position: absolute;
-  bottom: -5px;
+  bottom: -9px;
   left: 50%;
   transform: translateX(-50%);
   font-size: 10px;
@@ -2037,79 +1910,4 @@ onBeforeUnmount(() => {
 
 .loading-text { color: #00d4ff; font-size: 18px; }
 
-/* 坐标轴图例样式 */
-.axis-legend {
-  position: absolute;
-  bottom: 80px;
-  left: 20px;
-  background: rgba(0, 20, 40, 0.85);
-  border: 1px solid rgba(0, 200, 255, 0.3);
-  border-radius: 8px;
-  padding: 12px 16px;
-  backdrop-filter: blur(10px);
-  z-index: 100;
-}
-
-.axis-legend-title {
-  font-size: 12px;
-  color: #00d4ff;
-  font-weight: bold;
-  margin-bottom: 10px;
-  padding-bottom: 6px;
-  border-bottom: 1px solid rgba(0, 200, 255, 0.2);
-}
-
-.axis-legend-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 8px 0;
-  font-size: 12px;
-}
-
-.axis-arrow {
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 4px;
-  font-size: 14px;
-  font-weight: bold;
-}
-
-.axis-x-arrow {
-  background: rgba(255, 68, 68, 0.3);
-  border: 1px solid rgba(255, 68, 68, 0.6);
-  color: #ff4444;
-}
-
-.axis-y-arrow {
-  background: rgba(68, 255, 68, 0.3);
-  border: 1px solid rgba(68, 255, 68, 0.6);
-  color: #44ff44;
-}
-
-.axis-z-arrow {
-  background: rgba(68, 68, 255, 0.3);
-  border: 1px solid rgba(68, 68, 255, 0.6);
-  color: #4444ff;
-}
-
-.axis-label-x { color: #ff4444; font-weight: bold; }
-.axis-label-y { color: #44ff44; font-weight: bold; }
-.axis-label-z { color: #4444ff; font-weight: bold; }
-
-.axis-desc {
-  color: #aaa;
-  font-size: 11px;
-}
-
-.axis-hint {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid rgba(0, 200, 255, 0.2);
-  font-size: 10px;
-  color: #666;
-}
 </style>

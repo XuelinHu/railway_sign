@@ -58,7 +58,7 @@ html, body, #app {
   top: 0;
   left: 0;
   right: 0;
-  height: 60px;
+  height: 50px;
   background: rgba(0, 20, 40, 0.95);
   border-bottom: 2px solid rgba(0, 200, 255, 0.3);
   display: flex;
@@ -71,12 +71,12 @@ html, body, #app {
 }
 
 .tab-btn {
-  padding: 12px 30px;
+  padding: 8px 20px;
   background: rgba(0, 100, 150, 0.3);
   border: 2px solid rgba(0, 200, 255, 0.3);
   border-radius: 8px;
   color: #aaa;
-  font-size: 16px;
+  font-size: 14px;
   font-weight: bold;
   cursor: pointer;
   transition: all 0.3s;
@@ -103,6 +103,6 @@ html, body, #app {
 .content-container {
   width: 100%;
   height: 100%;
-  padding-top: 60px;
+  padding-top: 50px;
 }
 </style>

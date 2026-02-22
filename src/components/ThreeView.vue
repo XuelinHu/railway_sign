@@ -7,13 +7,18 @@
     <div class="control-panel">
       <button class="control-btn" @click="resetView">🎯 复位视角</button>
       <button class="control-btn" @click="toggleSignals">🚦 切换信号</button>
-      <button class="control-btn" @click="trainAnimation">🚂 列车动画</button>
-      <button class="control-btn" @click="toggleRotation">🔄 自动旋转</button>
-      <div class="speed-control">
-        <span class="speed-label">列车速度</span>
-        <input v-model.number="trainSpeed" type="range" min="0.05" max="0.6" step="0.01" class="speed-slider" />
-        <span class="speed-value">{{ trainSpeed.toFixed(2) }}</span>
+      <div class="train-control-group">
+        <button class="control-btn" @click="trainAnimation">🚂 列车动画</button>
+        <div class="speed-inline">
+          <span class="speed-label">列车速度</span>
+          <select v-model.number="trainSpeed" class="speed-select">
+            <option v-for="option in speedOptions" :key="option.value" :value="option.value">
+              {{ option.label }}
+            </option>
+          </select>
+        </div>
       </div>
+      <button class="control-btn" @click="toggleRotation">🔄 自动旋转</button>
     </div>
 
     <!-- 左侧数据面板 -->
@@ -133,13 +138,6 @@
             <span class="status-value online">正常</span>
           </div>
         </div>
-        <div class="stat-item">
-          <span class="stat-label">渲染帧率:</span>
-          <span class="stat-value highlight">{{ fps }} FPS</span>
-        </div>
-        <div class="progress-bar">
-          <div class="progress-fill" :style="{ width: Math.min(fps / 60 * 100, 100) + '%' }"></div>
-        </div>
       </div>
     </div>
 
@@ -151,6 +149,26 @@
       <div class="panel-border bottom-left"></div>
       <div class="panel-border bottom-right"></div>
       <div class="panel-border glow-line"></div>
+
+      <div class="panel-section">
+        <h2 class="panel-title">
+          <span class="title-icon">🎮</span>
+          <span class="title-text">场景信息</span>
+          <span class="title-decorator"></span>
+        </h2>
+        <div class="stat-item">
+          <span class="stat-label">相机位置:</span>
+          <span class="stat-value" id="cameraPos">--</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">运行时间:</span>
+          <span class="stat-value" id="uptime">0s</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">最后更新:</span>
+          <span class="stat-value" id="lastUpdate">--</span>
+        </div>
+      </div>
 
       <div class="panel-section">
         <h2 class="panel-title">
@@ -183,26 +201,6 @@
           </div>
         </div>
       </div>
-
-      <div class="panel-section">
-        <h2 class="panel-title">
-          <span class="title-icon">🎮</span>
-          <span class="title-text">场景信息</span>
-          <span class="title-decorator"></span>
-        </h2>
-        <div class="stat-item">
-          <span class="stat-label">相机位置:</span>
-          <span class="stat-value" id="cameraPos">--</span>
-        </div>
-        <div class="stat-item">
-          <span class="stat-label">运行时间:</span>
-          <span class="stat-value" id="uptime">0s</span>
-        </div>
-        <div class="stat-item">
-          <span class="stat-label">最后更新:</span>
-          <span class="stat-value" id="lastUpdate">--</span>
-        </div>
-      </div>
     </div>
   </div>
 </template>
@@ -216,7 +214,6 @@ import { CSS2DRenderer, CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRe
 import api from '../services/api.js'
 
 const threeContainer = ref(null)
-const fps = ref(60)
 
 // 信号灯实时参数
 const signalParams = ref({
@@ -391,7 +388,13 @@ let signals = []
 let train = null
 let isTrainRunning = false
 let autoRotate = false
-const trainSpeed = ref(0.2)
+const speedOptions = [
+  { label: '慢速', value: 0.08 },
+  { label: '标准', value: 0.12 },
+  { label: '快速', value: 0.18 },
+  { label: '极速', value: 0.25 }
+]
+const trainSpeed = ref(0.12)
 let clock = new THREE.Clock()
 let startTime = Date.now()
 let mixer = null
@@ -401,6 +404,7 @@ let trainProgress = 0
 const trainPath = new THREE.CatmullRomCurve3([
   new THREE.Vector3(-168, 3, -168),
   new THREE.Vector3(-100, 3, -100),
+  new THREE.Vector3(-84, 3, -84),
   new THREE.Vector3(-50, 3, -50),
   new THREE.Vector3(0, 3, 0),
   new THREE.Vector3(50, 3, 50),
@@ -469,9 +473,9 @@ const init = () => {
   controls.maxDistance = 200
 
   setupLights()
+  createAxisHelper()
   createGround()
   createMountains()
-  createAxisHelper()  // 添加3D坐标轴
   createRailway()
   createSignalLights()
   createTrain()
@@ -510,24 +514,20 @@ const setupLights = () => {
   scene.add(hemiLight)
 }
 
-// 创建3D坐标轴辅助器（类似CAD风格的箭头坐标轴）
 const createAxisHelper = () => {
   const axisGroup = new THREE.Group()
-  const axisLength = 50  // 坐标轴长度
-  const arrowHeadLength = 8
-  const arrowHeadRadius = 3
-  const lineRadius = 1
+  const axisLength = 16.5
+  const arrowHeadLength = 2.7
+  const arrowHeadRadius = 1
+  const lineRadius = 0.35
 
-  // X轴 - 红色 (东-西方向)
   const xAxisGroup = new THREE.Group()
-  // X轴线
   const xLineGeom = new THREE.CylinderGeometry(lineRadius, lineRadius, axisLength, 8)
   const xLineMat = new THREE.MeshBasicMaterial({ color: 0xff4444, transparent: true, opacity: 0.45 })
   const xLine = new THREE.Mesh(xLineGeom, xLineMat)
   xLine.rotation.z = -Math.PI / 2
   xLine.position.x = axisLength / 2
   xAxisGroup.add(xLine)
-  // X轴箭头
   const xArrowGeom = new THREE.ConeGeometry(arrowHeadRadius, arrowHeadLength, 8)
   const xArrowMat = new THREE.MeshBasicMaterial({ color: 0xff4444, transparent: true, opacity: 0.45 })
   const xArrow = new THREE.Mesh(xArrowGeom, xArrowMat)
@@ -536,14 +536,12 @@ const createAxisHelper = () => {
   xAxisGroup.add(xArrow)
   axisGroup.add(xAxisGroup)
 
-  // Y轴 - 绿色 (垂直方向)
   const yAxisGroup = new THREE.Group()
   const yLineGeom = new THREE.CylinderGeometry(lineRadius, lineRadius, axisLength, 8)
   const yLineMat = new THREE.MeshBasicMaterial({ color: 0x44ff44, transparent: true, opacity: 0.45 })
   const yLine = new THREE.Mesh(yLineGeom, yLineMat)
   yLine.position.y = axisLength / 2
   yAxisGroup.add(yLine)
-  // Y轴箭头
   const yArrowGeom = new THREE.ConeGeometry(arrowHeadRadius, arrowHeadLength, 8)
   const yArrowMat = new THREE.MeshBasicMaterial({ color: 0x44ff44, transparent: true, opacity: 0.45 })
   const yArrow = new THREE.Mesh(yArrowGeom, yArrowMat)
@@ -551,39 +549,15 @@ const createAxisHelper = () => {
   yAxisGroup.add(yArrow)
   axisGroup.add(yAxisGroup)
 
-  // Z轴 - 蓝色 (南-北方向)
-  const zIndexGroup = new THREE.Group()
-  const zLineGeom = new THREE.CylinderGeometry(lineRadius, lineRadius, axisLength, 8)
-  const zLineMat = new THREE.MeshBasicMaterial({ color: 0x4444ff })
-  const zLine = new THREE.Mesh(zLineGeom, zLineMat)
-  zLine.rotation.x = Math.PI / 2
-  zLine.position.z = axisLength / 2
-  zIndexGroup.add(zLine)
-  // Z轴箭头
-  const zArrowGeom = new THREE.ConeGeometry(arrowHeadRadius, arrowHeadLength, 8)
-  const zArrowMat = new THREE.MeshBasicMaterial({ color: 0x4444ff })
-  const zArrow = new THREE.Mesh(zArrowGeom, zArrowMat)
-  zArrow.rotation.x = Math.PI / 2
-  zArrow.position.z = axisLength + arrowHeadLength / 2
-  zIndexGroup.add(zArrow)
-  axisGroup.add(zIndexGroup)
-
-  // 原点球体
-  const originGeom = new THREE.SphereGeometry(3, 16, 16)
-  const originMat = new THREE.MeshBasicMaterial({ color: 0xffffff })
-  const origin = new THREE.Mesh(originGeom, originMat)
-  axisGroup.add(origin)
-
-  // 添加坐标轴标签 (使用 CSS2DObject)
   const createAxisLabel = (text, color, position) => {
     const div = document.createElement('div')
     div.className = 'axis-label-3d'
     div.textContent = text
     div.style.cssText = `
       color: ${color};
-      font-size: 16px;
+      font-size: 12px;
       font-weight: bold;
-      text-shadow: 0 0 5px rgba(0,0,0,0.8);
+      text-shadow: 0 0 4px rgba(0,0,0,0.8);
       pointer-events: none;
     `
     const label = new CSS2DObject(div)
@@ -591,15 +565,10 @@ const createAxisHelper = () => {
     return label
   }
 
-  axisGroup.add(createAxisLabel('X', '#ff4444', { x: axisLength + 15, y: 0, z: 0 }))
-  axisGroup.add(createAxisLabel('Y', '#44ff44', { x: 0, y: axisLength + 15, z: 0 }))
-  axisGroup.add(createAxisLabel('Z', '#4444ff', { x: 0, y: 0, z: axisLength + 15 }))
-
-  // 放置在场景右下角
-  axisGroup.position.set(120, 0, -100)
+  axisGroup.add(createAxisLabel('X', '#ff4444', { x: axisLength + 5, y: 0, z: 0 }))
+  axisGroup.add(createAxisLabel('Y', '#44ff44', { x: 0, y: axisLength + 5, z: 0 }))
+  axisGroup.position.set(120, -10, -100)
   scene.add(axisGroup)
-
-  console.log('3D坐标轴已创建')
 }
 
 const createGround = () => {
@@ -977,8 +946,10 @@ const updateSignalUI = () => {
     <div class="signal-item">
       <div class="signal-light signal-${signal.state}"></div>
       <div class="signal-info">
-        <div class="signal-name">${signal.name}</div>
-        <div class="signal-status">${stateText[signal.state]}</div>
+        <div class="signal-line">
+          <span class="signal-name">${signal.name}</span>
+          <span class="signal-status signal-status-${signal.state}">${stateText[signal.state]}</span>
+        </div>
       </div>
     </div>
   `).join('')
@@ -1012,7 +983,7 @@ const toggleSignals = () => {
 const trainAnimation = () => {
   const nextState = !isTrainRunning
   if (nextState && train) {
-    trainProgress = getClosestPathProgress(train.position)
+    trainProgress = getClosestPathProgress(train.position, 800)
   }
   isTrainRunning = nextState
 }
@@ -1174,23 +1145,23 @@ onBeforeUnmount(() => {
   background: rgba(0, 20, 40, 0.85);
   border: 1px solid rgba(0, 200, 255, 0.3);
   border-radius: 8px;
-  padding: 15px 25px;
+  padding: 10px 16px;
   color: #fff;
   display: flex;
-  gap: 15px;
+  gap: 10px;
   flex-wrap: wrap;
   backdrop-filter: blur(10px);
   z-index: 100;
 }
 
 .control-btn {
-  padding: 10px 20px;
+  padding: 6px 12px;
   background: linear-gradient(135deg, #0066cc, #00d4ff);
   border: none;
   border-radius: 5px;
   color: #fff;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 12px;
   transition: all 0.3s;
 }
 
@@ -1199,11 +1170,17 @@ onBeforeUnmount(() => {
   box-shadow: 0 0 15px rgba(0, 200, 255, 0.5);
 }
 
-.speed-control {
+.train-control-group {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
+}
+
+.speed-inline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
   border: 1px solid rgba(0, 200, 255, 0.3);
   border-radius: 6px;
   background: rgba(0, 40, 80, 0.45);
@@ -1214,23 +1191,21 @@ onBeforeUnmount(() => {
   color: #a8ddff;
 }
 
-.speed-slider {
-  width: 110px;
-}
-
-.speed-value {
-  min-width: 34px;
-  text-align: right;
+.speed-select {
+  min-width: 78px;
+  padding: 3px 6px;
+  border: 1px solid rgba(0, 200, 255, 0.4);
+  border-radius: 4px;
+  background: rgba(0, 20, 40, 0.9);
+  color: #d8f3ff;
   font-size: 12px;
-  color: #00d4ff;
-  font-weight: bold;
 }
 
 .info-panel {
   position: absolute;
-  top: 80px;
+  top: 62px;
   left: 20px;
-  bottom: 100px;
+  bottom: 64px;
   width: 320px;
   background: rgba(0, 20, 40, 0.55);
   border: 1px solid rgba(0, 200, 255, 0.3);
@@ -1245,9 +1220,9 @@ onBeforeUnmount(() => {
 
 .stats-panel {
   position: absolute;
-  top: 80px;
+  top: 62px;
   right: 20px;
-  bottom: 100px;
+  bottom: 64px;
   width: 320px;
   background: rgba(0, 20, 40, 0.55);
   border: 1px solid rgba(0, 200, 255, 0.3);
@@ -1417,14 +1392,43 @@ onBeforeUnmount(() => {
 }
 
 .signal-name {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: bold;
-  margin-bottom: 4px;
 }
 
 .signal-status {
-  font-size: 12px;
-  color: #aaa;
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.signal-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.signal-status-red {
+  color: #ffd7d7;
+  background: rgba(255, 70, 70, 0.28);
+  border: 1px solid rgba(255, 120, 120, 0.5);
+}
+
+.signal-status-green {
+  color: #dbffe1;
+  background: rgba(46, 204, 113, 0.24);
+  border: 1px solid rgba(102, 255, 178, 0.45);
+}
+
+.signal-status-yellow {
+  color: #fff5cf;
+  background: rgba(255, 193, 7, 0.22);
+  border: 1px solid rgba(255, 225, 119, 0.45);
 }
 
 .stat-item {
@@ -1917,79 +1921,4 @@ onBeforeUnmount(() => {
   color: #00d4ff;
 }
 
-/* 坐标轴图例样式 */
-.axis-legend {
-  position: absolute;
-  bottom: 80px;
-  left: 20px;
-  background: rgba(0, 20, 40, 0.85);
-  border: 1px solid rgba(0, 200, 255, 0.3);
-  border-radius: 8px;
-  padding: 12px 16px;
-  backdrop-filter: blur(10px);
-  z-index: 100;
-}
-
-.axis-legend-title {
-  font-size: 12px;
-  color: #00d4ff;
-  font-weight: bold;
-  margin-bottom: 10px;
-  padding-bottom: 6px;
-  border-bottom: 1px solid rgba(0, 200, 255, 0.2);
-}
-
-.axis-legend-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 8px 0;
-  font-size: 12px;
-}
-
-.axis-arrow {
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 4px;
-  font-size: 14px;
-  font-weight: bold;
-}
-
-.axis-x-arrow {
-  background: rgba(255, 68, 68, 0.3);
-  border: 1px solid rgba(255, 68, 68, 0.6);
-  color: #ff4444;
-}
-
-.axis-y-arrow {
-  background: rgba(68, 255, 68, 0.3);
-  border: 1px solid rgba(68, 255, 68, 0.6);
-  color: #44ff44;
-}
-
-.axis-z-arrow {
-  background: rgba(68, 68, 255, 0.3);
-  border: 1px solid rgba(68, 68, 255, 0.6);
-  color: #4444ff;
-}
-
-.axis-label-x { color: #ff4444; font-weight: bold; }
-.axis-label-y { color: #44ff44; font-weight: bold; }
-.axis-label-z { color: #4444ff; font-weight: bold; }
-
-.axis-desc {
-  color: #aaa;
-  font-size: 11px;
-}
-
-.axis-hint {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid rgba(0, 200, 255, 0.2);
-  font-size: 10px;
-  color: #666;
-}
 </style>
