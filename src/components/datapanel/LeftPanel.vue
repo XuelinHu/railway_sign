@@ -396,26 +396,26 @@ onUnmounted(() => {
 }
 
 .temp-display {
-  font-size: 48px;
+  font-size: 36px;
   font-weight: bold;
   color: #00d4ff;
   text-shadow: 0 0 20px rgba(0, 200, 255, 0.5);
 }
 
 .temp-unit {
-  font-size: 20px;
+  font-size: 16px;
   color: #aaa;
-  margin-left: 5px;
+  margin-left: 3px;
 }
 
 .weather-value {
-  font-size: 20px;
+  font-size: 16px;
   font-weight: bold;
   color: #fff;
 }
 
 .weather-value .unit {
-  font-size: 12px;
+  font-size: 10px;
   color: #888;
   margin-left: 2px;
 }
