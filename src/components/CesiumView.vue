@@ -114,10 +114,6 @@
           </div>
           <div class="panel-content">
             <div class="railway-info">
-              <div class="railway-name">
-                <span class="rail-label">当前铁道</span>
-                <span class="rail-value">{{ currentRailway.name }}</span>
-              </div>
               <div class="railway-detail">
                 <div class="detail-item">
                   <span class="detail-label">起点</span>
@@ -784,7 +780,7 @@ const initCesium = async () => {
     viewer.terrainExaggeration = 3.0
     viewer.scene.globe.depthTestAgainstTerrain = true
     viewer.scene.globe.alpha = 1.0
-    setupGlobalBreathingGlow()
+    // setupGlobalBreathingGlow() // 暂时去除光晕效果
 
     console.log('Cesium 初始化完成！')
     return viewer

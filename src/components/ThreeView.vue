@@ -449,7 +449,7 @@ const init = () => {
     0.1,
     2000
   )
-  camera.position.set(80, 60, 80)
+  camera.position.set(60, 60, 80)
 
   renderer = new THREE.WebGLRenderer({ antialias: true })
   renderer.setSize(window.innerWidth, window.innerHeight)
@@ -993,7 +993,7 @@ const toggleRotation = () => {
 }
 
 const resetView = () => {
-  camera.position.set(80, 60, 80)
+  camera.position.set(60, 60, 80)
   controls.target.set(0, 0, 0)
   controls.update()
 }
