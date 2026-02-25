@@ -14,12 +14,19 @@
       >
         🎮 铁道信号孪生面板
       </button>
+      <button
+        :class="['tab-btn', { active: currentTab === 'data' }]"
+        @click="switchTab('data')"
+      >
+        📊 大数据可视化平台
+      </button>
     </div>
 
     <!-- 内容区域 -->
     <div class="content-container">
       <CesiumView v-if="currentTab === 'cesium'" />
       <ThreeView v-else-if="currentTab === 'three'" />
+      <DataPanel v-else-if="currentTab === 'data'" />
     </div>
   </div>
 </template>
@@ -28,6 +35,7 @@
 import { ref } from 'vue'
 import CesiumView from './components/CesiumView.vue'
 import ThreeView from './components/ThreeView.vue'
+import DataPanel from './components/DataPanel.vue'
 
 const currentTab = ref('cesium')
 
