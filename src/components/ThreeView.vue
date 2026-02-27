@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="three-view">
     <!-- Three.js 容器 -->
     <div id="threeContainer" ref="threeContainer"></div>
@@ -187,16 +187,15 @@
                 <div class="play-button">▶</div>
                 <div class="video-hint">点击播放</div>
               </div>
-              <iframe
+              <img
                 v-else
                 :src="video.src"
-                scrolling="no"
-                border="0"
-                frameborder="no"
-                framespacing="0"
-                allowfullscreen="true"
-                referrerpolicy="no-referrer"
-              ></iframe>
+                class="stream-frame"
+                alt="stream"
+                @load="onVideoLoad(index)"
+                @error="reloadVideo(index)"
+              />
+              <div v-if="video.loaded" class="video-status">{{ video.status }}</div>
             </div>
           </div>
         </div>
@@ -335,34 +334,70 @@ const onParamTimeChange = () => {
 }
 
 // ===== 视频监控相关 =====
+const STREAM_PROXY_BASE = import.meta.env.VITE_STREAM_PROXY_BASE || 'http://localhost:3001/stream-proxy'
+const retryTimers = new Map()
+const logVideo = (index, action, detail = '') => {
+  const prefix = `[video-${index + 1}] ${action}`
+  console.log(detail ? `${prefix}: ${detail}` : prefix)
+}
+
 const videoList = ref([
   {
     title: '监控点 1 - 站台A',
-    bvid: 'BV1x9yoBUENZ',
+    streamPath: `${STREAM_PROXY_BASE}/live`,
     src: '',
-    loaded: false
+    loaded: false,
+    status: '待播放'
   },
   {
     title: '监控点 2 - 信号塔',
-    bvid: 'BV1Zy4y1E7bP',
+    streamPath: `${STREAM_PROXY_BASE}/live`,
     src: '',
-    loaded: false
+    loaded: false,
+    status: '待播放'
   },
   {
     title: '监控点 3 - 铁道口',
-    bvid: 'BV17C4y1W77m',
+    streamPath: `${STREAM_PROXY_BASE}/live`,
     src: '',
-    loaded: false
+    loaded: false,
+    status: '待播放'
   }
 ])
+
+const buildStreamUrl = (streamPath) => `${streamPath}?_t=${Date.now()}`
 
 const loadVideo = (index) => {
   const video = videoList.value[index]
   if (!video.loaded) {
-    // 使用B站嵌入播放器，添加必要参数
-    video.src = `https://player.bilibili.com/player.html?bvid=${video.bvid}&autoplay=1&muted=1&high_quality=1&danmaku=0`
+    video.src = buildStreamUrl(video.streamPath)
     video.loaded = true
+    video.status = '连接中...'
+    logVideo(index, 'load', video.src)
   }
+}
+
+const onVideoLoad = (index) => {
+  const video = videoList.value[index]
+  if (!video) return
+  video.status = '已连接'
+  logVideo(index, 'connected')
+}
+
+const reloadVideo = (index) => {
+  const video = videoList.value[index]
+  if (!video?.loaded) {
+    return
+  }
+
+  video.status = '重连中...'
+  logVideo(index, 'error', 'stream load failed, retry in 1.2s')
+  clearTimeout(retryTimers.get(index))
+  const timer = setTimeout(() => {
+    video.src = buildStreamUrl(video.streamPath)
+    logVideo(index, 'retry', video.src)
+  }, 1200)
+  retryTimers.set(index, timer)
 }
 
 // 计算属性
@@ -1118,6 +1153,11 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  for (const timer of retryTimers.values()) {
+    clearTimeout(timer)
+  }
+  retryTimers.clear()
+
   if (renderer) {
     renderer.dispose()
   }
@@ -1738,12 +1778,25 @@ onBeforeUnmount(() => {
   background: #000;
 }
 
-.video-container iframe {
+.video-container .stream-frame {
   position: absolute;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
+  object-fit: cover;
+}
+
+.video-status {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  color: #d8f3ff;
+  background: rgba(0, 20, 40, 0.75);
+  border: 1px solid rgba(0, 200, 255, 0.35);
 }
 
 /* 视频占位符 */
@@ -1922,3 +1975,4 @@ onBeforeUnmount(() => {
 }
 
 </style>
+
