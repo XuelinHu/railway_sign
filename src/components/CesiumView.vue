@@ -12,6 +12,9 @@
       <button class="toggle-btn" @click="toggleRightPanel">
         {{ rightPanelVisible ? '隐藏右侧 ▶' : '◀ 显示右侧' }}
       </button>
+      <button class="toggle-btn" :class="{ active: severeWeatherEnabled }" @click="toggleSevereWeather">
+        {{ severeWeatherEnabled ? '⛈️ 停止恶劣天气' : '⛈️ 恶劣天气模拟' }}
+      </button>
     </div>
 
     <!-- 左侧面板 - 地理信息与铁道数据 -->
@@ -302,6 +305,7 @@ Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOi
 const cesiumContainer = ref(null)
 const leftPanelVisible = ref(true)
 const rightPanelVisible = ref(true)
+const severeWeatherEnabled = ref(false)
 
 let viewer = null
 let beaconPoints = []
@@ -309,6 +313,11 @@ let beaconPopups = []
 let selectedBeacon = null
 let globalBreathStage = null
 let globalBreathStartTime = Date.now()
+let rainPostProcessStage = null
+let updateDataTimer = null
+const defaultFogDensity = 0.0001
+let bgmAudio = null
+let audioUnlockHandler = null
 
 // ===== 地理震动数据 =====
 const seismicLevel = ref(2.3)
@@ -694,6 +703,121 @@ const toggleRightPanel = () => {
   rightPanelVisible.value = !rightPanelVisible.value
 }
 
+const startRainFogSimulation = () => {
+  if (!viewer || rainPostProcessStage) return
+  // 参考 Cesium 雨效常见实现：全屏后处理雨幕
+  rainPostProcessStage = new Cesium.PostProcessStage({
+    name: 'railway-rain-effect',
+    fragmentShader: `
+      uniform sampler2D colorTexture;
+      in vec2 v_textureCoordinates;
+
+      float hash(float x) {
+        return fract(sin(x * 133.3) * 13.13);
+      }
+
+      void main(void) {
+        float time = czm_frameNumber / 60.0;
+        vec2 resolution = czm_viewport.zw;
+        vec2 uv = (gl_FragCoord.xy * 2.0 - resolution.xy) / min(resolution.x, resolution.y);
+        vec3 rainColor = vec3(0.62, 0.72, 0.82);
+
+        float angle = -0.4;
+        float si = sin(angle), co = cos(angle);
+        uv *= mat2(co, -si, si, co);
+        uv *= length(uv + vec2(0.0, 4.9)) * 0.3 + 1.0;
+
+        float v = 1.0 - sin(hash(floor(uv.x * 100.0)) * 2.0);
+        float b = clamp(abs(sin(20.0 * time * v + uv.y * (5.0 / (2.0 + v)))) - 0.95, 0.0, 1.0) * 20.0;
+        rainColor *= v * b;
+
+        vec4 color = texture(colorTexture, v_textureCoordinates);
+        out_FragColor = mix(color, vec4(rainColor, 1.0), 0.35);
+      }
+    `
+  })
+  viewer.scene.postProcessStages.add(rainPostProcessStage)
+
+  viewer.scene.fog.enabled = true
+  viewer.scene.fog.density = 0.00028
+  viewer.scene.fog.minimumBrightness = 0.5
+}
+
+const stopRainFogSimulation = () => {
+  if (!viewer) return
+  if (rainPostProcessStage) {
+    viewer.scene.postProcessStages.remove(rainPostProcessStage)
+    rainPostProcessStage = null
+  }
+
+  viewer.scene.fog.enabled = true
+  viewer.scene.fog.density = defaultFogDensity
+  viewer.scene.fog.minimumBrightness = 0.65
+}
+
+const startBackgroundMusic = () => {
+  if (!bgmAudio) {
+    bgmAudio = new Audio('/assets/bgm/dl.mp3')
+    bgmAudio.preload = 'auto'
+    bgmAudio.loop = true
+    bgmAudio.volume = 0.8
+    bgmAudio.muted = false
+  }
+
+  bgmAudio.muted = false
+  return bgmAudio.play()
+}
+
+const stopBackgroundMusic = () => {
+  if (!bgmAudio) return
+  bgmAudio.pause()
+  bgmAudio.currentTime = 0
+}
+
+const installAudioUnlockFallback = () => {
+  if (audioUnlockHandler) return
+
+  audioUnlockHandler = async () => {
+    if (!severeWeatherEnabled.value) return
+    try {
+      await startBackgroundMusic()
+    } catch (error) {
+      console.warn('背景音乐仍未解锁:', error)
+      return
+    }
+
+    window.removeEventListener('pointerdown', audioUnlockHandler, true)
+    audioUnlockHandler = null
+  }
+
+  // 某些浏览器会阻止首次播放，下一次用户点击后重试
+  window.addEventListener('pointerdown', audioUnlockHandler, true)
+}
+
+const toggleSevereWeather = async () => {
+  if (!viewer) return
+
+  severeWeatherEnabled.value = !severeWeatherEnabled.value
+
+  if (severeWeatherEnabled.value) {
+    startRainFogSimulation()
+    try {
+      await startBackgroundMusic()
+    } catch (error) {
+      console.warn('背景音乐播放失败:', error)
+      installAudioUnlockFallback()
+    }
+    return
+  }
+
+  stopRainFogSimulation()
+  stopBackgroundMusic()
+  if (audioUnlockHandler) {
+    window.removeEventListener('pointerdown', audioUnlockHandler, true)
+    audioUnlockHandler = null
+  }
+}
+
 // ===== Cesium 初始化 =====
 const LIUZHOU_STATION = {
   lon: 109.38871,
@@ -749,15 +873,32 @@ const initCesium = async () => {
       timeline: false,
       baseLayerPicker: false,
       geocoder: false,
-      homeButton: true,
-      sceneModePicker: true,
+      homeButton: false,
+      sceneModePicker: false,
       navigationHelpButton: false,
-      fullscreenButton: true,
+      fullscreenButton: false,
       infoBox: false,
-      selectionIndicator: false
+      selectionIndicator: false,
+      // 保持 3D 地形风格，避免使用工作地图风格底图
+      baseLayer: false
     }
 
     viewer = new Cesium.Viewer('cesiumContainer', viewerOptions)
+    if (viewer.cesiumWidget?.creditContainer) {
+      viewer.cesiumWidget.creditContainer.style.display = 'none'
+    }
+
+    try {
+      const satelliteProvider = await Cesium.ArcGisMapServerImageryProvider.fromBasemapType(
+        Cesium.ArcGisBaseMapType.SATELLITE
+      )
+      viewer.imageryLayers.addImageryProvider(satelliteProvider)
+    } catch (error) {
+      console.warn('卫星底图加载失败，回退 OSM:', error)
+      viewer.imageryLayers.addImageryProvider(new Cesium.OpenStreetMapImageryProvider({
+        url: 'https://tile.openstreetmap.org/'
+      }))
+    }
 
     viewer.terrainProvider = await Cesium.CesiumTerrainProvider.fromIonAssetId(1, {
       requestVertexNormals: true,
@@ -766,7 +907,10 @@ const initCesium = async () => {
 
     try {
       console.log('正在加载 3D 建筑图层...')
-      const osmBuildings = await Cesium.createOsmBuildingsAsync()
+      const osmBuildings = await Cesium.createOsmBuildingsAsync({
+        enableShowOutline: false,
+        showOutline: false
+      })
       viewer.scene.primitives.add(osmBuildings)
       console.log('3D 建筑图层加载完成')
     } catch (error) {
@@ -775,7 +919,8 @@ const initCesium = async () => {
 
     viewer.scene.skyAtmosphere.show = true
     viewer.scene.fog.enabled = true
-    viewer.scene.fog.density = 0.0001
+    viewer.scene.fog.density = defaultFogDensity
+    viewer.scene.fog.minimumBrightness = 0.65
     viewer.scene.globe.enableLighting = true
     viewer.terrainExaggeration = 3.0
     viewer.scene.globe.depthTestAgainstTerrain = true
@@ -1183,8 +1328,10 @@ const updateWaveAnimation = () => {
 
 // 数据更新定时器
 const updateData = () => {
-  // 模拟震动数据变化
-  seismicLevel.value = Math.max(0.5, Math.min(8, seismicLevel.value + (Math.random() - 0.5) * 0.3))
+  // 保持地理震动总体良好且波动平稳
+  const target = 2.2 + (Math.random() - 0.5) * 0.08
+  const smoothed = seismicLevel.value * 0.86 + target * 0.14
+  seismicLevel.value = Math.max(1.8, Math.min(3.0, Number(smoothed.toFixed(2))))
   // 更新24小时数据
   seismicData24h.value.shift()
   seismicData24h.value.push(seismicLevel.value)
@@ -1251,7 +1398,8 @@ const loadDashboardData = async () => {
       // 更新地震数据
       if (data.seismic && data.seismic.length > 0) {
         const latestSeismic = data.seismic[data.seismic.length - 1]
-        seismicLevel.value = latestSeismic.level
+        const normalized = Math.max(1.8, Math.min(3.0, Number(latestSeismic.level) || 2.2))
+        seismicLevel.value = Number((seismicLevel.value * 0.7 + normalized * 0.3).toFixed(2))
       }
     }
   } catch (error) {
@@ -1264,7 +1412,7 @@ const loadSeismicData = async (range = '24h') => {
   try {
     const data = await api.getSeismicData(range)
     if (data && data.length > 0) {
-      const values = data.map(d => d.level)
+      const values = data.map((d) => Math.max(1.7, Math.min(3.2, Number(d.level) || 2.2)))
       if (range === '24h') {
         seismicData24h.value = values.slice(-24)
       } else if (range === 'week') {
@@ -1307,7 +1455,7 @@ onMounted(async () => {
     await initCesium()
     setTimeout(() => flyToLiuZhou(), 500)
     setupInteractions()
-    setInterval(updateData, 2000)
+    updateDataTimer = setInterval(updateData, 2000)
   } catch (error) {
     console.error('初始化失败:', error)
   }
@@ -1315,6 +1463,20 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  if (updateDataTimer) {
+    clearInterval(updateDataTimer)
+    updateDataTimer = null
+  }
+  stopRainFogSimulation()
+  if (bgmAudio) {
+    bgmAudio.pause()
+    bgmAudio.currentTime = 0
+    bgmAudio = null
+  }
+  if (audioUnlockHandler) {
+    window.removeEventListener('pointerdown', audioUnlockHandler, true)
+    audioUnlockHandler = null
+  }
   if (viewer && globalBreathStage) {
     viewer.scene.postProcessStages.remove(globalBreathStage)
     globalBreathStage = null
@@ -1362,6 +1524,21 @@ onBeforeUnmount(() => {
 .reset-btn:hover, .toggle-btn:hover {
   background: rgba(0, 40, 80, 0.9);
   box-shadow: 0 0 15px rgba(0, 200, 255, 0.5);
+}
+
+.toggle-btn.active {
+  border-color: rgba(120, 190, 255, 0.9);
+  color: #d8e8ff;
+  background: rgba(25, 70, 120, 0.9);
+  box-shadow: 0 0 20px rgba(110, 180, 255, 0.45);
+}
+
+:deep(.cesium-viewer-toolbar),
+:deep(.cesium-viewer-fullscreenContainer),
+:deep(.cesium-viewer-animationContainer),
+:deep(.cesium-viewer-timelineContainer),
+:deep(.cesium-viewer-bottom) {
+  display: none !important;
 }
 
 /* 侧边面板 */

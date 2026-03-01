@@ -8,7 +8,7 @@
       <button class="control-btn" @click="resetView">🎯 复位视角</button>
       <button class="control-btn" @click="toggleSignals">🚦 切换信号</button>
       <div class="train-control-group">
-        <button class="control-btn" @click="trainAnimation">🚂 列车动画</button>
+        <button class="control-btn" @click="trainAnimation">🚂 列车行进</button>
         <div class="speed-inline">
           <span class="speed-label">列车速度</span>
           <select v-model.number="trainSpeed" class="speed-select">
@@ -724,9 +724,8 @@ const createSignalLights = () => {
       '/assets/models/sign.glb',
       (gltf) => {
         const signGroup = gltf.scene
-        // 信号灯在原有基础上放大 3 倍
-        // 信号灯在当前基础上缩小 1.5 倍
-        signGroup.scale.set(16, 16, 16)
+        // 缩小为当前尺寸的 0.7
+        signGroup.scale.set(11.2, 11.2, 11.2)
         signGroup.position.set(pos.x, 0, pos.z)
 
         signGroup.traverse((child) => {
@@ -1975,4 +1974,3 @@ onBeforeUnmount(() => {
 }
 
 </style>
-

@@ -38,14 +38,42 @@
           <span class="weather-icon">🌤</span>
           <span class="weather-temp">{{ weather.temperature }}°C</span>
         </div>
+        <div class="anomaly-controls">
+          <button class="anomaly-btn" :class="{ active: humidityAnomaly }" @click="toggleHumidityAnomaly">
+            湿度异常
+          </button>
+          <button class="anomaly-btn" :class="{ active: temperatureAnomaly }" @click="toggleTemperatureAnomaly">
+            温度异常
+          </button>
+        </div>
       </div>
     </header>
+
+    <div class="global-alerts">
+      <transition name="alert-pop">
+        <div v-if="showHumidityAlert" class="global-alert humidity">
+          <div class="alert-title">湿度异常告警</div>
+          <div class="alert-desc">传感器监控栏检测到湿度数据超限，请立即排查。</div>
+          <button class="alert-close" @click="showHumidityAlert = false">关闭</button>
+        </div>
+      </transition>
+      <transition name="alert-pop">
+        <div v-if="showTemperatureAlert" class="global-alert temperature">
+          <div class="alert-title">温度异常告警</div>
+          <div class="alert-desc">传感器监控栏检测到温度数据超限，请立即排查。</div>
+          <button class="alert-close" @click="showTemperatureAlert = false">关闭</button>
+        </div>
+      </transition>
+    </div>
 
     <!-- 主内容区 -->
     <main class="panel-main">
       <!-- 左侧面板 -->
       <aside class="left-aside">
-        <LeftPanel />
+        <LeftPanel
+          :humidity-anomaly="humidityAnomaly"
+          :temperature-anomaly="temperatureAnomaly"
+        />
       </aside>
 
       <!-- 中间面板 -->
@@ -108,9 +136,16 @@ const overview = ref(getOverviewData())
 const lastUpdate = ref('')
 const fps = ref(60)
 const dataPoints = ref(12345678)
+const humidityAnomaly = ref(false)
+const temperatureAnomaly = ref(false)
+const showHumidityAlert = ref(false)
+const showTemperatureAlert = ref(false)
 
 let timeTimer = null
 let updateTimer = null
+let fpsTimer = null
+let humidityAlertTimer = null
+let temperatureAlertTimer = null
 
 // 格式化数字
 const formatNumber = (num) => {
@@ -156,13 +191,59 @@ const updateData = () => {
   dataPoints.value += Math.floor(Math.random() * 1000)
 }
 
+const toggleHumidityAnomaly = () => {
+  humidityAnomaly.value = !humidityAnomaly.value
+  if (humidityAnomaly.value) {
+    showTemperatureAlert.value = false
+    if (temperatureAlertTimer) {
+      clearTimeout(temperatureAlertTimer)
+      temperatureAlertTimer = null
+    }
+    showHumidityAlert.value = true
+    if (humidityAlertTimer) clearTimeout(humidityAlertTimer)
+    humidityAlertTimer = setTimeout(() => {
+      showHumidityAlert.value = false
+      humidityAlertTimer = null
+    }, 5000)
+  } else {
+    showHumidityAlert.value = false
+    if (humidityAlertTimer) {
+      clearTimeout(humidityAlertTimer)
+      humidityAlertTimer = null
+    }
+  }
+}
+
+const toggleTemperatureAnomaly = () => {
+  temperatureAnomaly.value = !temperatureAnomaly.value
+  if (temperatureAnomaly.value) {
+    showHumidityAlert.value = false
+    if (humidityAlertTimer) {
+      clearTimeout(humidityAlertTimer)
+      humidityAlertTimer = null
+    }
+    showTemperatureAlert.value = true
+    if (temperatureAlertTimer) clearTimeout(temperatureAlertTimer)
+    temperatureAlertTimer = setTimeout(() => {
+      showTemperatureAlert.value = false
+      temperatureAlertTimer = null
+    }, 5000)
+  } else {
+    showTemperatureAlert.value = false
+    if (temperatureAlertTimer) {
+      clearTimeout(temperatureAlertTimer)
+      temperatureAlertTimer = null
+    }
+  }
+}
+
 onMounted(() => {
   updateTime()
   timeTimer = setInterval(updateTime, 1000)
   updateTimer = setInterval(updateData, 5000)
 
   // 模拟 FPS
-  setInterval(() => {
+  fpsTimer = setInterval(() => {
     fps.value = Math.floor(55 + Math.random() * 10)
   }, 1000)
 })
@@ -170,6 +251,9 @@ onMounted(() => {
 onUnmounted(() => {
   if (timeTimer) clearInterval(timeTimer)
   if (updateTimer) clearInterval(updateTimer)
+  if (fpsTimer) clearInterval(fpsTimer)
+  if (humidityAlertTimer) clearTimeout(humidityAlertTimer)
+  if (temperatureAlertTimer) clearTimeout(temperatureAlertTimer)
 })
 </script>
 
@@ -307,6 +391,97 @@ onUnmounted(() => {
 
 .header-right {
   justify-content: flex-end;
+}
+
+.anomaly-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.anomaly-btn {
+  padding: 6px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 120, 120, 0.45);
+  background: rgba(80, 20, 20, 0.35);
+  color: #ffd5d5;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+
+.anomaly-btn:hover {
+  border-color: rgba(255, 140, 140, 0.7);
+  background: rgba(120, 30, 30, 0.45);
+}
+
+.anomaly-btn.active {
+  color: #fff;
+  border-color: rgba(255, 80, 80, 1);
+  background: rgba(255, 45, 45, 0.45);
+  box-shadow: 0 0 18px rgba(255, 45, 45, 0.55);
+}
+
+.global-alerts {
+  position: absolute;
+  top: 84px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.global-alert {
+  min-width: 620px;
+  border-radius: 14px;
+  border: 2px solid rgba(255, 90, 90, 0.95);
+  background: linear-gradient(135deg, rgba(180, 20, 20, 0.96), rgba(120, 12, 12, 0.96));
+  box-shadow: 0 0 30px rgba(255, 35, 35, 0.72);
+  padding: 18px 22px;
+  pointer-events: auto;
+  animation: globalAlertFlash 0.9s ease-in-out infinite;
+}
+
+.alert-title {
+  font-size: 22px;
+  font-weight: bold;
+  color: #fff;
+  margin-bottom: 8px;
+  letter-spacing: 1px;
+}
+
+.alert-desc {
+  font-size: 16px;
+  color: rgba(255, 235, 235, 0.95);
+}
+
+.alert-close {
+  margin-top: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  border-radius: 8px;
+  font-size: 14px;
+  padding: 6px 16px;
+  cursor: pointer;
+}
+
+.alert-pop-enter-active,
+.alert-pop-leave-active {
+  transition: all 0.25s ease;
+}
+
+.alert-pop-enter-from,
+.alert-pop-leave-to {
+  opacity: 0;
+  transform: translateY(-14px) scale(0.96);
+}
+
+@keyframes globalAlertFlash {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.22); }
 }
 
 .datetime {

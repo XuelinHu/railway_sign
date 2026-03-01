@@ -105,13 +105,13 @@
       <div class="section-header">
         <span class="section-icon">📡</span>
         <span class="section-title">传感器监控</span>
-        <span class="section-badge online">{{ onlineSensors }}/{{ sensors.length }} 在线</span>
+        <span class="section-badge online">{{ onlineSensors }}/{{ processedSensors.length }} 在线</span>
       </div>
       <div class="sensor-list">
         <div
           v-for="sensor in displayedSensors"
           :key="sensor.id"
-          :class="['sensor-item', sensor.status]"
+          :class="['sensor-item', sensor.status, { 'anomaly-flash': sensor.isAnomaly }]"
         >
           <div class="sensor-header">
             <span class="sensor-icon">{{ sensorIcon(sensor.icon) }}</span>
@@ -119,7 +119,7 @@
             <span :class="['sensor-status', sensor.status]">{{ statusText(sensor.status) }}</span>
           </div>
           <div class="sensor-value-row">
-            <span class="sensor-value">{{ sensor.value }}</span>
+            <span class="sensor-value" :class="{ abnormal: sensor.isAnomaly }">{{ sensor.value }}</span>
             <span class="sensor-unit">{{ sensor.unit }}</span>
           </div>
           <div class="sensor-meta">
@@ -183,13 +183,42 @@ const weather = ref(getWeatherData())
 const sensors = ref(getSensorData())
 const updateTimer = ref(null)
 
+const props = defineProps({
+  humidityAnomaly: {
+    type: Boolean,
+    default: false
+  },
+  temperatureAnomaly: {
+    type: Boolean,
+    default: false
+  }
+})
+
+const processedSensors = computed(() => {
+  return sensors.value.map((sensor) => {
+    const humidityAnomaly = props.humidityAnomaly && sensor.icon === 'droplet'
+    const temperatureAnomaly = props.temperatureAnomaly && sensor.icon === 'thermometer'
+    const isAnomaly = humidityAnomaly || temperatureAnomaly
+
+    if (!isAnomaly) {
+      return { ...sensor, isAnomaly: false }
+    }
+
+    return {
+      ...sensor,
+      status: 'error',
+      isAnomaly: true
+    }
+  })
+})
+
 // 计算在线传感器数量
 const onlineSensors = computed(() => {
-  return sensors.value.filter(s => s.status === 'normal').length
+  return processedSensors.value.filter(s => s.status === 'normal').length
 })
 
 // 显示前8个传感器
-const displayedSensors = computed(() => sensors.value.slice(0, 8))
+const displayedSensors = computed(() => processedSensors.value.slice(0, 8))
 
 // 温度趋势图路径
 const temperatureLinePath = computed(() => {
@@ -562,6 +591,23 @@ onUnmounted(() => {
 .sensor-item.error {
   border-left-color: #ff6b6b;
   background: rgba(255, 107, 107, 0.1);
+}
+
+.sensor-item.anomaly-flash {
+  border-left-color: #ff2424;
+  background: rgba(255, 30, 30, 0.24);
+  box-shadow: 0 0 18px rgba(255, 40, 40, 0.55), inset 0 0 12px rgba(255, 20, 20, 0.3);
+  animation: anomalyFlash 0.95s infinite;
+}
+
+.sensor-value.abnormal {
+  color: #ff4040;
+  text-shadow: 0 0 10px rgba(255, 64, 64, 0.7);
+}
+
+@keyframes anomalyFlash {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.35); }
 }
 
 .sensor-header {
