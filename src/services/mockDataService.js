@@ -3,6 +3,8 @@
  * 提供各种传感器、气象、设备监控等模拟数据
  */
 
+import { severeWeatherEnabled, severeWeatherStartedAt } from './simulationState.js'
+
 // 随机数生成工具
 const random = (min, max, decimal = 0) => {
   const value = Math.random() * (max - min) + min
@@ -18,32 +20,83 @@ const generateTimeSeries = (length, min, max, decimal = 1) => {
 }
 
 // 气象数据
-export const getWeatherData = () => ({
-  temperature: random(-5, 35, 1),
-  humidity: random(30, 95, 1),
-  windSpeed: random(0, 25, 1),
-  windDirection: randomChoice(['北', '东北', '东', '东南', '南', '西南', '西', '西北']),
-  pressure: random(990, 1030, 1),
-  visibility: random(1, 30, 1),
-  precipitation: random(0, 50, 1),
-  uvIndex: random(0, 11),
-  airQuality: random(0, 300),
-  pm25: random(0, 150),
-  pm10: random(0, 200),
-  so2: random(0, 50, 2),
-  no2: random(0, 100, 2),
-  co: random(0, 2, 2),
-  o3: random(0, 200, 1),
-  weatherType: randomChoice(['晴', '多云', '阴', '小雨', '中雨', '大雨', '雷阵雨', '小雪', '中雪', '大雪', '雾', '霾']),
-  temperatureTrend: generateTimeSeries(24, -5, 35, 1),
-  humidityTrend: generateTimeSeries(24, 30, 95, 1),
-  forecast: Array.from({ length: 7 }, (_, i) => ({
-    date: new Date(Date.now() + i * 86400000).toLocaleDateString('zh-CN', { weekday: 'short' }),
-    high: random(15, 35),
-    low: random(-5, 20),
-    weather: randomChoice(['晴', '多云', '阴', '小雨', '中雨', '雷阵雨'])
-  }))
-})
+const risingSeries = (length, start, end, jitter = 0.6, decimal = 1) => {
+  if (length <= 1) return [Number(end.toFixed(decimal))]
+  return Array.from({ length }, (_, i) => {
+    const t = i / (length - 1)
+    const base = start + (end - start) * t
+    // 增加小幅波动：在整体上升的基础上加入轻微正弦扰动
+    const wave = Math.sin(t * Math.PI * 4) * (jitter * 0.55)
+    return Math.max(0, Math.min(100, random(base + wave - jitter, base + wave + jitter, decimal)))
+  })
+}
+
+export const getWeatherData = () => {
+  const enabled = Boolean(severeWeatherEnabled.value)
+
+  if (!enabled) {
+    return {
+      temperature: random(-5, 35, 1),
+      humidity: random(30, 95, 1),
+      windSpeed: random(0, 25, 1),
+      windDirection: randomChoice(['北', '东北', '东', '东南', '南', '西南', '西', '西北']),
+      pressure: random(990, 1030, 1),
+      visibility: random(1, 30, 1),
+      precipitation: random(0, 50, 1),
+      uvIndex: random(0, 11),
+      airQuality: random(0, 300),
+      pm25: random(0, 150),
+      pm10: random(0, 200),
+      so2: random(0, 50, 2),
+      no2: random(0, 100, 2),
+      co: random(0, 2, 2),
+      o3: random(0, 200, 1),
+      weatherType: randomChoice(['晴', '多云', '阴', '小雨', '中雨', '大雨', '雷阵雨', '小雪', '中雪', '大雪', '雾', '霾']),
+      temperatureTrend: generateTimeSeries(24, -5, 35, 1),
+      humidityTrend: generateTimeSeries(24, 30, 95, 1),
+      forecast: Array.from({ length: 7 }, (_, i) => ({
+        date: new Date(Date.now() + i * 86400000).toLocaleDateString('zh-CN', { weekday: 'short' }),
+        high: random(15, 35),
+        low: random(-5, 20),
+        weather: randomChoice(['晴', '多云', '阴', '小雨', '中雨', '雷阵雨'])
+      }))
+    }
+  }
+
+  // 恶劣天气：湿度默认异常，缓慢从 30 上升到 80，曲线呈明显上升趋势
+  const startedAt = severeWeatherStartedAt.value || Date.now()
+  const elapsed = Math.max(0, Date.now() - startedAt)
+  const durationMs = 120000 // 约 2 分钟：30 -> 80
+  const t = Math.max(0, Math.min(1, elapsed / durationMs))
+  const humidity = Number((30 + 50 * t).toFixed(1))
+
+  return {
+    temperature: random(12, 28, 1),
+    humidity,
+    windSpeed: random(10, 25, 1),
+    windDirection: randomChoice(['东北', '东', '东南', '北']),
+    pressure: random(985, 1008, 1),
+    visibility: random(1, 6, 1),
+    precipitation: random(20, 50, 1),
+    uvIndex: random(0, 3),
+    airQuality: random(160, 260),
+    pm25: random(110, 180),
+    pm10: random(160, 240),
+    so2: random(10, 35, 2),
+    no2: random(60, 120, 2),
+    co: random(0.6, 1.6, 2),
+    o3: random(80, 160, 1),
+    weatherType: randomChoice(['大雨', '暴雨', '雷阵雨', '霾']),
+    temperatureTrend: generateTimeSeries(24, 10, 28, 1),
+    humidityTrend: risingSeries(24, 30, 80, 1.2, 1),
+    forecast: Array.from({ length: 7 }, (_, i) => ({
+      date: new Date(Date.now() + i * 86400000).toLocaleDateString('zh-CN', { weekday: 'short' }),
+      high: random(18, 28),
+      low: random(10, 18),
+      weather: randomChoice(['中雨', '大雨', '雷阵雨', '阴'])
+    }))
+  }
+}
 
 // 传感器数据
 export const getSensorData = () => {
@@ -534,7 +587,7 @@ export const getDispatchEfficiency = () => ({
     cancelledCommands: random(5, 20),
     pendingCommands: random(5, 30),
     avgDelay: random(0, 8, 1),
-    punctualityRate: random(90, 99, 1)
+    punctualityRate: 100
   },
   // 近7天趋势
   weeklyTrend: Array.from({ length: 7 }, (_, i) => ({

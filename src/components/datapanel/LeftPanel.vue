@@ -36,21 +36,21 @@
           <div class="weather-label">降水量</div>
         </div>
       </div>
-      <!-- 温度趋势图 -->
+      <!-- 趋势图（恶劣天气/湿度异常时切换为湿度趋势） -->
       <div class="trend-chart">
-        <div class="chart-title">24小时温度趋势</div>
+        <div class="chart-title">{{ trendTitle }}</div>
         <div class="chart-container">
           <svg viewBox="0 0 280 60" class="trend-svg">
             <defs>
               <linearGradient id="tempGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" style="stop-color:#00d4ff;stop-opacity:0.3" />
-                <stop offset="100%" style="stop-color:#00d4ff;stop-opacity:0" />
+                <stop offset="0%" :style="`stop-color:${trendColor};stop-opacity:0.3`" />
+                <stop offset="100%" :style="`stop-color:${trendColor};stop-opacity:0`" />
               </linearGradient>
             </defs>
-            <path :d="temperatureAreaPath" fill="url(#tempGradient)" />
-            <path :d="temperatureLinePath" fill="none" stroke="#00d4ff" stroke-width="2" />
-            <circle v-for="(point, i) in temperaturePoints" :key="i"
-              :cx="point.x" :cy="point.y" r="2" fill="#00d4ff" class="chart-dot" />
+            <path :d="trendAreaPath" fill="url(#tempGradient)" />
+            <path :d="trendLinePath" fill="none" :stroke="trendColor" stroke-width="2.5" />
+            <circle v-for="(point, i) in trendPoints" :key="i"
+              :cx="point.x" :cy="point.y" r="2" :fill="trendColor" class="chart-dot" />
           </svg>
           <div class="chart-labels">
             <span>00:00</span>
@@ -220,32 +220,55 @@ const onlineSensors = computed(() => {
 // 显示前8个传感器
 const displayedSensors = computed(() => processedSensors.value.slice(0, 8))
 
-// 温度趋势图路径
-const temperatureLinePath = computed(() => {
-  const data = weather.value.temperatureTrend
+const trendMode = computed(() => (props.humidityAnomaly ? 'humidity' : 'temperature'))
+const trendTitle = computed(() => (trendMode.value === 'humidity' ? '24小时湿度趋势' : '24小时温度趋势'))
+const trendColor = computed(() => (trendMode.value === 'humidity' ? '#ff2f2f' : '#00d4ff'))
+
+const trendData = computed(() => {
+  return trendMode.value === 'humidity'
+    ? (weather.value.humidityTrend || [])
+    : (weather.value.temperatureTrend || [])
+})
+
+const trendPointY = (v) => {
+  if (trendMode.value === 'humidity') {
+    const vv = Math.max(0, Math.min(100, Number(v)))
+    return 55 - (vv / 100) * 50
+  }
+  const vv = Number(v)
+  return 55 - ((vv + 5) / 40) * 50
+}
+
+const trendLinePath = computed(() => {
+  const data = trendData.value
+  if (!data.length) return ''
   const points = data.map((v, i) => {
     const x = (i / (data.length - 1)) * 280
-    const y = 55 - ((v + 5) / 40) * 50
+    const y = trendPointY(v)
     return `${x},${y}`
   })
   return `M${points.join(' L')}`
 })
 
-const temperatureAreaPath = computed(() => {
-  const data = weather.value.temperatureTrend
+const trendAreaPath = computed(() => {
+  const data = trendData.value
+  if (!data.length) return ''
   const points = data.map((v, i) => {
     const x = (i / (data.length - 1)) * 280
-    const y = 55 - ((v + 5) / 40) * 50
+    const y = trendPointY(v)
     return `${x},${y}`
   })
   return `M0,60 L${points.join(' L')} L280,60 Z`
 })
 
-const temperaturePoints = computed(() => {
-  const data = weather.value.temperatureTrend
-  return data.filter((_, i) => i % 4 === 0).map((v, i) => ({
-    x: (i * 4 / (data.length - 1)) * 280,
-    y: 55 - ((v + 5) / 40) * 50
+const trendPoints = computed(() => {
+  const data = trendData.value
+  if (!data.length) return []
+  // 取 6 个点用于 hover 显示（保持原来“稀疏点”效果）
+  const step = Math.max(1, Math.floor(data.length / 6))
+  return data.filter((_, i) => i % step === 0).map((v, i) => ({
+    x: (i * step / (data.length - 1)) * 280,
+    y: trendPointY(v)
   }))
 })
 

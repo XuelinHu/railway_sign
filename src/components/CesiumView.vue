@@ -174,7 +174,7 @@
             <!-- 天气曲线图 -->
             <div class="weather-chart-section">
               <div class="history-header">
-                <span class="history-label">温度趋势</span>
+                <span class="history-label">{{ weatherTrendTitle }}</span>
                 <select v-model="weatherTimeRange" class="time-select" @change="onWeatherTimeChange">
                   <option value="24h">近24小时</option>
                   <option value="week">近一周</option>
@@ -184,8 +184,8 @@
               <svg viewBox="0 0 280 70" class="history-svg">
                 <defs>
                   <linearGradient id="weatherGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                    <stop offset="0%" style="stop-color:#ff9900;stop-opacity:0.4" />
-                    <stop offset="100%" style="stop-color:#ff9900;stop-opacity:0" />
+                    <stop offset="0%" :style="`stop-color:${weatherTrendColor};stop-opacity:0.4`" />
+                    <stop offset="100%" :style="`stop-color:${weatherTrendColor};stop-opacity:0`" />
                   </linearGradient>
                 </defs>
                 <!-- 网格线 -->
@@ -193,14 +193,14 @@
                 <line x1="10" y1="35" x2="270" y2="35" stroke="rgba(255,255,255,0.1)" stroke-width="1" />
                 <line x1="10" y1="55" x2="270" y2="55" stroke="rgba(255,255,255,0.1)" stroke-width="1" />
                 <polygon :points="weatherAreaPoints" fill="url(#weatherGradient)" />
-                <polyline :points="weatherLinePoints" fill="none" stroke="#ff9900" stroke-width="2" />
+                <polyline :points="weatherLinePoints" fill="none" :stroke="weatherTrendColor" stroke-width="2" />
                 <circle v-for="(point, idx) in weatherChartPoints" :key="idx"
-                  :cx="point.x" :cy="point.y" r="3" fill="#ff9900"
+                  :cx="point.x" :cy="point.y" r="3" :fill="weatherTrendColor"
                   @mouseenter="hoveredWeatherPoint = idx"
                   @mouseleave="hoveredWeatherPoint = null" />
               </svg>
               <div v-if="hoveredWeatherPoint !== null" class="chart-tooltip weather-tooltip">
-                {{ weatherTimeLabels[hoveredWeatherPoint] }}: {{ currentWeatherData[hoveredWeatherPoint] }}°C
+                {{ weatherTimeLabels[hoveredWeatherPoint] }}: {{ currentWeatherData[hoveredWeatherPoint] }}{{ weatherTrendUnit }}
               </div>
             </div>
 
@@ -247,14 +247,17 @@
         </div>
 
         <!-- 空气质量 -->
-        <div class="panel-card aqi-card">
+        <div class="panel-card aqi-card" :class="{ 'aqi-flash': airQualitySevereWarning }">
           <div class="panel-header">
             <span class="panel-title">空气质量</span>
             <span class="panel-subtitle">AIR QUALITY</span>
           </div>
           <div class="panel-content">
+            <div v-if="airQualitySevereWarning" class="aqi-severe-warning">
+              红色预警：空气质量严重污染，请注意防护
+            </div>
             <div class="aqi-summary">
-              <div class="aqi-value" :class="aqiClass">{{ airQuality.aqi }}</div>
+              <div class="aqi-value" :class="aqiClass" :style="{ color: airQualityColor }">{{ airQuality.aqi }}</div>
               <div class="aqi-level">{{ airQuality.level }}</div>
               <div class="aqi-unit">AQI</div>
             </div>
@@ -293,10 +296,11 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import * as Cesium from 'cesium'
 import 'cesium/Build/Cesium/Widgets/widgets.css'
 import api from '../services/api.js'
+import { severeWeatherEnabled, setSevereWeatherEnabled } from '../services/simulationState.js'
 
 // 设置 Cesium Ion 访问令牌
 Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI1MGE2NjE5OC05YmU5LTRiMTctODYxOC1hZWE0YTU0NDJmM2UiLCJpZCI6Mzg5Mzg5LCJpYXQiOjE3NzA3NzE2MjR9.XlfsTRYLQkmlFzS3Z-rGNLnchNdPlNqZUfzdX4SHtWU'
@@ -305,7 +309,6 @@ Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOi
 const cesiumContainer = ref(null)
 const leftPanelVisible = ref(true)
 const rightPanelVisible = ref(true)
-const severeWeatherEnabled = ref(false)
 
 let viewer = null
 let beaconPoints = []
@@ -318,6 +321,12 @@ let updateDataTimer = null
 const defaultFogDensity = 0.0001
 let bgmAudio = null
 let audioUnlockHandler = null
+let cameraAngleChangedHandler = null
+
+let severeWeatherEffectTimer = null
+let severeWeatherHumidityTimer = null
+let severeWeatherAqiTimer = null
+const airQualitySevereWarning = ref(false)
 
 // ===== 地理震动数据 =====
 const seismicLevel = ref(2.3)
@@ -432,7 +441,7 @@ const currentRailway = ref({
 const trainStats = ref({
   passed: 42,
   total: 58,
-  onTime: 96.5,
+  onTime: 100,
   nextTrain: 'G1502 14:35'
 })
 
@@ -475,16 +484,36 @@ const weatherDataMonth = ref([
   24, 25, 26, 27, 28, 29, 28, 27, 26, 26
 ])
 
+// 湿度历史数据（用于恶劣天气模拟的上升折线）
+const humidityData24h = ref([
+  38, 39, 40, 41, 42, 44, 46, 47, 48, 50, 52, 54,
+  55, 56, 58, 60, 61, 62, 64, 66, 67, 68, 69, 70
+])
+const humidityDataWeek = ref([45, 48, 52, 56, 60, 66, 72])
+const humidityDataMonth = ref(Array.from({ length: 30 }, (_, i) => Math.min(80, 35 + i * 1.2)))
+
+const weatherTrendMode = computed(() => (severeWeatherEnabled.value ? 'humidity' : 'temperature'))
+const weatherTrendTitle = computed(() => (weatherTrendMode.value === 'humidity' ? '湿度趋势' : '温度趋势'))
+const weatherTrendUnit = computed(() => (weatherTrendMode.value === 'humidity' ? '%' : '°C'))
+const weatherTrendColor = computed(() => (weatherTrendMode.value === 'humidity' ? '#ff4040' : '#ff9900'))
+
 const weatherTimeLabels24h = Array.from({ length: 24 }, (_, i) => `${String(i).padStart(2, '0')}:00`)
 const weatherTimeLabelsWeek = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
 const weatherTimeLabelsMonth = Array.from({ length: 30 }, (_, i) => `${i + 1}日`)
 
 const currentWeatherData = computed(() => {
-  switch (weatherTimeRange.value) {
-    case 'week': return weatherDataWeek.value
-    case 'month': return weatherDataMonth.value
-    default: return weatherData24h.value
+  const byRange = (tempData, humidData) => {
+    switch (weatherTimeRange.value) {
+      case 'week': return weatherTrendMode.value === 'humidity' ? humidData.week : tempData.week
+      case 'month': return weatherTrendMode.value === 'humidity' ? humidData.month : tempData.month
+      default: return weatherTrendMode.value === 'humidity' ? humidData.h24 : tempData.h24
+    }
   }
+
+  return byRange(
+    { h24: weatherData24h.value, week: weatherDataWeek.value, month: weatherDataMonth.value },
+    { h24: humidityData24h.value, week: humidityDataWeek.value, month: humidityDataMonth.value }
+  )
 })
 
 const weatherTimeLabels = computed(() => {
@@ -501,12 +530,13 @@ const weatherChartPoints = computed(() => {
   const width = 260
   const height = 50
   const padding = 10
-  const minTemp = 15
-  const maxTemp = 35
+  const minVal = weatherTrendMode.value === 'humidity' ? 0 : 15
+  const maxVal = weatherTrendMode.value === 'humidity' ? 100 : 35
+  const range = Math.max(1, maxVal - minVal)
 
   return data.map((v, i) => ({
     x: padding + (i / (count - 1)) * width,
-    y: padding + height - ((v - minTemp) / (maxTemp - minTemp)) * height
+    y: padding + height - ((v - minVal) / range) * height
   }))
 })
 
@@ -584,7 +614,7 @@ const airQualityDataDay = ref([
 const airQualityDataWeek = ref([45, 52, 60, 58, 50, 47, 43])
 
 const airQualityTimeLabelsDay = Array.from({ length: 24 }, (_, i) => `${String(i).padStart(2, '0')}:00`)
-const airQualityTimeLabelsWeek = ['??', '??', '??', '??', '??', '??', '??']
+const airQualityTimeLabelsWeek = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
 
 const currentAirQualityData = computed(() => {
   return airQualityTimeRange.value === 'week'
@@ -599,9 +629,40 @@ const airQualityTimeLabels = computed(() => {
 })
 
 const airQualityColor = computed(() => {
-  if (airQuality.value.aqi <= 50) return '#33ff33'
-  if (airQuality.value.aqi <= 100) return '#ffcc00'
-  return '#ff3333'
+  const clamp = (v, min, max) => Math.max(min, Math.min(max, v))
+  const aqi = clamp(Number(airQuality.value.aqi) || 0, 0, 200)
+
+  const hexToRgb = (hex) => {
+    const h = String(hex).replace('#', '').trim()
+    const full = h.length === 3 ? h.split('').map(c => c + c).join('') : h
+    const intVal = parseInt(full, 16)
+    return {
+      r: (intVal >> 16) & 255,
+      g: (intVal >> 8) & 255,
+      b: intVal & 255
+    }
+  }
+
+  const rgbToHex = ({ r, g, b }) => {
+    const to2 = (n) => clamp(Math.round(n), 0, 255).toString(16).padStart(2, '0')
+    return `#${to2(r)}${to2(g)}${to2(b)}`
+  }
+
+  const lerp = (a, b, t) => a + (b - a) * t
+  const lerpColor = (a, b, t) => {
+    const ca = hexToRgb(a)
+    const cb = hexToRgb(b)
+    return rgbToHex({
+      r: lerp(ca.r, cb.r, t),
+      g: lerp(ca.g, cb.g, t),
+      b: lerp(ca.b, cb.b, t)
+    })
+  }
+
+  // 0~50: 绿；50~100: 黄；100~200: 红（平滑渐变）
+  if (aqi <= 50) return lerpColor('#22ff55', '#33ff33', aqi / 50)
+  if (aqi <= 100) return lerpColor('#33ff33', '#ffcc00', (aqi - 50) / 50)
+  return lerpColor('#ffcc00', '#ff3333', (aqi - 100) / 100)
 })
 
 const airQualityChartPoints = computed(() => {
@@ -795,27 +856,121 @@ const installAudioUnlockFallback = () => {
 }
 
 const toggleSevereWeather = async () => {
+  setSevereWeatherEnabled(!severeWeatherEnabled.value)
+}
+
+const stopSevereWeatherUiEffects = () => {
+  airQualitySevereWarning.value = false
+  if (severeWeatherEffectTimer) {
+    clearTimeout(severeWeatherEffectTimer)
+    severeWeatherEffectTimer = null
+  }
+  if (severeWeatherHumidityTimer) {
+    clearInterval(severeWeatherHumidityTimer)
+    severeWeatherHumidityTimer = null
+  }
+  if (severeWeatherAqiTimer) {
+    clearInterval(severeWeatherAqiTimer)
+    severeWeatherAqiTimer = null
+  }
+}
+
+const applySevereWeatherChange = async (enabled) => {
   if (!viewer) return
 
-  severeWeatherEnabled.value = !severeWeatherEnabled.value
+  stopSevereWeatherUiEffects()
 
-  if (severeWeatherEnabled.value) {
-    startRainFogSimulation()
-    try {
-      await startBackgroundMusic()
-    } catch (error) {
-      console.warn('背景音乐播放失败:', error)
-      installAudioUnlockFallback()
+  if (!enabled) {
+    stopRainFogSimulation()
+    stopBackgroundMusic()
+    if (audioUnlockHandler) {
+      window.removeEventListener('pointerdown', audioUnlockHandler, true)
+      audioUnlockHandler = null
+    }
+    // 恢复空气质量为正常（避免一直红色）
+    airQuality.value = {
+      aqi: 45,
+      level: '优',
+      pollutants: [
+        { name: 'PM2.5', value: '23μg/m³' },
+        { name: 'PM10', value: '45μg/m³' },
+        { name: 'O3', value: '68μg/m³' },
+        { name: 'NO2', value: '32μg/m³' }
+      ]
     }
     return
   }
 
-  stopRainFogSimulation()
-  stopBackgroundMusic()
-  if (audioUnlockHandler) {
-    window.removeEventListener('pointerdown', audioUnlockHandler, true)
-    audioUnlockHandler = null
+  startRainFogSimulation()
+  try {
+    await startBackgroundMusic()
+  } catch (error) {
+    console.warn('背景音乐播放失败:', error)
+    installAudioUnlockFallback()
   }
+
+  // 启动后 5 秒：空气质量红色预警 + 湿度逐渐上升（折线明显上升）
+  severeWeatherEffectTimer = setTimeout(() => {
+    const startAqi = Number(airQuality.value.aqi) || 45
+    const targetAqi = 185
+    const aqiDuration = 15000
+    const aqiStartedAt = Date.now()
+
+    const levelByAqi = (v) => {
+      if (v <= 50) return '优'
+      if (v <= 100) return '良'
+      if (v <= 150) return '轻度污染'
+      if (v <= 200) return '中度污染'
+      return '重度污染'
+    }
+
+    const startPoll = { pm25: 23, pm10: 45, o3: 68, no2: 32 }
+    const targetPoll = { pm25: 168, pm10: 220, o3: 196, no2: 112 }
+    const lerp = (a, b, t) => a + (b - a) * t
+
+    severeWeatherAqiTimer = setInterval(() => {
+      const t = Math.max(0, Math.min(1, (Date.now() - aqiStartedAt) / aqiDuration))
+      const aqi = Math.round(lerp(startAqi, targetAqi, t))
+      airQuality.value.aqi = aqi
+      airQuality.value.level = levelByAqi(aqi)
+
+      const pm25 = Math.round(lerp(startPoll.pm25, targetPoll.pm25, t))
+      const pm10 = Math.round(lerp(startPoll.pm10, targetPoll.pm10, t))
+      const o3 = Math.round(lerp(startPoll.o3, targetPoll.o3, t))
+      const no2 = Math.round(lerp(startPoll.no2, targetPoll.no2, t))
+      airQuality.value.pollutants = [
+        { name: 'PM2.5', value: `${pm25}μg/m³` },
+        { name: 'PM10', value: `${pm10}μg/m³` },
+        { name: 'O3', value: `${o3}μg/m³` },
+        { name: 'NO2', value: `${no2}μg/m³` }
+      ]
+
+      // 变到红以后：持续闪光提示（用 class + CSS 动画实现）
+      if (aqi >= 150) {
+        airQualitySevereWarning.value = true
+      }
+
+      if (t >= 1) {
+        clearInterval(severeWeatherAqiTimer)
+        severeWeatherAqiTimer = null
+      }
+    }, 500)
+
+    const parseHumidity = (val) => {
+      const num = Number(String(val).replace('%', ''))
+      return Number.isFinite(num) ? num : 60
+    }
+
+    let current = Math.max(30, Math.min(95, parseHumidity(weather.value.humidity)))
+    const target = 95
+
+    severeWeatherHumidityTimer = setInterval(() => {
+      current = Math.min(target, current + 1)
+      weather.value.humidity = `${current}%`
+      humidityData24h.value.shift()
+      humidityData24h.value.push(current)
+    }, 1000)
+  }, 5000)
 }
 
 // ===== Cesium 初始化 =====
@@ -927,12 +1082,50 @@ const initCesium = async () => {
     viewer.scene.globe.alpha = 1.0
     // setupGlobalBreathingGlow() // 暂时去除光晕效果
 
+    installCameraAngleLogger()
+    await applySevereWeatherChange(severeWeatherEnabled.value)
+
     console.log('Cesium 初始化完成！')
     return viewer
   } catch (error) {
     console.error('Cesium 初始化失败:', error)
     throw error
   }
+}
+
+const installCameraAngleLogger = () => {
+  if (!viewer) return
+  if (cameraAngleChangedHandler) {
+    viewer.camera.changed.removeEventListener(cameraAngleChangedHandler)
+    cameraAngleChangedHandler = null
+  }
+
+  let lastLogAt = 0
+  let last = { heading: null, pitch: null, roll: null }
+  cameraAngleChangedHandler = () => {
+    const now = Date.now()
+    if (now - lastLogAt < 600) return
+
+    const heading = Cesium.Math.toDegrees(viewer.camera.heading)
+    const pitch = Cesium.Math.toDegrees(viewer.camera.pitch)
+    const roll = Cesium.Math.toDegrees(viewer.camera.roll)
+
+    const changedEnough =
+      last.heading === null ||
+      Math.abs(heading - last.heading) > 1 ||
+      Math.abs(pitch - last.pitch) > 1 ||
+      Math.abs(roll - last.roll) > 1
+
+    if (!changedEnough) return
+
+    lastLogAt = now
+    last = { heading, pitch, roll }
+    console.log(
+      `[相机角度变化] heading=${heading.toFixed(1)}° pitch=${pitch.toFixed(1)}° roll=${roll.toFixed(1)}°`
+    )
+  }
+
+  viewer.camera.changed.addEventListener(cameraAngleChangedHandler)
 }
 
 const flyToLiuZhou = () => {
@@ -1380,7 +1573,7 @@ const loadDashboardData = async () => {
         trainStats.value = {
           passed: data.trainStats.passed_count || 42,
           total: data.trainStats.total_count || 58,
-          onTime: data.trainStats.on_time_rate || 96.5,
+          onTime: 100,
           nextTrain: data.trainStats.next_train || 'G1502 14:35'
         }
       }
@@ -1481,7 +1674,17 @@ onBeforeUnmount(() => {
     viewer.scene.postProcessStages.remove(globalBreathStage)
     globalBreathStage = null
   }
+  stopSevereWeatherUiEffects()
+  if (viewer && cameraAngleChangedHandler) {
+    viewer.camera.changed.removeEventListener(cameraAngleChangedHandler)
+    cameraAngleChangedHandler = null
+  }
   if (viewer) viewer.destroy()
+})
+
+watch(severeWeatherEnabled, (enabled) => {
+  // 允许从其它页面切换恶劣天气模拟后，同步到 Cesium 视图
+  applySevereWeatherChange(enabled)
 })
 </script>
 
@@ -1895,6 +2098,40 @@ onBeforeUnmount(() => {
 .refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* 空气质量 */
+.aqi-severe-warning {
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 60, 60, 0.85);
+  background: linear-gradient(135deg, rgba(180, 20, 20, 0.85), rgba(110, 10, 10, 0.75));
+  color: #fff;
+  font-size: 12px;
+  font-weight: bold;
+  text-align: center;
+  box-shadow: 0 0 18px rgba(255, 40, 40, 0.55);
+  animation: aqiWarningPulse 0.95s ease-in-out infinite;
+}
+
+@keyframes aqiWarningPulse {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.22); }
+}
+
+.aqi-card.aqi-flash {
+  animation: aqiCardFlash 0.85s ease-in-out infinite;
+}
+
+@keyframes aqiCardFlash {
+  0%, 100% {
+    box-shadow: 0 0 0 rgba(255, 40, 40, 0);
+    border-color: rgba(255, 80, 80, 0.55);
+  }
+  50% {
+    box-shadow: 0 0 26px rgba(255, 50, 50, 0.55);
+    border-color: rgba(255, 60, 60, 0.95);
+  }
+}
+
 .aqi-summary {
   display: flex;
   align-items: baseline;

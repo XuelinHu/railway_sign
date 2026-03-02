@@ -38,12 +38,12 @@
           <span class="weather-icon">🌤</span>
           <span class="weather-temp">{{ weather.temperature }}°C</span>
         </div>
+        <button class="severe-weather-btn" :class="{ active: severeWeatherEnabled }" @click="toggleSevereWeather">
+          {{ severeWeatherEnabled ? '⛈️ 停止恶劣天气' : '⛈️ 恶劣天气模拟' }}
+        </button>
         <div class="anomaly-controls">
-          <button class="anomaly-btn" :class="{ active: humidityAnomaly }" @click="toggleHumidityAnomaly">
-            湿度异常
-          </button>
-          <button class="anomaly-btn" :class="{ active: temperatureAnomaly }" @click="toggleTemperatureAnomaly">
-            温度异常
+          <button class="anomaly-btn clear-btn" :disabled="!humidityAnomaly" @click="clearHumidityAnomaly">
+            异常消除
           </button>
         </div>
       </div>
@@ -54,14 +54,31 @@
         <div v-if="showHumidityAlert" class="global-alert humidity">
           <div class="alert-title">湿度异常告警</div>
           <div class="alert-desc">传感器监控栏检测到湿度数据超限，请立即排查。</div>
-          <button class="alert-close" @click="showHumidityAlert = false">关闭</button>
-        </div>
-      </transition>
-      <transition name="alert-pop">
-        <div v-if="showTemperatureAlert" class="global-alert temperature">
-          <div class="alert-title">温度异常告警</div>
-          <div class="alert-desc">传感器监控栏检测到温度数据超限，请立即排查。</div>
-          <button class="alert-close" @click="showTemperatureAlert = false">关闭</button>
+          <div class="alert-chart">
+            <div class="chart-caption">24小时湿度变化曲线</div>
+            <svg viewBox="0 0 560 150" class="alert-chart-svg">
+              <defs>
+                <linearGradient id="humidityAlertGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                  <stop offset="0%" style="stop-color:#ff2f2f;stop-opacity:0.38" />
+                  <stop offset="100%" style="stop-color:#ff2f2f;stop-opacity:0" />
+                </linearGradient>
+              </defs>
+              <line x1="10" y1="30" x2="550" y2="30" stroke="rgba(255,255,255,0.12)" stroke-width="1" />
+              <line x1="10" y1="70" x2="550" y2="70" stroke="rgba(255,255,255,0.12)" stroke-width="1" />
+              <line x1="10" y1="110" x2="550" y2="110" stroke="rgba(255,255,255,0.12)" stroke-width="1" />
+              <polygon :points="humidityAlertAreaPoints" fill="url(#humidityAlertGradient)" />
+              <polyline :points="humidityAlertLinePoints" fill="none" stroke="#ff2f2f" stroke-width="3" />
+              <g v-for="(p, idx) in humidityAlertLabelPoints" :key="idx">
+                <circle :cx="p.x" :cy="p.y" r="3.2" fill="#ffb0b0" />
+                <text :x="p.x" :y="p.y - 8" text-anchor="middle" fill="#fff" font-size="11" font-weight="bold">
+                  {{ p.value }}
+                </text>
+              </g>
+            </svg>
+          </div>
+          <div class="alert-actions">
+            <button class="alert-close" @click="dismissHumidityAlert">关闭弹框</button>
+          </div>
         </div>
       </transition>
     </div>
@@ -72,7 +89,7 @@
       <aside class="left-aside">
         <LeftPanel
           :humidity-anomaly="humidityAnomaly"
-          :temperature-anomaly="temperatureAnomaly"
+          :temperature-anomaly="false"
         />
       </aside>
 
@@ -123,11 +140,12 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import LeftPanel from './datapanel/LeftPanel.vue'
 import CenterPanel from './datapanel/CenterPanel.vue'
 import RightPanel from './datapanel/RightPanel.vue'
 import { getWeatherData, getOverviewData } from '../services/mockDataService'
+import { severeWeatherEnabled, setSevereWeatherEnabled } from '../services/simulationState.js'
 
 const currentDate = ref('')
 const currentTime = ref('')
@@ -137,15 +155,13 @@ const lastUpdate = ref('')
 const fps = ref(60)
 const dataPoints = ref(12345678)
 const humidityAnomaly = ref(false)
-const temperatureAnomaly = ref(false)
 const showHumidityAlert = ref(false)
-const showTemperatureAlert = ref(false)
+const humidityAlertDismissed = ref(false)
+const humidityAnomalySuppressed = ref(false)
 
 let timeTimer = null
 let updateTimer = null
 let fpsTimer = null
-let humidityAlertTimer = null
-let temperatureAlertTimer = null
 
 // 格式化数字
 const formatNumber = (num) => {
@@ -191,51 +207,89 @@ const updateData = () => {
   dataPoints.value += Math.floor(Math.random() * 1000)
 }
 
-const toggleHumidityAnomaly = () => {
-  humidityAnomaly.value = !humidityAnomaly.value
-  if (humidityAnomaly.value) {
-    showTemperatureAlert.value = false
-    if (temperatureAlertTimer) {
-      clearTimeout(temperatureAlertTimer)
-      temperatureAlertTimer = null
-    }
-    showHumidityAlert.value = true
-    if (humidityAlertTimer) clearTimeout(humidityAlertTimer)
-    humidityAlertTimer = setTimeout(() => {
-      showHumidityAlert.value = false
-      humidityAlertTimer = null
-    }, 5000)
-  } else {
-    showHumidityAlert.value = false
-    if (humidityAlertTimer) {
-      clearTimeout(humidityAlertTimer)
-      humidityAlertTimer = null
-    }
+const toggleSevereWeather = () => {
+  setSevereWeatherEnabled(!severeWeatherEnabled.value)
+}
+
+const clearHumidityAnomaly = () => {
+  humidityAnomaly.value = false
+  showHumidityAlert.value = false
+  humidityAlertDismissed.value = false
+  // 恶劣天气仍在模拟时，允许手动“消除异常”并保持不自动反复弹出
+  if (severeWeatherEnabled.value) {
+    humidityAnomalySuppressed.value = true
   }
 }
 
-const toggleTemperatureAnomaly = () => {
-  temperatureAnomaly.value = !temperatureAnomaly.value
-  if (temperatureAnomaly.value) {
-    showHumidityAlert.value = false
-    if (humidityAlertTimer) {
-      clearTimeout(humidityAlertTimer)
-      humidityAlertTimer = null
-    }
-    showTemperatureAlert.value = true
-    if (temperatureAlertTimer) clearTimeout(temperatureAlertTimer)
-    temperatureAlertTimer = setTimeout(() => {
-      showTemperatureAlert.value = false
-      temperatureAlertTimer = null
-    }, 5000)
-  } else {
-    showTemperatureAlert.value = false
-    if (temperatureAlertTimer) {
-      clearTimeout(temperatureAlertTimer)
-      temperatureAlertTimer = null
-    }
-  }
+const dismissHumidityAlert = () => {
+  showHumidityAlert.value = false
+  humidityAlertDismissed.value = true
 }
+
+watch(severeWeatherEnabled, (enabled) => {
+  if (enabled) {
+    if (!humidityAnomalySuppressed.value) {
+      humidityAnomaly.value = true
+      humidityAlertDismissed.value = false
+      showHumidityAlert.value = true
+    }
+    return
+  }
+
+  // 退出恶劣天气模拟：恢复默认状态
+  humidityAnomalySuppressed.value = false
+  humidityAnomaly.value = false
+  humidityAlertDismissed.value = false
+  showHumidityAlert.value = false
+}, { immediate: true })
+
+const humidityAlertChartPoints = computed(() => {
+  const data = weather.value?.humidityTrend || []
+  if (!Array.isArray(data) || data.length === 0) return []
+  const count = data.length
+  const width = 540
+  const height = 100
+  const paddingLeft = 10
+  const paddingTop = 20
+  const min = 0
+  const max = 100
+  const range = Math.max(1, max - min)
+
+  return data.map((v, i) => ({
+    x: paddingLeft + (i / (count - 1)) * width,
+    y: paddingTop + height - ((v - min) / range) * height
+  }))
+})
+
+const humidityAlertLinePoints = computed(() => humidityAlertChartPoints.value.map(p => `${p.x},${p.y}`).join(' '))
+const humidityAlertAreaPoints = computed(() => {
+  const points = humidityAlertChartPoints.value
+  if (points.length === 0) return ''
+  const bottom = 130
+  const firstX = points[0].x
+  const lastX = points[points.length - 1].x
+  const line = points.map(p => `${p.x},${p.y}`).join(' ')
+  return `${firstX},${bottom} ${line} ${lastX},${bottom}`
+})
+
+const humidityAlertLabelPoints = computed(() => {
+  const data = weather.value?.humidityTrend || []
+  const points = humidityAlertChartPoints.value
+  if (!Array.isArray(data) || !data.length || points.length !== data.length) return []
+
+  // 每 3 个点标一个数值（24h -> 8 个标注），避免过密
+  const step = 3
+  const out = []
+  for (let i = 0; i < data.length; i += step) {
+    out.push({ ...points[i], value: data[i] })
+  }
+  // 末尾再补一个“最新值”
+  const lastIdx = data.length - 1
+  if (lastIdx % step !== 0) {
+    out.push({ ...points[lastIdx], value: data[lastIdx] })
+  }
+  return out
+})
 
 onMounted(() => {
   updateTime()
@@ -252,8 +306,6 @@ onUnmounted(() => {
   if (timeTimer) clearInterval(timeTimer)
   if (updateTimer) clearInterval(updateTimer)
   if (fpsTimer) clearInterval(fpsTimer)
-  if (humidityAlertTimer) clearTimeout(humidityAlertTimer)
-  if (temperatureAlertTimer) clearTimeout(temperatureAlertTimer)
 })
 </script>
 
@@ -393,6 +445,30 @@ onUnmounted(() => {
   justify-content: flex-end;
 }
 
+.severe-weather-btn {
+  padding: 6px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(0, 200, 255, 0.35);
+  background: rgba(0, 40, 80, 0.35);
+  color: #d6f6ff;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  white-space: nowrap;
+}
+
+.severe-weather-btn:hover {
+  border-color: rgba(0, 200, 255, 0.6);
+  background: rgba(0, 60, 120, 0.45);
+}
+
+.severe-weather-btn.active {
+  border-color: rgba(255, 80, 80, 1);
+  background: rgba(255, 45, 45, 0.45);
+  box-shadow: 0 0 18px rgba(255, 45, 45, 0.55);
+  color: #fff;
+}
+
 .anomaly-controls {
   display: flex;
   gap: 8px;
@@ -409,9 +485,21 @@ onUnmounted(() => {
   transition: all 0.25s ease;
 }
 
+.anomaly-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  filter: grayscale(0.4);
+}
+
 .anomaly-btn:hover {
   border-color: rgba(255, 140, 140, 0.7);
   background: rgba(120, 30, 30, 0.45);
+}
+
+.anomaly-btn.clear-btn {
+  border-color: rgba(255, 120, 120, 0.65);
+  background: rgba(120, 20, 20, 0.35);
+  color: #fff;
 }
 
 .anomaly-btn.active {
@@ -434,7 +522,8 @@ onUnmounted(() => {
 }
 
 .global-alert {
-  min-width: 620px;
+  min-width: 860px;
+  max-width: 980px;
   border-radius: 14px;
   border: 2px solid rgba(255, 90, 90, 0.95);
   background: linear-gradient(135deg, rgba(180, 20, 20, 0.96), rgba(120, 12, 12, 0.96));
@@ -466,6 +555,31 @@ onUnmounted(() => {
   font-size: 14px;
   padding: 6px 16px;
   cursor: pointer;
+}
+
+.alert-chart {
+  margin-top: 14px;
+}
+
+.chart-caption {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.92);
+  margin-bottom: 8px;
+  font-weight: bold;
+  letter-spacing: 1px;
+}
+
+.alert-chart-svg {
+  width: 100%;
+  height: 150px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.18);
+  border: 1px solid rgba(255, 110, 110, 0.35);
+}
+
+.alert-actions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .alert-pop-enter-active,

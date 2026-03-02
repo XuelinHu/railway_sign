@@ -1011,7 +1011,7 @@ const handleMinimapMove = (e) => {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-height: 180px;
+  max-height: 260px;
   overflow-y: auto;
 }
 

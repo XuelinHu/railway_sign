@@ -435,6 +435,9 @@ let startTime = Date.now()
 let mixer = null
 let gltfLoader = null
 let modelLabels = []
+let trainLabelEntry = null
+let updateUiTimer = null
+let updateSignalParamsTimer = null
 let trainProgress = 0
 const trainPath = new THREE.CatmullRomCurve3([
   new THREE.Vector3(-168, 3, -168),
@@ -491,14 +494,18 @@ const init = () => {
   renderer.setPixelRatio(window.devicePixelRatio)
   renderer.shadowMap.enabled = true
   renderer.shadowMap.type = THREE.PCFSoftShadowMap
-  document.getElementById('threeContainer').appendChild(renderer.domElement)
+  const containerEl = document.getElementById('threeContainer')
+  containerEl.appendChild(renderer.domElement)
 
   labelRenderer = new CSS2DRenderer()
   labelRenderer.setSize(window.innerWidth, window.innerHeight)
   labelRenderer.domElement.style.position = 'absolute'
   labelRenderer.domElement.style.top = '0'
+  labelRenderer.domElement.style.left = '0'
+  labelRenderer.domElement.style.width = '100%'
+  labelRenderer.domElement.style.height = '100%'
   labelRenderer.domElement.style.pointerEvents = 'none'
-  document.body.appendChild(labelRenderer.domElement)
+  containerEl.appendChild(labelRenderer.domElement)
 
   controls = new OrbitControls(camera, renderer.domElement)
   controls.enableDamping = true
@@ -520,7 +527,7 @@ const init = () => {
 
   animate()
   updateUI()
-  setInterval(updateUI, 1000)
+  updateUiTimer = setInterval(updateUI, 1000)
 
   console.log('Three.js 小地图初始化完成')
 }
@@ -749,8 +756,8 @@ const createSignalLights = () => {
           name: signalNames[index]
         })
 
-        // 信息板位置往下挪一点（降低高度以不遮挡模型）
-        createModelLabel(signGroup, signalNames[index], 15, 65, 45, '109.3887, 24.3076', 6)
+        // 信息板高度降低：与主体模型更贴合（剩余约 1/5 高度）
+        createModelLabel(signGroup, signalNames[index], 28, 65, '109.3887', '24.3076', 1.2)
         updateSignalUI()
         console.log(`信号灯 ${signalNames[index]} 加载成功`)
       },
@@ -797,9 +804,8 @@ const createTrain = () => {
         action.play()
       }
 
-      // 火车头信息板位置也稍微往下挪
-      // 火车头面板高度与主信号灯面板一致
-      createModelLabel(train, '火车头', -5, 75, 60, '109.3900, 24.3100', 6)
+      // 火车头信息板高度降低：与主体模型更贴合（剩余约 1/5 高度）
+      trainLabelEntry = createModelLabel(train, '火车头', 28, 70, '109.3900', '24.3100', 1.2)
 
       console.log('火车头模型加载成功 - 45度角方向，Y轴抬高')
     },
@@ -813,36 +819,19 @@ const createModelLabel = (model, name, temperature, humidity, gpsLon, gpsLat, la
   const div = document.createElement('div')
   div.className = 'model-label'
 
-  let tempClass = 'temp-low'
-  if (temperature < 0) tempClass = 'temp-low'
-  else if (temperature < 20) tempClass = 'temp-medium'
-  else tempClass = 'temp-high'
-
-  const tempPercent = Math.min(Math.abs(temperature) / 40 * 100, 100)
-
   div.innerHTML = `
     <div class="label-title">${name}</div>
     <div class="label-row">
       <span>🌡️ 温度:</span>
-      <span class="label-value">${temperature}°C</span>
+      <span class="label-value" data-field="temperature">${temperature}°C</span>
     </div>
     <div class="label-row">
       <span>💧 湿度:</span>
-      <span class="label-value">${humidity}%</span>
+      <span class="label-value" data-field="humidity">${humidity}%</span>
     </div>
     <div class="label-row">
       <span>📍 GPS:</span>
-      <span class="label-value">${gpsLon}, ${gpsLat}</span>
-    </div>
-    <div class="label-row">
-      <span style="flex: 1; margin-left: 10px;">
-        <span>温度:</span>
-        <span style="flex: 1; margin-left: auto;">
-          <div class="progress-bg">
-            <div class="temp-bar ${tempClass}" style="width: ${tempPercent}%"></div>
-          </div>
-        </span>
-      </span>
+      <span class="label-value" data-field="gps">${gpsLon}, ${gpsLat}</span>
     </div>
   `
 
@@ -851,7 +840,18 @@ const createModelLabel = (model, name, temperature, humidity, gpsLon, gpsLat, la
   label.position.set(0, labelHeight, 0)
   model.add(label)
   // 保存标签信息用于跟随相机
-  modelLabels.push({ object: model, label: label, div: div })
+  const entry = {
+    object: model,
+    label,
+    div,
+    name,
+    fields: {
+      temperature: div.querySelector('[data-field="temperature"]'),
+      humidity: div.querySelector('[data-field="humidity"]'),
+      gps: div.querySelector('[data-field="gps"]')
+    }
+  }
+  modelLabels.push(entry)
 
   // 确保样式被添加到文档中（因为 CSS2DRenderer 的元素不在 Vue scoped 样式作用域内）
   if (!document.querySelector('#model-label-styles')) {
@@ -893,34 +893,34 @@ const createModelLabel = (model, name, temperature, humidity, gpsLon, gpsLat, la
         color: #00d4ff;
         font-weight: bold;
       }
-      .progress-bg {
-        flex: 1;
-        margin-left: 8px;
-      }
-      .temp-bar {
-        height: 6px;
-        background: rgba(0, 100, 150, 0.3);
-        border-radius: 3px;
-        overflow: hidden;
-        margin: 4px 0;
-      }
-      .temp-bar {
-        height: 100%;
-        border-radius: 3px;
-        transition: width 0.3s;
-      }
-      .temp-low {
-        background: linear-gradient(90deg, #4CAF50, #00d4ff);
-      }
-      .temp-medium {
-        background: linear-gradient(90deg, #FFC107, #FF9800);
-      }
-      .temp-high {
-        background: linear-gradient(90deg, #FF5722, #D32F2F);
-      }
     `
     document.head.appendChild(style)
   }
+
+  return entry
+}
+
+const updateLabelFields = (entry, next) => {
+  if (!entry?.fields) return
+  if (entry.fields.temperature && next.temperature != null) {
+    entry.fields.temperature.textContent = `${next.temperature}°C`
+  }
+  if (entry.fields.humidity && next.humidity != null) {
+    entry.fields.humidity.textContent = `${next.humidity}%`
+  }
+  if (entry.fields.gps && next.gps != null) {
+    entry.fields.gps.textContent = next.gps
+  }
+}
+
+const toTrainGps = (pos) => {
+  // 简易映射：仅用于展示“列车行进时 GPS 发生变化”
+  const baseLon = 109.39
+  const baseLat = 24.31
+  const scale = 0.000015
+  const lon = baseLon + pos.x * scale
+  const lat = baseLat + pos.z * scale
+  return { lon, lat }
 }
 
 const createTrees = () => {
@@ -1130,6 +1130,18 @@ const animate = () => {
 
     const nextPoint = trainPath.getPoint((trainProgress + 0.01) % 1)
     train.lookAt(nextPoint)
+
+    // 列车行进：GPS 跟随变化，同时展示温度
+    if (trainLabelEntry) {
+      const { lon, lat } = toTrainGps(train.position)
+      const temp = Math.round((26 + Math.sin(trainProgress * Math.PI * 2) * 3 + Math.random() * 0.6) * 10) / 10
+      const hum = Math.round((60 + Math.cos(trainProgress * Math.PI * 2) * 6 + Math.random() * 1.2) * 10) / 10
+      updateLabelFields(trainLabelEntry, {
+        temperature: temp,
+        humidity: hum,
+        gps: `${lon.toFixed(4)}, ${lat.toFixed(4)}`
+      })
+    }
   }
 
   if (mixer) {
@@ -1148,7 +1160,7 @@ onMounted(async () => {
   init()
 
   // 定期更新信号灯参数
-  setInterval(updateSignalParams, 5000)
+  updateSignalParamsTimer = setInterval(updateSignalParams, 5000)
 })
 
 onBeforeUnmount(() => {
@@ -1157,9 +1169,22 @@ onBeforeUnmount(() => {
   }
   retryTimers.clear()
 
+  if (updateUiTimer) {
+    clearInterval(updateUiTimer)
+    updateUiTimer = null
+  }
+  if (updateSignalParamsTimer) {
+    clearInterval(updateSignalParamsTimer)
+    updateSignalParamsTimer = null
+  }
+
   if (renderer) {
     renderer.dispose()
   }
+  if (labelRenderer?.domElement?.parentNode) {
+    labelRenderer.domElement.parentNode.removeChild(labelRenderer.domElement)
+  }
+  labelRenderer = null
   window.removeEventListener('resize', onWindowResize)
 })
 </script>
@@ -1174,6 +1199,7 @@ onBeforeUnmount(() => {
 #threeContainer {
   width: 100%;
   height: 100%;
+  position: relative;
 }
 
 .control-panel {
@@ -1570,37 +1596,6 @@ onBeforeUnmount(() => {
   flex: 1;
   color: #00d4ff;
   font-weight: bold;
-}
-
-.progress-bg {
-  flex: 1;
-  margin-left: 10px;
-}
-
-.temp-progress {
-  height: 8px;
-  background: rgba(0, 100, 150, 0.3);
-  border-radius: 4px;
-  overflow: hidden;
-  margin: 8px 0;
-}
-
-.temp-bar {
-  height: 100%;
-  border-radius: 4px;
-  transition: width 0.3s;
-}
-
-.temp-low {
-  background: linear-gradient(90deg, #4CAF50, #00d4ff);
-}
-
-.temp-medium {
-  background: linear-gradient(90deg, #FFC107, #FF9800);
-}
-
-.temp-high {
-  background: linear-gradient(90deg, #FF5722, #D32F2F);
 }
 
 /* 参数网格 */

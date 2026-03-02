@@ -15,6 +15,19 @@ let mixer = null // 动画混合器
 let gltfLoader = null
 let modelLabels = []  // 存储所有模型标签
 
+// 进度日志节流：减少“加载进度”刷屏
+function createProgressLogger(label, step = 25) {
+  let lastBucket = -1
+  return (progress) => {
+    if (!progress || !progress.total) return
+    const percent = Math.floor((progress.loaded / progress.total) * 100)
+    const bucket = Math.floor(percent / step) * step
+    if (bucket === lastBucket) return
+    lastBucket = bucket
+    console.log(`${label} 加载进度: ${percent}%`)
+  }
+}
+
 // 初始化 Three.js
 function init() {
   // 创建场景
@@ -187,6 +200,7 @@ function createRailway() {
 
   // 加载并放置多个铁轨段
   railPositions.forEach((pos, index) => {
+    const logProgress = createProgressLogger(`铁轨段 ${index + 1}`, 25)
     gltfLoader.load(
       '/assets/models/railway.glb',
       (gltf) => {
@@ -207,7 +221,7 @@ function createRailway() {
         console.log(`铁轨段 ${index + 1} 加载成功`)
       },
       (progress) => {
-        console.log(`铁轨段 ${index + 1} 加载进度:`, (progress.loaded / progress.total * 100) + '%')
+        logProgress(progress)
       },
       (error) => {
         console.error(`铁轨段 ${index + 1} 加载失败:`, error)
@@ -244,6 +258,7 @@ function createSignalLights() {
   const signalNames = ['进站信号', '出站信号', '区间信号1', '区间信号2']
 
   signalPositions.forEach((pos, index) => {
+    const logProgress = createProgressLogger(`信号灯 ${signalNames[index]}`, 25)
     gltfLoader.load(
       '/assets/models/sign.glb',
       (gltf) => {
@@ -281,7 +296,7 @@ function createSignalLights() {
         console.log(`信号灯 ${signalNames[index]} 加载成功`)
       },
       (progress) => {
-        console.log(`信号灯 ${signalNames[index]} 加载进度:`, (progress.loaded / progress.total * 100) + '%')
+        logProgress(progress)
       },
       (error) => {
         console.error(`信号灯 ${signalNames[index]} 加载失败:`, error)
@@ -306,6 +321,7 @@ function createTrain() {
     gltfLoader = new GLTFLoader()
   }
 
+  const logProgress = createProgressLogger('火车头', 25)
   gltfLoader.load(
     '/assets/models/locomotive.glb',
     (gltf) => {
@@ -337,7 +353,7 @@ function createTrain() {
       console.log('火车头模型加载成功')
     },
     (progress) => {
-      console.log('火车头加载进度:', (progress.loaded / progress.total * 100) + '%')
+      logProgress(progress)
     },
     (error) => {
       console.error('火车头模型加载失败:', error)
@@ -402,6 +418,7 @@ function createStation() {
     gltfLoader = new GLTFLoader()
   }
 
+  const logProgress = createProgressLogger('火车站', 25)
   gltfLoader.load(
     '/assets/models/station.glb',
     (gltf) => {
@@ -425,7 +442,7 @@ function createStation() {
       createModelLabel(station, '柳州火车站', 30, -5, 85, '109.3887, 24.3076')
     },
     (progress) => {
-      console.log('火车站加载进度:', (progress.loaded / progress.total * 100) + '%')
+      logProgress(progress)
     },
     (error) => {
       console.error('火车站模型加载失败:', error)
