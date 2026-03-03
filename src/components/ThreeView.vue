@@ -237,6 +237,14 @@ import { CSS2DRenderer, CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRe
 import gsap from 'gsap'
 import api from '../services/api.js'
 
+const getWorldYaw = (obj) => {
+  if (!obj) return 0
+  const q = new THREE.Quaternion()
+  obj.getWorldQuaternion(q)
+  const e = new THREE.Euler().setFromQuaternion(q, 'YXZ')
+  return e.y || 0
+}
+
 const threeContainer = ref(null)
 
 // 信号灯实时参数

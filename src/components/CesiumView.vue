@@ -1044,8 +1044,10 @@ const initCesium = async () => {
     }
 
     try {
-      const satelliteProvider = await Cesium.ArcGisMapServerImageryProvider.fromBasemapType(
-        Cesium.ArcGisBaseMapType.SATELLITE
+      // 使用公开 ArcGIS World Imagery 服务，避免 iBasemaps token 失效导致 404 刷屏
+      const satelliteProvider = await Cesium.ArcGisMapServerImageryProvider.fromUrl(
+        'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer',
+        { maximumLevel: 19 }
       )
       viewer.imageryLayers.addImageryProvider(satelliteProvider)
     } catch (error) {
