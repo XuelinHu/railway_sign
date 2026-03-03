@@ -1045,6 +1045,9 @@ const createSignalLights = () => {
               const dxy = moveXY / Math.SQRT2
               obj.position.x += dxy
               obj.position.y += dxy
+              // 行人朝 X 轴方向移动两个身位
+              const stepX = Math.max(1.2, objSize.x || 0)
+              obj.position.x += stepX * 2
               pedestrianObject = obj
             }
           }).catch((e) => console.warn('行人模型加载失败:', e))
