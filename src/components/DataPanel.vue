@@ -53,7 +53,10 @@
       <transition name="alert-pop">
         <div v-if="showHumidityAlert" class="global-alert humidity">
           <div class="alert-title">湿度异常告警</div>
-          <div class="alert-desc">传感器监控栏检测到湿度数据超限，请立即排查。</div>
+          <div class="alert-desc">
+            <div class="alert-target">{{ humidityAlertTarget }}</div>
+            <div class="alert-hint">传感器监控栏检测到湿度数据超限，请立即排查。</div>
+          </div>
           <div class="alert-chart">
             <div class="chart-caption">24小时湿度变化曲线</div>
             <svg viewBox="0 0 560 150" class="alert-chart-svg">
@@ -144,7 +147,7 @@ import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import LeftPanel from './datapanel/LeftPanel.vue'
 import CenterPanel from './datapanel/CenterPanel.vue'
 import RightPanel from './datapanel/RightPanel.vue'
-import { getWeatherData, getOverviewData } from '../services/mockDataService'
+import { getWeatherData, getOverviewData, getSignalDispatchData } from '../services/mockDataService'
 import { severeWeatherEnabled, setSevereWeatherEnabled } from '../services/simulationState.js'
 
 const currentDate = ref('')
@@ -158,6 +161,7 @@ const humidityAnomaly = ref(false)
 const showHumidityAlert = ref(false)
 const humidityAlertDismissed = ref(false)
 const humidityAnomalySuppressed = ref(false)
+const humidityAlertTarget = ref('沪昆站X进站信号机、5/7号道岔信号设备异常告警')
 
 let timeTimer = null
 let updateTimer = null
@@ -211,6 +215,35 @@ const toggleSevereWeather = () => {
   setSevereWeatherEnabled(!severeWeatherEnabled.value)
 }
 
+const buildHumidityAlertTarget = () => {
+  try {
+    const dispatch = getSignalDispatchData()
+    const lines = dispatch?.lines || []
+    const chosenLine = lines.length ? lines[Math.floor(Math.random() * lines.length)] : null
+    const lineName = chosenLine?.name || '沪昆高速线'
+
+    const prefix =
+      lineName.includes('沪昆') ? '沪昆' :
+      lineName.includes('京沪') ? '京沪' :
+      lineName.includes('京广') ? '京广' :
+      lineName.includes('陇海') ? '陇海' :
+      lineName.includes('京哈') ? '京哈' : '沪昆'
+
+    const stationSuffix = ['站X', '站东', '站西', '站南', '站北'][Math.floor(Math.random() * 5)]
+    const station = `${prefix}${stationSuffix}`
+
+    const randSwitchNo = () => Math.floor(1 + Math.random() * 24)
+    let a = randSwitchNo()
+    let b = randSwitchNo()
+    if (a === b) b = (b % 24) + 1
+    const [s1, s2] = a < b ? [a, b] : [b, a]
+
+    return `${station}进站信号机、${s1}/${s2}号道岔信号设备异常告警`
+  } catch (e) {
+    return '沪昆站X进站信号机、5/7号道岔信号设备异常告警'
+  }
+}
+
 const clearHumidityAnomaly = () => {
   humidityAnomaly.value = false
   showHumidityAlert.value = false
@@ -229,6 +262,7 @@ const dismissHumidityAlert = () => {
 watch(severeWeatherEnabled, (enabled) => {
   if (enabled) {
     if (!humidityAnomalySuppressed.value) {
+      humidityAlertTarget.value = buildHumidityAlertTarget()
       humidityAnomaly.value = true
       humidityAlertDismissed.value = false
       showHumidityAlert.value = true
@@ -544,6 +578,20 @@ onUnmounted(() => {
 .alert-desc {
   font-size: 16px;
   color: rgba(255, 235, 235, 0.95);
+}
+
+.alert-target {
+  font-size: 18px;
+  font-weight: bold;
+  color: #fff;
+  margin-bottom: 6px;
+  letter-spacing: 0.5px;
+  text-shadow: 0 0 14px rgba(255, 70, 70, 0.6);
+}
+
+.alert-hint {
+  font-size: 15px;
+  color: rgba(255, 235, 235, 0.92);
 }
 
 .alert-close {

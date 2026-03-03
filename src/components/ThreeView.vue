@@ -139,6 +139,30 @@
           </div>
         </div>
       </div>
+
+      <!-- 人形感应器 -->
+      <div class="panel-section">
+        <h2 class="panel-title">
+          <span class="title-icon">🧍</span>
+          <span class="title-text">人形感应器</span>
+          <span class="title-decorator"></span>
+        </h2>
+        <div class="humanoid-sensor">
+          <div class="sensor-row">
+            <span class="sensor-label">电源</span>
+            <span class="sensor-value online">{{ humanoidSensor.power }}</span>
+            <span class="sensor-meta">{{ humanoidSensor.voltage }}</span>
+          </div>
+          <div class="sensor-row">
+            <span class="sensor-label">GPS</span>
+            <span class="sensor-value">{{ humanoidSensor.gps }}</span>
+          </div>
+          <div class="sensor-row">
+            <span class="sensor-label">行人距离</span>
+            <span class="sensor-value warning">{{ humanoidSensor.pedestrianDistance }}</span>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- 右侧数据面板 - 视频监控 -->
@@ -210,6 +234,7 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { CSS2DRenderer, CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js'
+import gsap from 'gsap'
 import api from '../services/api.js'
 
 const threeContainer = ref(null)
@@ -429,7 +454,8 @@ const speedOptions = [
   { label: '快速', value: 0.18 },
   { label: '极速', value: 0.25 }
 ]
-const trainSpeed = ref(0.12)
+// 默认速度稍微慢一点
+const trainSpeed = ref(0.08)
 let clock = new THREE.Clock()
 let startTime = Date.now()
 let mixer = null
@@ -438,6 +464,32 @@ let modelLabels = []
 let trainLabelEntry = null
 let updateUiTimer = null
 let updateSignalParamsTimer = null
+let signalObject = null
+let pedestrianObject = null
+let workerObject = null
+let boxObject = null
+let boxObjectSize = null
+let boxSensorLabelEntry = null
+let boxSensorLight = null
+let boxSensorWave = null
+let boxSensorLabelAnchor = null
+let autoDemoStarted = false
+let autoDemoWaitTimer = null
+let autoDemoFlyTween = null
+
+// 人形感应器面板数据
+const humanoidSensor = ref({
+  power: '正常',
+  voltage: '24V',
+  gps: '--, --',
+  pedestrianDistance: '--'
+})
+const boxSensor = ref({
+  power: '正常',
+  battery: '86%',
+  gps: '--, --',
+  pedestrianDistance: '--'
+})
 let trainProgress = 0
 const trainPath = new THREE.CatmullRomCurve3([
   new THREE.Vector3(-168, 3, -168),
@@ -591,6 +643,22 @@ const createAxisHelper = () => {
   yAxisGroup.add(yArrow)
   axisGroup.add(yAxisGroup)
 
+  // Z 轴
+  const zAxisGroup = new THREE.Group()
+  const zLineGeom = new THREE.CylinderGeometry(lineRadius, lineRadius, axisLength, 8)
+  const zLineMat = new THREE.MeshBasicMaterial({ color: 0x4488ff, transparent: true, opacity: 0.45 })
+  const zLine = new THREE.Mesh(zLineGeom, zLineMat)
+  zLine.rotation.x = Math.PI / 2
+  zLine.position.z = axisLength / 2
+  zAxisGroup.add(zLine)
+  const zArrowGeom = new THREE.ConeGeometry(arrowHeadRadius, arrowHeadLength, 8)
+  const zArrowMat = new THREE.MeshBasicMaterial({ color: 0x4488ff, transparent: true, opacity: 0.45 })
+  const zArrow = new THREE.Mesh(zArrowGeom, zArrowMat)
+  zArrow.rotation.x = Math.PI / 2
+  zArrow.position.z = axisLength + arrowHeadLength / 2
+  zAxisGroup.add(zArrow)
+  axisGroup.add(zAxisGroup)
+
   const createAxisLabel = (text, color, position) => {
     const div = document.createElement('div')
     div.className = 'axis-label-3d'
@@ -609,6 +677,7 @@ const createAxisHelper = () => {
 
   axisGroup.add(createAxisLabel('X', '#ff4444', { x: axisLength + 5, y: 0, z: 0 }))
   axisGroup.add(createAxisLabel('Y', '#44ff44', { x: 0, y: axisLength + 5, z: 0 }))
+  axisGroup.add(createAxisLabel('Z', '#4488ff', { x: 0, y: 0, z: axisLength + 5 }))
   axisGroup.position.set(120, -10, -100)
   scene.add(axisGroup)
 }
@@ -616,7 +685,8 @@ const createAxisHelper = () => {
 const createGround = () => {
   const groundGeometry = new THREE.PlaneGeometry(500, 500, 50, 50)
   const groundMaterial = new THREE.MeshStandardMaterial({
-    color: 0x7a8a6a,
+    // 地面用灰色填充
+    color: 0x808080,
     roughness: 0.9,
     metalness: 0.1
   })
@@ -675,7 +745,8 @@ const createRailway = () => {
 
   // 生成铁轨位置，沿着45度对角线方向 (z = x)
   const railPositions = []
-  for (let i = -12; i <= 12; i++) {  // 增加铁轨数量
+  // 在现有基础上首末各再复制 5 段
+  for (let i = -17; i <= 17; i++) {
     railPositions.push({
       x: i * segmentSpacing,
       z: i * segmentSpacing,  // 45度角时 z = x
@@ -716,11 +787,140 @@ const createSignalLights = () => {
     gltfLoader = new GLTFLoader()
   }
 
+  const getObjectSize = (object3d) => {
+    const box = new THREE.Box3().setFromObject(object3d)
+    const size = new THREE.Vector3()
+    box.getSize(size)
+    return { box, size }
+  }
+
+  const placeOnGround = (object3d) => {
+    const box = new THREE.Box3().setFromObject(object3d)
+    const yOffset = -box.min.y
+    object3d.position.y += yOffset
+  }
+
+  const createBoxSensorLabel = (model) => {
+    const div = document.createElement('div')
+    div.className = 'model-label'
+    div.style.maxWidth = '240px'
+    div.style.minWidth = '190px'
+    div.innerHTML = `
+      <div class="label-title">行人检测传感器</div>
+      <div class="label-row">
+        <span>🔌 电源:</span>
+        <span class="label-value" data-field="power">正常</span>
+      </div>
+      <div class="label-row">
+        <span>🔋 电量:</span>
+        <span class="label-value" data-field="battery">86%</span>
+      </div>
+      <div class="label-row">
+        <span>📍 GPS:</span>
+        <span class="label-value" data-field="gps">--, --</span>
+      </div>
+      <div class="label-row">
+        <span>📏 行人距离:</span>
+        <span class="label-value" data-field="dist">--</span>
+      </div>
+    `
+
+    const label = new CSS2DObject(div)
+    // 不直接挂到 model 上，避免模型旋转导致 label 偏离“正上方”
+    const anchor = new THREE.Object3D()
+    anchor.position.copy(model.position)
+    scene.add(anchor)
+    anchor.add(label)
+
+    return {
+      object: anchor,
+      label,
+      div,
+      fields: {
+        power: div.querySelector('[data-field="power"]'),
+        battery: div.querySelector('[data-field="battery"]'),
+        gps: div.querySelector('[data-field="gps"]'),
+        dist: div.querySelector('[data-field="dist"]')
+      }
+    }
+  }
+
+  const createSensorWave = () => {
+    // 扇形光波（超声波）：最终需要在 X-Z 平面（法线对齐 Y 轴）
+    // CircleGeometry 默认在 XY 平面，这里直接烘焙旋转到 XZ，避免后续叠加旋转导致“看起来不垂直”
+    const radius = 8
+    const angle = Math.PI / 2.6 // 扇形开角
+    const geometry = new THREE.CircleGeometry(radius, 48, -angle / 2, angle)
+    geometry.rotateX(-Math.PI / 2)
+    const material = new THREE.MeshBasicMaterial({
+      color: 0xff3333,
+      transparent: true,
+      opacity: 0.28,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    })
+
+    const mesh = new THREE.Mesh(geometry, material)
+    mesh.renderOrder = 5
+    return mesh
+  }
+
+  const getWorldYaw = (obj) => {
+    if (!obj) return 0
+    const q = new THREE.Quaternion()
+    obj.getWorldQuaternion(q)
+    const e = new THREE.Euler().setFromQuaternion(q, 'YXZ')
+    return e.y || 0
+  }
+
+  const loadAndPlaceNear = async ({ url, desiredHeight, position, rotation = {}, afterPlace }) => {
+    return await new Promise((resolve, reject) => {
+      gltfLoader.load(
+        url,
+        (gltf) => {
+          const obj = gltf.scene
+          if (rotation.x != null) obj.rotation.x = rotation.x
+          if (rotation.y != null) obj.rotation.y = rotation.y
+          if (rotation.z != null) obj.rotation.z = rotation.z
+
+          const { size } = getObjectSize(obj)
+          const baseHeight = Math.max(0.0001, size.y || 0.0001)
+          const scale = desiredHeight / baseHeight
+          obj.scale.setScalar(scale)
+
+          obj.position.set(position.x, position.y ?? 0, position.z)
+          placeOnGround(obj)
+
+          if (typeof afterPlace === 'function') {
+            try {
+              afterPlace(obj, getObjectSize(obj).size)
+            } catch (e) {
+              console.warn('模型后处理失败:', e)
+            }
+          }
+
+          obj.traverse((child) => {
+            if (child.isMesh) {
+              child.castShadow = true
+              child.receiveShadow = true
+            }
+          })
+
+          scene.add(obj)
+          resolve(obj)
+        },
+        undefined,
+        (error) => reject(error)
+      )
+    })
+  }
+
   // 只创建一个信号灯，放在铁轨旁边
   // 铁轨方向是45度角，信号灯往Z方向挪一点
   // 铁轨经过 x=-20, z=-28 的位置（45度角），信号灯放在轨道旁边
   const signalPositions = [
-    { x: -20, z: -38 }  // 往Z方向移动更多，靠近铁轨旁
+    // 主信号灯：缩小 + 轻微挪位，避免与新增模型重叠
+    { x: -24, z: -42 }
   ]
 
   const signalStates = ['red']
@@ -731,8 +931,9 @@ const createSignalLights = () => {
       '/assets/models/sign.glb',
       (gltf) => {
         const signGroup = gltf.scene
-        // 缩小为当前尺寸的 0.7
-        signGroup.scale.set(11.2, 11.2, 11.2)
+        // 信号灯在现有基础上缩放为当前的 1/3
+        const signScale = (11.2 * 0.8) / 3
+        signGroup.scale.set(signScale, signScale, signScale)
         signGroup.position.set(pos.x, 0, pos.z)
 
         signGroup.traverse((child) => {
@@ -743,6 +944,123 @@ const createSignalLights = () => {
         })
 
         scene.add(signGroup)
+        signalObject = signGroup
+
+        // 在主信号灯旁边放置 box / 行人 / 工作者
+        try {
+          // 信号灯由 Z 向 X 轴旋转 120°（绕 Y 轴），并朝 X 轴反方向移动两个身位
+          signGroup.rotation.y = -Math.PI * 2 / 3
+
+          const { size: signSize } = getObjectSize(signGroup)
+          const signStepX = Math.max(2.0, signSize.x || 0)
+          signGroup.position.x -= signStepX * 2
+          const signHeight = Math.max(1, signSize.y)
+
+          const base = { x: signGroup.position.x, z: signGroup.position.z }
+          const dx = Math.max(2.2, signSize.x * 0.9)
+          const dz = Math.max(1.2, signSize.z * 0.4)
+
+          // Box：信号灯的 1/4 大小（按高度比例）
+          loadAndPlaceNear({
+            url: '/assets/models/box.glb',
+            // box ×0.5
+            desiredHeight: signHeight * 0.25 * 0.5,
+            position: { x: base.x + dx, z: base.z + dz },
+            // 由 X 朝 Y 方向旋转 90°（绕 Z 轴）
+            rotation: { y: 0.2, z: Math.PI / 2 },
+            // 盒子改为红色
+            afterPlace: (obj) => {
+              // box 向 Z 轴方向移动两个身位
+              const { size } = getObjectSize(obj)
+              const stepZ = Math.max(1.0, size.z || 0)
+              obj.position.z += stepZ * 2
+              boxObject = obj
+              boxObjectSize = size
+
+              // box 上方信息栏：固定在传感器正上方（使用包围盒高度）
+              boxSensorLabelEntry = createBoxSensorLabel(obj)
+              const { size: bSize } = getObjectSize(obj)
+              boxSensorLabelEntry.label.position.set(0, Math.max(2.5, bSize.y + 1.4), 0)
+              boxSensorLabelAnchor = boxSensorLabelEntry.object
+
+              // 扇形超声波：沿 X-Y 夹角方向（45°）发射
+              if (boxSensorWave) {
+                scene.remove(boxSensorWave)
+                boxSensorWave.geometry?.dispose?.()
+                if (Array.isArray(boxSensorWave.material)) boxSensorWave.material.forEach(m => m.dispose?.())
+                else boxSensorWave.material?.dispose?.()
+                boxSensorWave = null
+              }
+              boxSensorWave = createSensorWave()
+              boxSensorWave.position.set(obj.position.x, obj.position.y + 1.6, obj.position.z)
+              // 光波应该垂直于 Y 轴：已烘焙到 X-Z 平面，这里只需要设置朝向（绕 Y 轴）
+              boxSensorWave.rotation.set(0, getWorldYaw(obj), 0)
+              scene.add(boxSensorWave)
+
+              // 行人传感器红色发光（点光源）
+              if (boxSensorLight) {
+                scene.remove(boxSensorLight)
+                boxSensorLight = null
+              }
+              boxSensorLight = new THREE.PointLight(0xff2222, 2.4, 40)
+              boxSensorLight.position.set(obj.position.x, obj.position.y + 4.2, obj.position.z)
+              scene.add(boxSensorLight)
+
+              obj.traverse((child) => {
+                if (!child.isMesh || !child.material) return
+                const mats = Array.isArray(child.material) ? child.material : [child.material]
+                mats.forEach((m) => {
+                  if (m.color) m.color.setHex(0xff3333)
+                  if (m.emissive) m.emissive.setHex(0xff0000)
+                  if ('emissiveIntensity' in m) m.emissiveIntensity = 0.85
+                  m.needsUpdate = true
+                })
+              })
+            }
+          }).catch((e) => console.warn('Box 模型加载失败:', e))
+
+          // 行人/工作者：放在信号灯旁边，大小略小于信号灯（按高度比例）
+          loadAndPlaceNear({
+            url: '/assets/models/man.glb',
+            // 人物 ×1.2
+            desiredHeight: signHeight * 0.55 * 1.2,
+            position: { x: base.x + dx * 0.35, z: base.z - dz * 0.85 },
+            rotation: { y: -Math.PI / 6 },
+            // 行人沿 X-Z 45° 方向移动 6 个身位，并再沿 X-Y 45° 方向移动 2 个身位
+            afterPlace: (obj, objSize) => {
+              const step = Math.max(1.2, objSize.x || 0, objSize.z || 0)
+              const move = step * 6
+              const d = move / Math.SQRT2
+              obj.position.x += d
+              obj.position.z += d
+              const moveXY = step * 2
+              const dxy = moveXY / Math.SQRT2
+              obj.position.x += dxy
+              obj.position.y += dxy
+              pedestrianObject = obj
+            }
+          }).catch((e) => console.warn('行人模型加载失败:', e))
+
+          // 用户口述为 word_man.glb，仓库实际文件名为 work_man.glb
+          loadAndPlaceNear({
+            url: '/assets/models/work_man.glb',
+            // 人物 ×1.2
+            desiredHeight: signHeight * 0.6 * 1.2,
+            position: { x: base.x + dx * 0.75, z: base.z - dz * 0.35 },
+            rotation: { y: Math.PI / 10 },
+            // 检修人员往 Z 轴移动一个身位
+            afterPlace: (obj, objSize) => {
+              // 检修人员朝 X 轴反方向移动两身位
+              const stepX = Math.max(1.2, objSize.x || 0)
+              obj.position.x -= stepX * 2
+              const stepZ = Math.max(1.2, objSize.z || 0)
+              obj.position.z += stepZ * 1
+              workerObject = obj
+            }
+          }).catch((e) => console.warn('工作者模型加载失败:', e))
+        } catch (e) {
+          console.warn('主信号灯旁模型摆放失败:', e)
+        }
 
         const color = getColorByState(signalStates[index])
         const light = new THREE.PointLight(color, 3, 80)
@@ -756,8 +1074,8 @@ const createSignalLights = () => {
           name: signalNames[index]
         })
 
-        // 信息板高度降低：与主体模型更贴合（剩余约 1/5 高度）
-        createModelLabel(signGroup, signalNames[index], 28, 65, '109.3887', '24.3076', 1.2)
+        // 主信号灯信息栏高度在现有基础上再加一倍
+        createModelLabel(signGroup, signalNames[index], 28, 65, '109.3887', '24.3076', 2.4)
         updateSignalUI()
         console.log(`信号灯 ${signalNames[index]} 加载成功`)
       },
@@ -874,6 +1192,16 @@ const createModelLabel = (model, name, temperature, humidity, gpsLon, gpsLat, la
         transform: translate(-50%, -100%);  /* 居中并在上方 */
         z-index: 0;  /* 确保在模型后面 */
       }
+      .model-label.sensor-warning {
+        border-color: rgba(255, 40, 40, 0.95) !important;
+        background: linear-gradient(135deg, rgba(180, 20, 20, 0.88), rgba(90, 10, 10, 0.78)) !important;
+        box-shadow: 0 0 22px rgba(255, 40, 40, 0.55) !important;
+        animation: sensorWarningFlash 0.85s ease-in-out infinite;
+      }
+      @keyframes sensorWarningFlash {
+        0%, 100% { filter: brightness(1); }
+        50% { filter: brightness(1.28); }
+      }
       .label-title {
         font-size: 14px;
         font-weight: bold;
@@ -921,6 +1249,145 @@ const toTrainGps = (pos) => {
   const lon = baseLon + pos.x * scale
   const lat = baseLat + pos.z * scale
   return { lon, lat }
+}
+
+const updateHumanoidSensorPanel = () => {
+  if (!signalObject) return
+
+  const refObj = pedestrianObject || workerObject
+  if (!refObj) return
+
+  const dx = refObj.position.x - signalObject.position.x
+  const dy = refObj.position.y - signalObject.position.y
+  const dz = refObj.position.z - signalObject.position.z
+  const dist = Math.sqrt(dx * dx + dy * dy + dz * dz)
+
+  const { lon, lat } = toTrainGps(refObj.position)
+  humanoidSensor.value.gps = `${lon.toFixed(4)}, ${lat.toFixed(4)}`
+  humanoidSensor.value.pedestrianDistance = `${(dist * 1.6).toFixed(1)}m`
+}
+
+const updateBoxSensorLabel = () => {
+  if (!boxObject || !boxSensorLabelEntry?.fields) return
+  const refObj = pedestrianObject || workerObject
+  if (!refObj) return
+
+  const dx = refObj.position.x - boxObject.position.x
+  const dy = refObj.position.y - boxObject.position.y
+  const dz = refObj.position.z - boxObject.position.z
+  const dist = Math.sqrt(dx * dx + dy * dy + dz * dz)
+  const { lon, lat } = toTrainGps(boxObject.position)
+
+  boxSensor.value.gps = `${lon.toFixed(4)}, ${lat.toFixed(4)}`
+  boxSensor.value.pedestrianDistance = `${(dist * 1.6).toFixed(1)}m`
+
+  // 行人经过预警：距离近时闪烁增强发光
+  const meters = dist * 1.6
+  const isWarning = meters < 20
+  if (boxSensorLight && boxObject) {
+    boxSensorLight.position.set(boxObject.position.x, boxObject.position.y + 4.2, boxObject.position.z)
+    const t = Date.now() * 0.01
+    boxSensorLight.intensity = isWarning ? (4.2 + Math.sin(t * 7) * 2.0) : 2.4
+  }
+  if (boxObject) {
+    boxObject.traverse((child) => {
+      if (!child.isMesh || !child.material) return
+      const mats = Array.isArray(child.material) ? child.material : [child.material]
+      mats.forEach((m) => {
+        if (m.emissive) m.emissive.setHex(0xff0000)
+        if ('emissiveIntensity' in m) {
+          m.emissiveIntensity = isWarning ? (1.25 + Math.sin(Date.now() * 0.02) * 0.6) : 0.85
+        }
+        m.needsUpdate = true
+      })
+    })
+  }
+
+  // 传感器信息栏始终在 box 正上方（世界坐标系）
+  if (boxSensorLabelAnchor && boxObject) {
+    boxSensorLabelAnchor.position.set(boxObject.position.x, boxObject.position.y, boxObject.position.z)
+    boxSensorLabelAnchor.rotation.set(0, 0, 0)
+  }
+
+  // 扇形超声波动画（缩放 + 淡出循环），并跟随传感器位置
+  if (boxSensorWave && boxObject) {
+    const bSize = boxObjectSize
+    const waveY = boxObject.position.y + Math.max(0.2, (bSize?.y || 0) * 0.55)
+    boxSensorWave.position.set(boxObject.position.x, waveY, boxObject.position.z)
+    // 强制保持在 X-Z 平面（垂直于 Y 轴）：几何已烘焙旋转，这里只跟随朝向（绕 Y 轴）
+    boxSensorWave.rotation.set(0, getWorldYaw(boxObject), 0)
+    const period = 1300
+    const t = (Date.now() % period) / period
+    const scale = 0.6 + t * 2.4
+    boxSensorWave.scale.set(scale, scale, scale)
+    const baseOpacity = isWarning ? 0.45 : 0.28
+    boxSensorWave.material.opacity = Math.max(0, (1 - t) * baseOpacity)
+    boxSensorWave.material.color.setHex(isWarning ? 0xff1111 : 0xff3333)
+  }
+
+  // 信息栏红色告警（距离 < 10m）
+  if (boxSensorLabelEntry?.div) {
+    boxSensorLabelEntry.div.classList.toggle('sensor-warning', isWarning)
+  }
+
+  boxSensorLabelEntry.fields.power.textContent = boxSensor.value.power
+  boxSensorLabelEntry.fields.battery.textContent = boxSensor.value.battery
+  boxSensorLabelEntry.fields.gps.textContent = boxSensor.value.gps
+  boxSensorLabelEntry.fields.dist.textContent = boxSensor.value.pedestrianDistance
+}
+
+const startAutoDemo = () => {
+  if (autoDemoStarted) return
+  autoDemoStarted = true
+
+  autoDemoWaitTimer = setInterval(() => {
+    if (!workerObject || !controls || !camera || !train || !signalObject) return
+    clearInterval(autoDemoWaitTimer)
+    autoDemoWaitTimer = null
+
+    const workerPos = new THREE.Vector3()
+    workerObject.getWorldPosition(workerPos)
+
+    const camTo = workerPos.clone().add(new THREE.Vector3(22, 14, 22))
+
+    const state = {
+      camX: camera.position.x,
+      camY: camera.position.y,
+      camZ: camera.position.z,
+      tx: controls.target.x,
+      ty: controls.target.y,
+      tz: controls.target.z
+    }
+
+    autoDemoFlyTween = gsap.to(state, {
+      camX: camTo.x,
+      camY: camTo.y,
+      camZ: camTo.z,
+      tx: workerPos.x,
+      ty: workerPos.y,
+      tz: workerPos.z,
+      duration: 7,
+      ease: 'power2.inOut',
+      onUpdate: () => {
+        camera.position.set(state.camX, state.camY, state.camZ)
+        controls.target.set(state.tx, state.ty, state.tz)
+        controls.update()
+      },
+      onComplete: () => {
+        // 保持一定距离后开始旋转
+        autoRotate = true
+
+        // 自动触发火车头行进，并从信号灯附近开始
+        const nearSignal = new THREE.Vector3(signalObject.position.x, 3, signalObject.position.z)
+        trainProgress = getClosestPathProgress(nearSignal, 800)
+        const startPoint = trainPath.getPoint(trainProgress)
+        train.position.copy(startPoint)
+        const nextPoint = trainPath.getPoint((trainProgress + 0.01) % 1)
+        train.lookAt(nextPoint)
+        isTrainRunning = true
+      }
+    })
+  }, 200)
 }
 
 const createTrees = () => {
@@ -1144,6 +1611,9 @@ const animate = () => {
     }
   }
 
+  updateHumanoidSensorPanel()
+  updateBoxSensorLabel()
+
   if (mixer) {
     mixer.update(delta)
   }
@@ -1158,6 +1628,8 @@ onMounted(async () => {
   await updateSignalParams()
 
   init()
+  // 页面加载完成后自动演示：飞向工作人员 -> 到位后旋转 -> 自动触发行进
+  startAutoDemo()
 
   // 定期更新信号灯参数
   updateSignalParamsTimer = setInterval(updateSignalParams, 5000)
@@ -1178,6 +1650,15 @@ onBeforeUnmount(() => {
     updateSignalParamsTimer = null
   }
 
+  if (autoDemoWaitTimer) {
+    clearInterval(autoDemoWaitTimer)
+    autoDemoWaitTimer = null
+  }
+  if (autoDemoFlyTween) {
+    autoDemoFlyTween.kill()
+    autoDemoFlyTween = null
+  }
+
   if (renderer) {
     renderer.dispose()
   }
@@ -1185,6 +1666,22 @@ onBeforeUnmount(() => {
     labelRenderer.domElement.parentNode.removeChild(labelRenderer.domElement)
   }
   labelRenderer = null
+  if (boxSensorLight && scene) {
+    scene.remove(boxSensorLight)
+    boxSensorLight = null
+  }
+  if (boxSensorWave && scene) {
+    scene.remove(boxSensorWave)
+    boxSensorWave.geometry?.dispose?.()
+    if (Array.isArray(boxSensorWave.material)) boxSensorWave.material.forEach(m => m.dispose?.())
+    else boxSensorWave.material?.dispose?.()
+    boxSensorWave = null
+  }
+  if (boxSensorLabelAnchor && scene) {
+    scene.remove(boxSensorLabelAnchor)
+    boxSensorLabelAnchor = null
+    boxSensorLabelEntry = null
+  }
   window.removeEventListener('resize', onWindowResize)
 })
 </script>
@@ -1671,6 +2168,44 @@ onBeforeUnmount(() => {
 .device-status {
   margin-bottom: 15px;
 }
+
+.humanoid-sensor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.sensor-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: rgba(0, 100, 150, 0.1);
+  border-radius: 6px;
+  border: 1px solid rgba(0, 200, 255, 0.18);
+}
+
+.sensor-label {
+  font-size: 12px;
+  color: #aaa;
+  min-width: 60px;
+}
+
+.sensor-value {
+  font-size: 12px;
+  color: #fff;
+  font-weight: bold;
+  flex: 1;
+}
+
+.sensor-meta {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.sensor-value.online { color: #33ff33; }
+.sensor-value.warning { color: #ffaa00; }
 
 .status-row {
   display: flex;
