@@ -12,6 +12,9 @@
       <button class="toggle-btn" @click="toggleRightPanel">
         {{ rightPanelVisible ? '隐藏右侧 ▶' : '◀ 显示右侧' }}
       </button>
+      <button class="toggle-btn" :class="{ active: cameraCruiseEnabled }" @click="toggleCameraCruise">
+        {{ cameraCruiseEnabled ? '🎥 停止巡航' : '🎥 自动巡航' }}
+      </button>
       <button class="toggle-btn" :class="{ active: severeWeatherEnabled }" @click="toggleSevereWeather">
         {{ severeWeatherEnabled ? '⛈️ 停止恶劣天气' : '⛈️ 恶劣天气模拟' }}
       </button>
@@ -254,15 +257,15 @@
           </div>
           <div class="panel-content">
             <div v-if="airQualitySevereWarning" class="aqi-severe-warning">
-              红色预警：空气质量严重污染，请注意防护
+              红色告警：空气湿度过高，请注意防潮
             </div>
             <div class="aqi-summary">
-              <div class="aqi-value" :class="aqiClass" :style="{ color: airQualityColor }">{{ airQuality.aqi }}</div>
-              <div class="aqi-level">{{ airQuality.level }}</div>
-              <div class="aqi-unit">AQI</div>
+              <div class="aqi-value" :class="humidityClass" :style="{ color: airQualityColor }">{{ airHumidity }}</div>
+              <div class="aqi-level">{{ airHumidityLevel }}</div>
+              <div class="aqi-unit">%</div>
             </div>
             <div class="history-header">
-              <span class="history-label">空气质量趋势</span>
+              <span class="history-label">空气湿度趋势</span>
               <select v-model="airQualityTimeRange" class="time-select" @change="onAirQualityTimeChange">
                 <option value="day">天</option>
                 <option value="week">周</option>
@@ -324,11 +327,19 @@ const defaultFogDensity = 0.0001
 let bgmAudio = null
 let audioUnlockHandler = null
 let cameraAngleChangedHandler = null
+let cameraCruiseRafId = null
+let cameraCruiseAutoPauseHandler = null
+let cameraCruiseStartedAt = 0
+let cameraCruiseTarget = null
+let cameraCruiseBaseCenter = null
+let cameraCruiseEnuToFixed = null
+let cameraCruiseRange = 0
 
 let severeWeatherEffectTimer = null
 let severeWeatherHumidityTimer = null
 let severeWeatherAqiTimer = null
 const airQualitySevereWarning = ref(false)
+const cameraCruiseEnabled = ref(true)
 
 // ===== 地理震动数据 =====
 const seismicLevel = ref(2.3)
@@ -599,29 +610,40 @@ const airQuality = ref({
   ]
 })
 
-const aqiClass = computed(() => {
-  if (airQuality.value.aqi <= 50) return 'aqi-good'
-  if (airQuality.value.aqi <= 100) return 'aqi-moderate'
-  return 'aqi-bad'
+const parsePercent = (val, fallback = 0) => {
+  const num = Number(String(val).replace('%', '').trim())
+  return Number.isFinite(num) ? num : fallback
+}
+
+const airHumidity = computed(() => {
+  return Math.round(Math.max(0, Math.min(100, parsePercent(weather.value.humidity, 60))))
+})
+
+const airHumidityLevel = computed(() => {
+  const h = airHumidity.value
+  if (h >= 70) return '红色告警'
+  if (h >= 60) return '橙色告警'
+  return '正常'
+})
+
+const humidityClass = computed(() => {
+  const h = airHumidity.value
+  if (h >= 70) return 'aqi-bad'
+  if (h >= 60) return 'aqi-moderate'
+  return 'aqi-good'
 })
 
 const airQualityTimeRange = ref('day')
 const hoveredAirQualityPoint = ref(null)
 
-const airQualityDataDay = ref([
-  42, 40, 38, 36, 35, 34, 36, 40, 48, 55, 62, 68,
-  72, 75, 70, 66, 60, 55, 50, 48, 46, 45, 44, 43
-])
-
-const airQualityDataWeek = ref([45, 52, 60, 58, 50, 47, 43])
-
 const airQualityTimeLabelsDay = Array.from({ length: 24 }, (_, i) => `${String(i).padStart(2, '0')}:00`)
 const airQualityTimeLabelsWeek = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
 
 const currentAirQualityData = computed(() => {
+  // 这里展示“空气湿度趋势”，不是污染程度
   return airQualityTimeRange.value === 'week'
-    ? airQualityDataWeek.value
-    : airQualityDataDay.value
+    ? humidityDataWeek.value
+    : humidityData24h.value
 })
 
 const airQualityTimeLabels = computed(() => {
@@ -632,7 +654,7 @@ const airQualityTimeLabels = computed(() => {
 
 const airQualityColor = computed(() => {
   const clamp = (v, min, max) => Math.max(min, Math.min(max, v))
-  const aqi = clamp(Number(airQuality.value.aqi) || 0, 0, 200)
+  const humidity = clamp(airHumidity.value, 0, 100)
 
   const hexToRgb = (hex) => {
     const h = String(hex).replace('#', '').trim()
@@ -661,10 +683,10 @@ const airQualityColor = computed(() => {
     })
   }
 
-  // 0~50: 绿；50~100: 黄；100~200: 红（平滑渐变）
-  if (aqi <= 50) return lerpColor('#22ff55', '#33ff33', aqi / 50)
-  if (aqi <= 100) return lerpColor('#33ff33', '#ffcc00', (aqi - 50) / 50)
-  return lerpColor('#ffcc00', '#ff3333', (aqi - 100) / 100)
+  // <60: 绿；60~70: 橙；>=70: 红（湿度告警）
+  if (humidity < 60) return lerpColor('#22ff55', '#33ff33', humidity / 60)
+  if (humidity < 70) return lerpColor('#ffcc00', '#ff9900', (humidity - 60) / 10)
+  return lerpColor('#ff3333', '#ff3333', 1)
 })
 
 const airQualityChartPoints = computed(() => {
@@ -675,7 +697,7 @@ const airQualityChartPoints = computed(() => {
   const height = 50
   const padding = 10
   const min = 0
-  const max = Math.max(120, ...data)
+  const max = 100
   const range = Math.max(1, max - min)
 
   return data.map((v, i) => ({
@@ -911,66 +933,36 @@ const applySevereWeatherChange = async (enabled) => {
     installAudioUnlockFallback()
   }
 
-  // 启动后 5 秒：空气质量红色预警 + 湿度逐渐上升（折线明显上升）
+  // 启动后 5 秒：空气湿度慢慢爬升（60%橙色告警，70%红色告警，最终在92~93%徘徊）
   severeWeatherEffectTimer = setTimeout(() => {
-    const startAqi = Number(airQuality.value.aqi) || 45
-    const targetAqi = 185
-    const aqiDuration = 15000
-    const aqiStartedAt = Date.now()
+    let phase = 'to60'
+    let current = Math.max(30, Math.min(55, parsePercent(weather.value.humidity, 50)))
 
-    const levelByAqi = (v) => {
-      if (v <= 50) return '优'
-      if (v <= 100) return '良'
-      if (v <= 150) return '轻度污染'
-      if (v <= 200) return '中度污染'
-      return '重度污染'
-    }
-
-    const startPoll = { pm25: 23, pm10: 45, o3: 68, no2: 32 }
-    const targetPoll = { pm25: 168, pm10: 220, o3: 196, no2: 112 }
-    const lerp = (a, b, t) => a + (b - a) * t
-
-    severeWeatherAqiTimer = setInterval(() => {
-      const t = Math.max(0, Math.min(1, (Date.now() - aqiStartedAt) / aqiDuration))
-      const aqi = Math.round(lerp(startAqi, targetAqi, t))
-      airQuality.value.aqi = aqi
-      airQuality.value.level = levelByAqi(aqi)
-
-      const pm25 = Math.round(lerp(startPoll.pm25, targetPoll.pm25, t))
-      const pm10 = Math.round(lerp(startPoll.pm10, targetPoll.pm10, t))
-      const o3 = Math.round(lerp(startPoll.o3, targetPoll.o3, t))
-      const no2 = Math.round(lerp(startPoll.no2, targetPoll.no2, t))
-      airQuality.value.pollutants = [
-        { name: 'PM2.5', value: `${pm25}μg/m³` },
-        { name: 'PM10', value: `${pm10}μg/m³` },
-        { name: 'O3', value: `${o3}μg/m³` },
-        { name: 'NO2', value: `${no2}μg/m³` }
-      ]
-
-      // 变到红以后：持续闪光提示（用 class + CSS 动画实现）
-      if (aqi >= 150) {
-        airQualitySevereWarning.value = true
-      }
-
-      if (t >= 1) {
-        clearInterval(severeWeatherAqiTimer)
-        severeWeatherAqiTimer = null
-      }
-    }, 500)
-
-    const parseHumidity = (val) => {
-      const num = Number(String(val).replace('%', ''))
-      return Number.isFinite(num) ? num : 60
-    }
-
-    let current = Math.max(30, Math.min(95, parseHumidity(weather.value.humidity)))
-    const target = 95
+    const shown0 = Math.round(current)
+    weather.value.humidity = `${shown0}%`
+    humidityData24h.value.shift()
+    humidityData24h.value.push(shown0)
 
     severeWeatherHumidityTimer = setInterval(() => {
-      current = Math.min(target, current + 1)
-      weather.value.humidity = `${current}%`
+      if (phase === 'to60') {
+        current = Math.min(60, current + 1)
+        if (current >= 60) phase = 'to70'
+      } else if (phase === 'to70') {
+        current = Math.min(70, current + 1)
+        if (current >= 70) phase = 'to92'
+      } else if (phase === 'to92') {
+        current = Math.min(92, current + 1)
+        if (current >= 92) phase = 'hover'
+      } else {
+        current = 92 + Math.random() * 1.2
+      }
+
+      const shown = Math.round(current)
+      weather.value.humidity = `${shown}%`
       humidityData24h.value.shift()
-      humidityData24h.value.push(current)
+      humidityData24h.value.push(shown)
+
+      airQualitySevereWarning.value = shown >= 70
     }, 1000)
   }, 5000)
 }
@@ -980,6 +972,183 @@ const LIUZHOU_STATION = {
   lon: 109.38871,
   lat: 24.30755,
   height: 500
+}
+
+// ===== 相机自动巡航（缓慢前行、避免过低视角）=====
+// 用日志角度做关键帧，但剔除“过低”（pitch 接近 0）导致贴地的段落，并补齐回到起点的过渡帧形成闭环
+const CAMERA_CRUISE_KEYFRAMES = [
+  // 以稳定的俯视（-45°）作为起点
+  { heading: 0.0, pitch: -45.0 },
+  { heading: 358.8, pitch: -40.5 },
+  { heading: 357.8, pitch: -17.1 },
+  { heading: 351.9, pitch: -10.1 },
+  { heading: 350.9, pitch: -8.7 },
+  // 过渡回到俯视，保证循环时不会突然“跳”
+  { heading: 356.0, pitch: -14.0 },
+  { heading: 0.0, pitch: -22.0 },
+  { heading: 0.0, pitch: -32.0 },
+  { heading: 0.0, pitch: -40.0 },
+  { heading: 0.0, pitch: -45.0 }
+]
+const CAMERA_CRUISE_LOOP_MS = 45000
+const CAMERA_CRUISE_MAX_PITCH_DEG = -8.0
+const CAMERA_CRUISE_MIN_RANGE_M = 4500
+const CAMERA_CRUISE_TARGET_HEIGHT_M = 180
+const CAMERA_CRUISE_PATH_EAST_M = 2200
+const CAMERA_CRUISE_PATH_NORTH_M = 700
+
+const normalizeDeg360 = (deg) => {
+  const v = deg % 360
+  return v < 0 ? v + 360 : v
+}
+
+const lerp = (a, b, t) => a + (b - a) * t
+
+const lerpAngleDeg = (a, b, t) => {
+  const aN = normalizeDeg360(a)
+  const bN = normalizeDeg360(b)
+  let delta = bN - aN
+  if (delta > 180) delta -= 360
+  if (delta < -180) delta += 360
+  return normalizeDeg360(aN + delta * t)
+}
+
+const smoothstep = (t) => t * t * (3 - 2 * t)
+
+const sampleCruiseOrientation = (u) => {
+  const frames = CAMERA_CRUISE_KEYFRAMES
+  const n = frames.length
+  if (n === 0) return { heading: 0, pitch: -45 }
+  if (n === 1) return frames[0]
+  const clamped = Math.max(0, Math.min(1, u))
+  const scaled = clamped * (n - 1)
+  const idx = Math.min(n - 2, Math.max(0, Math.floor(scaled)))
+  const localT = smoothstep(scaled - idx)
+  const a = frames[idx]
+  const b = frames[idx + 1]
+  return {
+    heading: lerpAngleDeg(a.heading, b.heading, localT),
+    pitch: lerp(a.pitch, b.pitch, localT)
+  }
+}
+
+const clampCruisePitchDeg = (pitchDeg) => {
+  // pitch 为负数（向下），越接近 0 越“贴地”，这里限制最大值，避免太低
+  return Math.min(pitchDeg, CAMERA_CRUISE_MAX_PITCH_DEG)
+}
+
+const cruiseTargetWithEnuOffset = (east, north, up = 0) => {
+  if (!cameraCruiseEnuToFixed || !cameraCruiseBaseCenter) return cameraCruiseBaseCenter
+  const local = new Cesium.Cartesian3(east, north, up)
+  const out = new Cesium.Cartesian3()
+  return Cesium.Matrix4.multiplyByPoint(cameraCruiseEnuToFixed, local, out)
+}
+
+const stopCameraCruise = () => {
+  if (cameraCruiseRafId) {
+    cancelAnimationFrame(cameraCruiseRafId)
+    cameraCruiseRafId = null
+  }
+  cameraCruiseBaseCenter = null
+  cameraCruiseEnuToFixed = null
+  if (viewer) {
+    try {
+      viewer.camera.lookAtTransform(Cesium.Matrix4.IDENTITY)
+    } catch {
+      // ignore
+    }
+  }
+}
+
+const startCameraCruise = () => {
+  if (!viewer) return
+  if (cameraCruiseRafId) return
+
+  cameraCruiseBaseCenter = Cesium.Cartesian3.fromDegrees(
+    LIUZHOU_STATION.lon,
+    LIUZHOU_STATION.lat,
+    CAMERA_CRUISE_TARGET_HEIGHT_M
+  )
+  cameraCruiseEnuToFixed = Cesium.Transforms.eastNorthUpToFixedFrame(cameraCruiseBaseCenter)
+  cameraCruiseTarget = cameraCruiseBaseCenter
+  cameraCruiseRange = Math.max(
+    CAMERA_CRUISE_MIN_RANGE_M,
+    Cesium.Cartesian3.distance(viewer.camera.positionWC, cameraCruiseBaseCenter)
+  )
+  cameraCruiseStartedAt = performance.now()
+
+  const tick = (now) => {
+    if (!viewer || !cameraCruiseEnabled.value) {
+      stopCameraCruise()
+      return
+    }
+
+    const elapsed = now - cameraCruiseStartedAt
+    const phase = (elapsed % CAMERA_CRUISE_LOOP_MS) / CAMERA_CRUISE_LOOP_MS
+    const o0 = sampleCruiseOrientation(phase)
+    const o = { heading: o0.heading, pitch: clampCruisePitchDeg(o0.pitch) }
+
+    // 缓慢“向前行进”：让观察点在站点周围沿椭圆轨迹平滑前行（连续闭环，无跳变）
+    const theta = phase * Math.PI * 2
+    const east = Math.cos(theta) * CAMERA_CRUISE_PATH_EAST_M
+    const north = Math.sin(theta) * CAMERA_CRUISE_PATH_NORTH_M
+    cameraCruiseTarget = cruiseTargetWithEnuOffset(east, north, 0)
+
+    viewer.camera.lookAt(
+      cameraCruiseTarget,
+      new Cesium.HeadingPitchRange(
+        Cesium.Math.toRadians(o.heading),
+        Cesium.Math.toRadians(o.pitch),
+        cameraCruiseRange
+      )
+    )
+    viewer.scene.requestRender?.()
+    cameraCruiseRafId = requestAnimationFrame(tick)
+  }
+
+  cameraCruiseRafId = requestAnimationFrame(tick)
+}
+
+const toggleCameraCruise = () => {
+  cameraCruiseEnabled.value = !cameraCruiseEnabled.value
+  if (cameraCruiseEnabled.value) startCameraCruise()
+  else stopCameraCruise()
+}
+
+const installCameraCruiseAutoPause = () => {
+  if (!viewer || cameraCruiseAutoPauseHandler) return
+  // 仅当用户“拖动”相机时才暂停（避免单击就把巡航停掉）
+  cameraCruiseAutoPauseHandler = (e) => {
+    if (!cameraCruiseEnabled.value) return
+    if (!e || (e.button !== 0 && e.pointerType !== 'touch')) return
+
+    const startX = e.clientX
+    const startY = e.clientY
+    let moved = false
+
+    const onMove = (ev) => {
+      if (!cameraCruiseEnabled.value) return
+      const dx = Math.abs(ev.clientX - startX)
+      const dy = Math.abs(ev.clientY - startY)
+      if (dx + dy >= 8) moved = true
+      if (!moved) return
+      cameraCruiseEnabled.value = false
+      stopCameraCruise()
+      cleanup()
+    }
+
+    const cleanup = () => {
+      window.removeEventListener('pointermove', onMove, true)
+      window.removeEventListener('pointerup', cleanup, true)
+      window.removeEventListener('pointercancel', cleanup, true)
+    }
+
+    window.addEventListener('pointermove', onMove, true)
+    window.addEventListener('pointerup', cleanup, true)
+    window.addEventListener('pointercancel', cleanup, true)
+  }
+
+  viewer.scene.canvas.addEventListener('pointerdown', cameraCruiseAutoPauseHandler, { passive: true })
 }
 
 const setupGlobalBreathingGlow = () => {
@@ -1048,11 +1217,52 @@ const initCesium = async () => {
     const addBaseLayers = async () => {
       // 恢复为 Cesium Ion 数据源（非国内底图）
       viewer.imageryLayers.removeAll(true)
-      const worldImagery = await Cesium.createWorldImageryAsync({
-        style: Cesium.IonWorldImageryStyle.AERIAL
-      })
-      viewer.imageryLayers.addImageryProvider(worldImagery)
-      console.log('已切换底图：Cesium World Imagery')
+      let hasSwitchedToOsm = false
+      const switchToOsm = () => {
+        if (!viewer) return
+        if (hasSwitchedToOsm) return
+        hasSwitchedToOsm = true
+        viewer.imageryLayers.removeAll(true)
+        const osm = new Cesium.UrlTemplateImageryProvider({
+          url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+          maximumLevel: 19,
+          credit: '© OpenStreetMap contributors'
+        })
+        viewer.imageryLayers.addImageryProvider(osm)
+        console.log('已切换底图：OpenStreetMap')
+      }
+
+      const installImageryErrorFallback = (provider, providerName) => {
+        const ev = provider?.errorEvent
+        if (!ev || typeof ev.addEventListener !== 'function') return
+
+        let errCount = 0
+        let windowStartedAt = 0
+        ev.addEventListener((e) => {
+          const now = Date.now()
+          if (!windowStartedAt || now - windowStartedAt > 12000) {
+            windowStartedAt = now
+            errCount = 0
+          }
+          errCount += 1
+          if (errCount >= 3) {
+            console.warn(`${providerName} 瓦片连续加载失败，已自动切换为 OpenStreetMap:`, e)
+            switchToOsm()
+          }
+        })
+      }
+
+      try {
+        const worldImagery = await Cesium.createWorldImageryAsync({
+          style: Cesium.IonWorldImageryStyle.AERIAL
+        })
+        viewer.imageryLayers.addImageryProvider(worldImagery)
+        installImageryErrorFallback(worldImagery, 'Cesium World Imagery')
+        console.log('已切换底图：Cesium World Imagery')
+      } catch (e) {
+        console.warn('Cesium World Imagery 初始化失败，切换为 OpenStreetMap:', e)
+        switchToOsm()
+      }
     }
 
     await addBaseLayers()
@@ -1138,6 +1348,7 @@ const installCameraAngleLogger = () => {
 
 const flyToLiuZhou = () => {
   if (!viewer) return
+  stopCameraCruise()
   viewer.camera.flyTo({
     destination: Cesium.Cartesian3.fromDegrees(
       LIUZHOU_STATION.lon,
@@ -1149,12 +1360,16 @@ const flyToLiuZhou = () => {
       pitch: Cesium.Math.toRadians(-45),
       roll: 0.0
     },
-    duration: 3.0
+    duration: 3.0,
+    complete: () => {
+      if (cameraCruiseEnabled.value) startCameraCruise()
+    }
   })
 }
 
 const resetView = () => {
   if (!viewer) return
+  stopCameraCruise()
   viewer.camera.flyTo({
     destination: Cesium.Cartesian3.fromDegrees(
       LIUZHOU_STATION.lon,
@@ -1166,7 +1381,10 @@ const resetView = () => {
       pitch: Cesium.Math.toRadians(-45),
       roll: 0.0
     },
-    duration: 2.0
+    duration: 2.0,
+    complete: () => {
+      if (cameraCruiseEnabled.value) startCameraCruise()
+    }
   })
 }
 
@@ -1654,6 +1872,7 @@ onMounted(async () => {
     await loadWeatherHistory('24h')
 
     await initCesium()
+    installCameraCruiseAutoPause()
     setTimeout(() => flyToLiuZhou(), 500)
     setupInteractions()
     updateDataTimer = setInterval(updateData, 2000)
@@ -1683,6 +1902,11 @@ onBeforeUnmount(() => {
     globalBreathStage = null
   }
   stopSevereWeatherUiEffects()
+  stopCameraCruise()
+  if (viewer && cameraCruiseAutoPauseHandler) {
+    viewer.scene.canvas.removeEventListener('pointerdown', cameraCruiseAutoPauseHandler)
+    cameraCruiseAutoPauseHandler = null
+  }
   if (viewer && cameraAngleChangedHandler) {
     viewer.camera.changed.removeEventListener(cameraAngleChangedHandler)
     cameraAngleChangedHandler = null

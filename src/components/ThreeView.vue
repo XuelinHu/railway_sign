@@ -764,30 +764,31 @@ const createRailway = () => {
 
   console.log('铁轨位置 (45度角, 紧密排列):', railPositions)
 
-  railPositions.forEach((pos, index) => {
-    gltfLoader.load(
-      '/assets/models/railway.glb',
-      (gltf) => {
-        const railway = gltf.scene
+  gltfLoader.load(
+    '/assets/models/railway.glb',
+    (gltf) => {
+      const template = gltf.scene
+      template.traverse((child) => {
+        if (child.isMesh) {
+          child.castShadow = true
+          child.receiveShadow = true
+        }
+      })
+
+      railPositions.forEach((pos, index) => {
+        const railway = template.clone(true)
         railway.scale.set(12, 12, 12)
         railway.position.set(pos.x, 0, pos.z)
         railway.rotation.y = pos.rotation
-
-        railway.traverse((child) => {
-          if (child.isMesh) {
-            child.castShadow = true
-            child.receiveShadow = truerj
-          }
-        })
-
         scene.add(railway)
         console.log(`铁轨段 ${index + 1} 加载成功，位置: (${pos.x}, ${pos.z})`)
-      },
-      (error) => {
-        console.error(`铁轨段 ${index + 1} 加载失败:`, error)
-      }
-    )
-  })
+      })
+    },
+    undefined,
+    (error) => {
+      console.error('铁轨模型加载失败:', error)
+    }
+  )
 }
 
 const createSignalLights = () => {
@@ -1122,6 +1123,7 @@ const createSignalLights = () => {
         updateSignalUI()
         console.log(`信号灯 ${signalNames[index]} 加载成功`)
       },
+      undefined,
       (error) => {
         console.error(`信号灯 ${signalNames[index]} 加载失败:`, error)
       }
@@ -1170,6 +1172,7 @@ const createTrain = () => {
 
       console.log('火车头模型加载成功 - 45度角方向，Y轴抬高')
     },
+    undefined,
     (error) => {
       console.error('火车头模型加载失败:', error)
     }
