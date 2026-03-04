@@ -18,11 +18,11 @@
       </div>
     </div>
 
-    <!-- 中间信号调度图区域 -->
+    <!-- 中间设备寿命预测区域 -->
     <div class="main-visualization">
       <!-- 标题 -->
       <div class="viz-header">
-        <h2 class="viz-title">信号线路调度实时监控</h2>
+        <h2 class="viz-title">设备寿命预测</h2>
         <div class="viz-controls">
           <!-- 缩放控制 -->
           <div class="zoom-controls">
@@ -52,6 +52,76 @@
         <div class="viz-time">{{ currentTime }}</div>
       </div>
 
+      <!-- 设备寿命预测 - 可缩放表格 -->
+      <div class="life-container">
+        <div class="canvas-wrapper" :style="canvasStyle">
+          <div class="life-table">
+            <div class="life-table-header">
+              <div class="life-tip">
+                <span class="dot"></span>
+                <span>基于启用时间、磨损模型与历史维护记录推算（演示数据）</span>
+              </div>
+              <div class="life-summary">
+                <div class="sum-item">
+                  <div class="sum-value warning">{{ lifeSummary.riskCount }}</div>
+                  <div class="sum-label">高风险</div>
+                </div>
+                <div class="sum-item">
+                  <div class="sum-value">{{ lifeSummary.normalCount }}</div>
+                  <div class="sum-label">正常</div>
+                </div>
+                <div class="sum-item">
+                  <div class="sum-value">{{ lifeSummary.avgWear }}%</div>
+                  <div class="sum-label">平均磨损</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="life-table-scroll">
+              <table class="life-table-grid">
+                <thead>
+                  <tr>
+                    <th class="col-name">部件</th>
+                    <th class="col-time">启用时间</th>
+                    <th class="col-duration">使用时长</th>
+                    <th class="col-wear">磨损程度</th>
+                    <th class="col-life">预计寿命</th>
+                    <th class="col-status">状态</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="row in lifeRows" :key="row.id" :class="row.level">
+                    <td class="col-name">
+                      <div class="name-main">{{ row.name }}</div>
+                      <div class="name-sub">{{ row.note }}</div>
+                    </td>
+                    <td class="col-time">{{ row.enableAt }}</td>
+                    <td class="col-duration">{{ row.usage }}</td>
+                    <td class="col-wear">
+                      <div class="wear-wrap">
+                        <div class="wear-bar">
+                          <div class="wear-fill" :style="{ width: row.wear + '%' }"></div>
+                        </div>
+                        <div class="wear-text">{{ row.wear }}%</div>
+                      </div>
+                    </td>
+                    <td class="col-life">
+                      <div class="life-main">{{ row.eta }}</div>
+                      <div class="life-sub">剩余 {{ row.remaining }}</div>
+                    </td>
+                    <td class="col-status">
+                      <span class="status-pill" :class="row.level">{{ row.status }}</span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 信号调度实时监控（已取消，保留代码便于回退） -->
+      <template v-if="false">
       <!-- 信号调度图 - 可缩放画布 -->
       <div class="dispatch-container" ref="dispatchContainer"
         @wheel.prevent="handleWheel"
@@ -228,6 +298,7 @@
           <span class="stat-label">{{ stat.label }}</span>
         </div>
       </div>
+      </template>
     </div>
 
     <!-- 底部数据面板 -->
@@ -353,6 +424,100 @@ const signalDist = ref(getSignalDistribution())
 const efficiency = ref(getDispatchEfficiency())
 const currentTime = ref('')
 const updateTimer = ref(null)
+const lifeTimer = ref(null)
+
+const toYmd = (date) => {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+const formatDuration = (ms) => {
+  const totalHours = Math.max(0, Math.floor(ms / 3600000))
+  const days = Math.floor(totalHours / 24)
+  const hours = totalHours % 24
+  return `${days}天${hours}小时`
+}
+
+const clamp = (v, min, max) => Math.max(min, Math.min(max, v))
+
+const baseLifeItems = [
+  { id: 'filament', name: '信号灯灯丝寿命', note: '热疲劳 / 点亮次数', designDays: 180 },
+  { id: 'bracket', name: '信号机支架', note: '结构疲劳 / 振动', designDays: 3650 },
+  { id: 'shell', name: '信号机保护外壳', note: '紫外老化 / 冲击', designDays: 2400 },
+  { id: 'transformer', name: '信号机变压器', note: '温升老化 / 绝缘退化', designDays: 3000 },
+  { id: 'seal', name: '信号机防水胶套', note: '材料疲劳 / 密封退化', designDays: 900 }
+]
+
+const lifeBase = ref(baseLifeItems.map((it, idx) => {
+  // 给每个部件一个不同启用时间与初始磨损，便于展示
+  const enable = new Date(Date.now() - (30 + idx * 120) * 86400000)
+  const initWear = clamp(Math.round(12 + idx * 10 + Math.random() * 8), 1, 85)
+  // 环境系数：越大磨损越快（演示用）
+  const env = 0.8 + Math.random() * 0.7
+  return {
+    ...it,
+    enableAt: toYmd(enable),
+    enableMs: enable.getTime(),
+    wear0: initWear,
+    env
+  }
+}))
+
+const lifeRows = ref([])
+
+const updateLifeRows = () => {
+  const now = Date.now()
+  const t = now * 0.001
+  const rows = lifeBase.value.map((it, i) => {
+    const usageMs = now - it.enableMs
+    const days = usageMs / 86400000
+
+    // 磨损随时间缓慢上升 + 小幅波动（演示），上限 99
+    const drift = (days / Math.max(30, it.designDays)) * 38 * it.env
+    const wobble = Math.sin(t * (0.7 + i * 0.15)) * 1.8 + Math.sin(t * 1.9) * 0.6
+    const wear = clamp(Math.round(it.wear0 + drift + wobble), 1, 99)
+
+    const wearRatio = wear / 100
+    const estimatedTotalDays = Math.max(1, Math.round(it.designDays * (1.05 - it.env * 0.08)))
+    const remainingDays = clamp(Math.round(estimatedTotalDays * (1 - wearRatio)), 0, estimatedTotalDays)
+
+    const level = wear >= 80 ? 'danger' : wear >= 65 ? 'warning' : 'normal'
+    const status = level === 'danger' ? '需更换' : level === 'warning' ? '建议检修' : '健康'
+
+    return {
+      id: it.id,
+      name: it.name,
+      note: it.note,
+      enableAt: it.enableAt,
+      usage: formatDuration(usageMs),
+      wear,
+      eta: `${estimatedTotalDays}天`,
+      remaining: `${remainingDays}天`,
+      level,
+      status
+    }
+  })
+
+  // 高风险置顶，其余按磨损倒序
+  rows.sort((a, b) => {
+    const rank = (x) => (x.level === 'danger' ? 2 : x.level === 'warning' ? 1 : 0)
+    const r = rank(b) - rank(a)
+    return r !== 0 ? r : b.wear - a.wear
+  })
+  lifeRows.value = rows
+}
+
+const lifeSummary = computed(() => {
+  const rows = lifeRows.value
+  const riskCount = rows.filter(r => r.level === 'danger' || r.level === 'warning').length
+  const normalCount = rows.filter(r => r.level === 'normal').length
+  const avgWear = rows.length
+    ? Math.round(rows.reduce((s, r) => s + r.wear, 0) / rows.length)
+    : 0
+  return { riskCount, normalCount, avgWear }
+})
 
 // 缩放和平移状态
 const dispatchContainer = ref(null)
@@ -664,6 +829,9 @@ onMounted(() => {
     efficiency.value = getDispatchEfficiency()
   }, 5000)
 
+  updateLifeRows()
+  lifeTimer.value = setInterval(updateLifeRows, 1500)
+
   // 全局鼠标移动和释放事件（用于小地图拖拽）
   window.addEventListener('mousemove', handleMinimapMove)
   window.addEventListener('mouseup', endDrag)
@@ -671,6 +839,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   if (updateTimer.value) clearInterval(updateTimer.value)
+  if (lifeTimer.value) clearInterval(lifeTimer.value)
   window.removeEventListener('mousemove', handleMinimapMove)
   window.removeEventListener('mouseup', endDrag)
 })
@@ -799,6 +968,208 @@ const handleMinimapMove = (e) => {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+/* 设备寿命预测 */
+.life-container {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  user-select: none;
+}
+
+.life-table {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+}
+
+.life-table-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.life-tip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 12px;
+}
+
+.life-tip .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #00d4ff;
+  box-shadow: 0 0 12px rgba(0, 212, 255, 0.6);
+}
+
+.life-summary {
+  display: flex;
+  gap: 10px;
+}
+
+.sum-item {
+  background: rgba(0, 50, 100, 0.25);
+  border: 1px solid rgba(0, 200, 255, 0.18);
+  border-radius: 8px;
+  padding: 8px 10px;
+  min-width: 80px;
+  text-align: center;
+}
+
+.sum-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+  line-height: 1.1;
+}
+
+.sum-value.warning {
+  color: #ff5555;
+  text-shadow: 0 0 10px rgba(255, 80, 80, 0.35);
+}
+
+.sum-label {
+  margin-top: 4px;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.life-table-scroll {
+  flex: 1;
+  overflow: auto;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.life-table-grid {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 780px;
+}
+
+.life-table-grid thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.85);
+  padding: 10px 10px;
+  background: rgba(0, 40, 80, 0.65);
+  border-bottom: 1px solid rgba(0, 200, 255, 0.18);
+}
+
+.life-table-grid tbody td {
+  padding: 10px 10px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.78);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  vertical-align: middle;
+}
+
+.life-table-grid tbody tr:hover {
+  background: rgba(0, 212, 255, 0.06);
+}
+
+.life-table-grid tbody tr.danger {
+  background: rgba(255, 80, 80, 0.08);
+}
+
+.life-table-grid tbody tr.warning {
+  background: rgba(255, 170, 0, 0.06);
+}
+
+.col-name .name-main {
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.col-name .name-sub {
+  margin-top: 2px;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.wear-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.wear-bar {
+  flex: 1;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.10);
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.wear-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(0, 255, 136, 0.85) 0%, rgba(0, 212, 255, 0.9) 45%, rgba(255, 170, 0, 0.9) 75%, rgba(255, 80, 80, 0.92) 100%);
+  box-shadow: 0 0 10px rgba(0, 212, 255, 0.18);
+  transition: width 0.35s ease;
+}
+
+.wear-text {
+  width: 44px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.col-life .life-main {
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.col-life .life-sub {
+  margin-top: 2px;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 64px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.status-pill.normal {
+  color: #00ff88;
+  border-color: rgba(0, 255, 136, 0.28);
+  background: rgba(0, 255, 136, 0.08);
+}
+
+.status-pill.warning {
+  color: #ffaa00;
+  border-color: rgba(255, 170, 0, 0.28);
+  background: rgba(255, 170, 0, 0.08);
+}
+
+.status-pill.danger {
+  color: #ff5555;
+  border-color: rgba(255, 80, 80, 0.28);
+  background: rgba(255, 80, 80, 0.10);
 }
 
 /* 缩放控制 */
