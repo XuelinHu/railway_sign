@@ -302,9 +302,6 @@ import 'cesium/Build/Cesium/Widgets/widgets.css'
 import api from '../services/api.js'
 import { severeWeatherEnabled, setSevereWeatherEnabled } from '../services/simulationState.js'
 
-// 设置 Cesium Ion 访问令牌
-Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI1MGE2NjE5OC05YmU5LTRiMTctODYxOC1hZWE0YTU0NDJmM2UiLCJpZCI6Mzg5Mzg5LCJpYXQiOjE3NzA3NzE2MjR9.XlfsTRYLQkmlFzS3Z-rGNLnchNdPlNqZUfzdX4SHtWU'
-
 // 响应式变量
 const cesiumContainer = ref(null)
 const leftPanelVisible = ref(true)
@@ -1044,109 +1041,22 @@ const initCesium = async () => {
     }
 
     const addBaseLayers = async () => {
-      // 优先国内数据源：天地图（需要 Key）→ 高德（无需 Key）→ ArcGIS → OSM
-      const tdtKey = import.meta.env.VITE_TDT_KEY
-
-      const useTdt = async () => {
-        if (!tdtKey) return false
-        const subdomains = ['0', '1', '2', '3', '4', '5', '6', '7']
-        const vec = new Cesium.WebMapTileServiceImageryProvider({
-          url: `https://t{s}.tianditu.gov.cn/vec_w/wmts?tk=${tdtKey}`,
-          layer: 'vec',
-          style: 'default',
-          format: 'tiles',
-          tileMatrixSetID: 'w',
-          subdomains,
-          maximumLevel: 18
-        })
-        const cva = new Cesium.WebMapTileServiceImageryProvider({
-          url: `https://t{s}.tianditu.gov.cn/cva_w/wmts?tk=${tdtKey}`,
-          layer: 'cva',
-          style: 'default',
-          format: 'tiles',
-          tileMatrixSetID: 'w',
-          subdomains,
-          maximumLevel: 18
-        })
-
-        viewer.imageryLayers.addImageryProvider(vec)
-        viewer.imageryLayers.addImageryProvider(cva)
-        console.log('已切换底图：天地图（矢量+注记）')
-        return true
-      }
-
-      const useAmap = async () => {
-        // 高德瓦片：国内网络环境相对稳定。无需 Key，但若未来受限可改为天地图 Key。
-        const amap = new Cesium.UrlTemplateImageryProvider({
-          url: 'https://webrd0{s}.is.autonavi.com/appmaptile?style=7&x={x}&y={y}&z={z}',
-          subdomains: ['1', '2', '3', '4'],
-          maximumLevel: 18
-        })
-        viewer.imageryLayers.addImageryProvider(amap)
-        console.log('已切换底图：高德地图（矢量）')
-        return true
-      }
-
-      const useArcGis = async () => {
-        const arc = await Cesium.ArcGisMapServerImageryProvider.fromUrl(
-          'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer',
-          { maximumLevel: 19 }
-        )
-        viewer.imageryLayers.addImageryProvider(arc)
-        console.log('已切换底图：ArcGIS World Imagery')
-        return true
-      }
-
-      const useOsm = async () => {
-        viewer.imageryLayers.addImageryProvider(new Cesium.OpenStreetMapImageryProvider({
-          url: 'https://tile.openstreetmap.org/'
-        }))
-        console.log('已切换底图：OSM')
-        return true
-      }
-
-      try {
-        if (await useTdt()) return
-      } catch (e) {
-        console.warn('天地图加载失败，尝试其他底图:', e)
-      }
-      try {
-        if (await useAmap()) return
-      } catch (e) {
-        console.warn('高德底图加载失败，尝试其他底图:', e)
-      }
-      try {
-        if (await useArcGis()) return
-      } catch (e) {
-        console.warn('ArcGIS 底图加载失败，尝试其他底图:', e)
-      }
-      await useOsm()
+      // 只使用国内一种渠道：高德（Amap）
+      viewer.imageryLayers.removeAll(true)
+      const amap = new Cesium.UrlTemplateImageryProvider({
+        url: 'https://webrd0{s}.is.autonavi.com/appmaptile?style=7&x={x}&y={y}&z={z}',
+        subdomains: ['1', '2', '3', '4'],
+        tilingScheme: new Cesium.WebMercatorTilingScheme(),
+        minimumLevel: 0,
+        maximumLevel: 18
+      })
+      viewer.imageryLayers.addImageryProvider(amap)
     }
 
     await addBaseLayers()
 
-    try {
-      // 地形依赖 Cesium Ion（国外网络可能不稳定），失败则使用椭球体地形（不依赖网络）
-      viewer.terrainProvider = await Cesium.CesiumTerrainProvider.fromIonAssetId(1, {
-        requestVertexNormals: true,
-        requestWaterMask: true
-      })
-    } catch (error) {
-      console.warn('地形加载失败，已切换为默认椭球体地形:', error)
-      viewer.terrainProvider = new Cesium.EllipsoidTerrainProvider()
-    }
-
-    try {
-      console.log('正在加载 3D 建筑图层...')
-      const osmBuildings = await Cesium.createOsmBuildingsAsync({
-        enableShowOutline: false,
-        showOutline: false
-      })
-      viewer.scene.primitives.add(osmBuildings)
-      console.log('3D 建筑图层加载完成')
-    } catch (error) {
-      console.warn('OSM Buildings 加载失败:', error)
-    }
+    // 不使用 Ion 地形 / OSM Buildings（可能依赖国外网络），改为无网络依赖的椭球体地形
+    viewer.terrainProvider = new Cesium.EllipsoidTerrainProvider()
 
     viewer.scene.skyAtmosphere.show = true
     viewer.scene.fog.enabled = true
