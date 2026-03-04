@@ -858,8 +858,8 @@ const handleMinimapMove = (e) => {
   height: 100%;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 10px;
+  gap: 8px;
+  padding: 8px;
 }
 
 /* 顶部指标 */
@@ -873,7 +873,7 @@ const handleMinimapMove = (e) => {
   background: linear-gradient(135deg, rgba(0, 30, 60, 0.9) 0%, rgba(0, 50, 100, 0.6) 100%);
   border: 1px solid rgba(0, 200, 255, 0.3);
   border-radius: 8px;
-  padding: 12px;
+  padding: 10px;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -924,17 +924,17 @@ const handleMinimapMove = (e) => {
   background: linear-gradient(135deg, rgba(0, 30, 60, 0.9) 0%, rgba(0, 50, 100, 0.6) 100%);
   border: 1px solid rgba(0, 200, 255, 0.3);
   border-radius: 8px;
-  padding: 12px;
+  padding: 10px;
   display: flex;
   flex-direction: column;
-  min-height: 280px;
+  min-height: 310px;
 }
 
 .viz-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
 .viz-title {
@@ -983,8 +983,8 @@ const handleMinimapMove = (e) => {
   height: 100%;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 10px;
+  gap: 8px;
+  padding: 8px;
 }
 
 .life-table-header {

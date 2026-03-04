@@ -776,7 +776,7 @@ const createRailway = () => {
         railway.traverse((child) => {
           if (child.isMesh) {
             child.castShadow = true
-            child.receiveShadow = true
+            child.receiveShadow = truerj
           }
         })
 
@@ -811,8 +811,10 @@ const createSignalLights = () => {
   const createBoxSensorLabel = (model) => {
     const div = document.createElement('div')
     div.className = 'model-label'
-    div.style.maxWidth = '240px'
-    div.style.minWidth = '190px'
+    // 行人检测信息栏：稍微缩小一点（更紧凑）
+    div.style.maxWidth = '200px'
+    div.style.minWidth = '160px'
+    div.style.transform = 'translate(-50%, -100%) scale(0.9)'
     div.innerHTML = `
       <div class="label-title">行人检测传感器</div>
       <div class="label-row">
@@ -959,14 +961,20 @@ const createSignalLights = () => {
           // 信号灯由 Z 向 X 轴旋转 120°（绕 Y 轴），并朝 X 轴反方向移动两个身位
           signGroup.rotation.y = -Math.PI * 2 / 3
 
-          const { size: signSize } = getObjectSize(signGroup)
-          const signStepX = Math.max(2.0, signSize.x || 0)
-          signGroup.position.x -= signStepX * 2
-          const signHeight = Math.max(1, signSize.y)
+           const { size: signSize } = getObjectSize(signGroup)
+           const signStepX = Math.max(2.0, signSize.x || 0)
+           signGroup.position.x -= signStepX * 2
+           const signHeight = Math.max(1, signSize.y)
 
-          const base = { x: signGroup.position.x, z: signGroup.position.z }
-          const dx = Math.max(2.2, signSize.x * 0.9)
-          const dz = Math.max(1.2, signSize.z * 0.4)
+           // 主信号灯整体朝 X/Z 夹角的反方向（-X/-Z）移动（3 + 4）个身位
+           const signDiagStep = Math.max(2.0, signSize.x || 0, signSize.z || 0)
+           const signDiagMove = (signDiagStep * 7) / Math.SQRT2
+           signGroup.position.x -= signDiagMove
+           signGroup.position.z -= signDiagMove
+
+           const base = { x: signGroup.position.x, z: signGroup.position.z }
+           const dx = Math.max(2.2, signSize.x * 0.9)
+           const dz = Math.max(1.2, signSize.z * 0.4)
 
           // Box：信号灯的 1/4 大小（按高度比例）
           loadAndPlaceNear({
@@ -1060,23 +1068,47 @@ const createSignalLights = () => {
             position: { x: base.x + dx * 0.75, z: base.z - dz * 0.35 },
             rotation: { y: Math.PI / 10 },
             // 检修人员往 Z 轴移动一个身位
-            afterPlace: (obj, objSize) => {
-              // 检修人员朝 X 轴反方向移动两身位
-              const stepX = Math.max(1.2, objSize.x || 0)
-              obj.position.x -= stepX * 2
-              const stepZ = Math.max(1.2, objSize.z || 0)
-              obj.position.z += stepZ * 1
-              workerObject = obj
-            }
-          }).catch((e) => console.warn('工作者模型加载失败:', e))
+             afterPlace: (obj, objSize) => {
+               // 检修人员朝 X 轴反方向移动两身位
+               const stepX = Math.max(1.2, objSize.x || 0)
+               obj.position.x -= stepX * 2
+               const stepZ = Math.max(1.2, objSize.z || 0)
+               obj.position.z += stepZ * 1
+
+               // 工作者朝 X/Z 夹角的反方向（-X/-Z）移动（3 + 4）个身位
+               const diagStep = Math.max(1.2, objSize.x || 0, objSize.z || 0)
+               const diagMove = (diagStep * 7) / Math.SQRT2
+               obj.position.x -= diagMove
+               obj.position.z -= diagMove
+               workerObject = obj
+
+               // 让主信号灯（及其面板）跟随工作人员靠近一些（仅在 XZ 平面移动）
+               try {
+                 const vx = workerObject.position.x - signGroup.position.x
+                 const vz = workerObject.position.z - signGroup.position.z
+                 const dist = Math.hypot(vx, vz)
+                 const targetDist = Math.max(2.2, (signSize.x || 0) * 0.9, (signSize.z || 0) * 0.9)
+                 if (dist > targetDist) {
+                   const move = dist - targetDist
+                   const nx = vx / dist
+                   const nz = vz / dist
+                   signGroup.position.x += nx * move
+                   signGroup.position.z += nz * move
+                 }
+               } catch (e) {
+                 console.warn('主信号灯跟随工作人员移动失败:', e)
+               }
+             }
+           }).catch((e) => console.warn('工作者模型加载失败:', e))
         } catch (e) {
           console.warn('主信号灯旁模型摆放失败:', e)
         }
 
         const color = getColorByState(signalStates[index])
         const light = new THREE.PointLight(color, 3, 80)
-        light.position.set(pos.x, 10, pos.z)
-        scene.add(light)
+        // 绑定到信号灯，保证信号灯移动时灯光也跟随
+        light.position.set(0, 10, 0)
+        signGroup.add(light)
 
         signals.push({
           mesh: signGroup,
@@ -1316,7 +1348,9 @@ const updateBoxSensorLabel = () => {
 
   // 传感器信息栏始终在 box 正上方（世界坐标系）
   if (boxSensorLabelAnchor && boxObject) {
-    boxSensorLabelAnchor.position.set(boxObject.position.x, boxObject.position.y, boxObject.position.z)
+    const bSize = boxObjectSize
+    const lift = Math.max(1.2, (bSize?.y || 0) * 1.15)
+    boxSensorLabelAnchor.position.set(boxObject.position.x, boxObject.position.y + lift, boxObject.position.z)
     boxSensorLabelAnchor.rotation.set(0, 0, 0)
   }
 
