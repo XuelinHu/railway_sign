@@ -302,6 +302,11 @@ import 'cesium/Build/Cesium/Widgets/widgets.css'
 import api from '../services/api.js'
 import { severeWeatherEnabled, setSevereWeatherEnabled } from '../services/simulationState.js'
 
+// Cesium Ion（用于 World Imagery / Terrain 等）。优先使用环境变量，未设置则回退到内置 token（便于开箱即用）。
+Cesium.Ion.defaultAccessToken =
+  import.meta.env.VITE_CESIUM_ION_TOKEN ||
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI1MGE2NjE5OC05YmU5LTRiMTctODYxOC1hZWE0YTU0NDJmM2UiLCJpZCI6Mzg5Mzg5LCJpYXQiOjE3NzA3NzE2MjR9.XlfsTRYLQkmlFzS3Z-rGNLnchNdPlNqZUfzdX4SHtWU'
+
 // 响应式变量
 const cesiumContainer = ref(null)
 const leftPanelVisible = ref(true)
@@ -1041,22 +1046,39 @@ const initCesium = async () => {
     }
 
     const addBaseLayers = async () => {
-      // 只使用国内一种渠道：高德（Amap）
+      // 恢复为 Cesium Ion 数据源（非国内底图）
       viewer.imageryLayers.removeAll(true)
-      const amap = new Cesium.UrlTemplateImageryProvider({
-        url: 'https://webrd0{s}.is.autonavi.com/appmaptile?style=7&x={x}&y={y}&z={z}',
-        subdomains: ['1', '2', '3', '4'],
-        tilingScheme: new Cesium.WebMercatorTilingScheme(),
-        minimumLevel: 0,
-        maximumLevel: 18
+      const worldImagery = await Cesium.createWorldImageryAsync({
+        style: Cesium.IonWorldImageryStyle.AERIAL
       })
-      viewer.imageryLayers.addImageryProvider(amap)
+      viewer.imageryLayers.addImageryProvider(worldImagery)
+      console.log('已切换底图：Cesium World Imagery')
     }
 
     await addBaseLayers()
 
-    // 不使用 Ion 地形 / OSM Buildings（可能依赖国外网络），改为无网络依赖的椭球体地形
-    viewer.terrainProvider = new Cesium.EllipsoidTerrainProvider()
+    try {
+      // 地形依赖 Cesium Ion（国外网络可能不稳定），失败则使用椭球体地形（不依赖网络）
+      viewer.terrainProvider = await Cesium.CesiumTerrainProvider.fromIonAssetId(1, {
+        requestVertexNormals: true,
+        requestWaterMask: true
+      })
+    } catch (error) {
+      console.warn('地形加载失败，已切换为默认椭球体地形:', error)
+      viewer.terrainProvider = new Cesium.EllipsoidTerrainProvider()
+    }
+
+    try {
+      console.log('正在加载 3D 建筑图层...')
+      const osmBuildings = await Cesium.createOsmBuildingsAsync({
+        enableShowOutline: false,
+        showOutline: false
+      })
+      viewer.scene.primitives.add(osmBuildings)
+      console.log('3D 建筑图层加载完成')
+    } catch (error) {
+      console.warn('OSM Buildings 加载失败:', error)
+    }
 
     viewer.scene.skyAtmosphere.show = true
     viewer.scene.fog.enabled = true
