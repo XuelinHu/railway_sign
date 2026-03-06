@@ -12,7 +12,7 @@
         :class="['tab-btn', { active: currentTab === 'three' }]"
         @click="switchTab('three')"
       >
-        🎮 铁道信号孪生面板
+        🎮 铁道信号机孪生面板
       </button>
       <button
         :class="['tab-btn', { active: currentTab === 'data' }]"

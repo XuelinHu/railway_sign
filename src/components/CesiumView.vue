@@ -377,6 +377,7 @@ import 'cesium/Build/Cesium/Widgets/widgets.css'
 import api from '../services/api.js'
 import { severeWeatherEnabled, setSevereWeatherEnabled } from '../services/simulationState.js'
 import { DEMO_SCENARIO } from '../config/demoScenario.js'
+import { getWeatherData as getMockWeatherData } from '../services/mockDataService.js'
 
 // Cesium Ion（用于 World Imagery / Terrain 等）。优先使用环境变量，未设置则回退到内置 token（便于开箱即用）。
 Cesium.Ion.defaultAccessToken =
@@ -663,9 +664,46 @@ const onWeatherTimeChange = () => {
   hoveredWeatherPoint.value = null
 }
 
+const syncWeatherFromMock = () => {
+  const w = getMockWeatherData()
+  if (!w) return
+
+  // 当前天气（脱敏展示，保留趋势一致性）
+  weather.value = {
+    icon: w.weatherType === '暴雨' || w.weatherType === '大雨' ? '🌧️' : '⛅',
+    temp: Math.round(Number(w.temperature) || 0),
+    description: w.weatherType || '多云',
+    location: DEMO_SCENARIO.weatherLocation,
+    windSpeed: typeof w.windSpeed === 'number' ? `${w.windSpeed.toFixed(1)}m/s` : 'X级',
+    humidity: Number.isFinite(Number(w.humidity)) ? `${Number(w.humidity).toFixed(1)}%` : 'X%',
+    visibility: typeof w.visibility === 'number' ? `${Number(w.visibility).toFixed(0)}km` : 'Xkm',
+    pressure: typeof w.pressure === 'number' ? `${Number(w.pressure).toFixed(0)}hPa` : 'XhPa'
+  }
+
+  // 趋势：优先对齐大数据平台湿度曲线（24h）
+  if (Array.isArray(w.humidityTrend) && w.humidityTrend.length) {
+    humidityData24h.value = w.humidityTrend.map((v) => Number(v))
+    // 简单下采样得到周趋势（7点），避免与 24h 完全不同步
+    humidityDataWeek.value = Array.from({ length: 7 }, (_, idx) => {
+      const i = Math.round((idx / 6) * (humidityData24h.value.length - 1))
+      return Number(humidityData24h.value[i] ?? humidityData24h.value[humidityData24h.value.length - 1] ?? 20)
+    })
+    // 月趋势：以当前湿度为中心的小幅波动（保持脱敏且不“突变”）
+    const last = Number(humidityData24h.value[humidityData24h.value.length - 1] ?? 20)
+    humidityDataMonth.value = Array.from({ length: 30 }, () => {
+      const n = (Math.random() - 0.5) * 2.5
+      return Math.max(0, Math.min(100, Number((last + n).toFixed(1))))
+    })
+  }
+}
+
 const refreshWeather = async () => {
   weatherLoading.value = true
   try {
+    if (severeWeatherEnabled.value) {
+      syncWeatherFromMock()
+      return
+    }
     // 从API获取当前天气
     const weatherData = await api.getCurrentWeather()
     if (weatherData) {
@@ -1859,6 +1897,11 @@ const updateData = () => {
   if (Math.random() > 0.95 && trainStats.value.passed < trainStats.value.total) {
     trainStats.value.passed++
   }
+
+  // 恶劣天气：同步湿度趋势（与大数据平台保持一致）
+  if (severeWeatherEnabled.value) {
+    syncWeatherFromMock()
+  }
 }
 
 // 从API加载仪表盘数据
@@ -2017,6 +2060,9 @@ onBeforeUnmount(() => {
 watch(severeWeatherEnabled, (enabled) => {
   // 允许从其它页面切换恶劣天气模拟后，同步到 Cesium 视图
   applySevereWeatherChange(enabled)
+  if (enabled) {
+    syncWeatherFromMock()
+  }
 })
 </script>
 

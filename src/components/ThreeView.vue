@@ -30,6 +30,30 @@
       <div class="panel-border bottom-right"></div>
       <div class="panel-border glow-line"></div>
 
+      <!-- 行人距离感应器 -->
+      <div class="panel-section" :class="{ 'panel-alert': pedestrianDesiredVisible }">
+        <h2 class="panel-title">
+          <span class="title-icon">🧍</span>
+          <span class="title-text">行人距离感应器</span>
+          <span class="title-decorator"></span>
+        </h2>
+        <div class="humanoid-sensor">
+          <div class="sensor-row">
+            <span class="sensor-label">电源</span>
+            <span class="sensor-value online">{{ humanoidSensor.power }}</span>
+            <span class="sensor-meta">{{ humanoidSensor.voltage }}</span>
+          </div>
+          <div class="sensor-row">
+            <span class="sensor-label">GPS</span>
+            <span class="sensor-value">{{ humanoidSensor.gps }}</span>
+          </div>
+          <div class="sensor-row">
+            <span class="sensor-label">行人距离</span>
+            <span class="sensor-value sensor-distance" :class="pedestrianDesiredVisible ? 'warning' : ''">{{ humanoidSensor.pedestrianDistance }}</span>
+          </div>
+        </div>
+      </div>
+
       <div class="panel-section">
         <h2 class="panel-title">
           <span class="title-icon">🚦</span>
@@ -37,6 +61,24 @@
           <span class="title-decorator"></span>
         </h2>
         <div id="signalList"></div>
+        <div class="signal-kpis">
+          <div class="kpi-item">
+            <div class="kpi-label">温度</div>
+            <div class="kpi-value" :class="signalParams.temperature > 50 ? 'warn' : 'ok'">{{ signalParams.temperature }}°C</div>
+          </div>
+          <div class="kpi-item">
+            <div class="kpi-label">湿度</div>
+            <div class="kpi-value" :class="humidityClass">{{ signalParams.humidity }}%</div>
+          </div>
+          <div class="kpi-item">
+            <div class="kpi-label">电压</div>
+            <div class="kpi-value" :class="voltageClass === 'voltage-normal' ? 'ok' : 'warn'">{{ signalParams.voltage }}V</div>
+          </div>
+          <div class="kpi-item">
+            <div class="kpi-label">信号强度</div>
+            <div class="kpi-value" :class="signalParams.signal < -55 ? 'warn' : 'ok'">{{ signalParams.signal }}dBm</div>
+          </div>
+        </div>
         <div class="twin-metrics">
           <div class="tm-item">
             <span class="tm-label">设备名称</span>
@@ -154,6 +196,30 @@
         </div>
       </div>
 
+      <div class="panel-section">
+        <h2 class="panel-title">
+          <span class="title-icon">🛰️</span>
+          <span class="title-text">接入状态</span>
+          <span class="title-decorator"></span>
+        </h2>
+        <div class="stat-item">
+          <span class="stat-label">遥测接入:</span>
+          <span class="stat-value" :class="telemetryStatusClass">{{ telemetryStatusText }}</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">最近上报:</span>
+          <span class="stat-value">{{ telemetryLastSeenText }}</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">进水检测:</span>
+          <span class="stat-value" :class="telemetryWaterClass">{{ telemetryWaterText }}</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">行人距离:</span>
+          <span class="stat-value" :class="pedestrianDesiredVisible ? 'warn' : ''">{{ humanoidSensor.pedestrianDistance }}</span>
+        </div>
+      </div>
+
       <!-- 主信号灯实时参数 -->
       <div class="panel-section">
         <h2 class="panel-title">
@@ -224,30 +290,6 @@
         </div>
       </div>
 
-      <!-- 人形感应器 -->
-      <div class="panel-section" :class="{ 'panel-alert': pedestrianDesiredVisible }">
-        <h2 class="panel-title">
-          <span class="title-icon">🧍</span>
-          <span class="title-text">人形感应器</span>
-          <span class="title-decorator"></span>
-        </h2>
-        <div class="humanoid-sensor">
-          <div class="sensor-row">
-            <span class="sensor-label">电源</span>
-            <span class="sensor-value online">{{ humanoidSensor.power }}</span>
-            <span class="sensor-meta">{{ humanoidSensor.voltage }}</span>
-          </div>
-          <div class="sensor-row">
-            <span class="sensor-label">GPS</span>
-            <span class="sensor-value">{{ humanoidSensor.gps }}</span>
-          </div>
-          <div class="sensor-row">
-            <span class="sensor-label">行人距离</span>
-            <span class="sensor-value" :class="pedestrianDesiredVisible ? 'warning' : ''">{{ humanoidSensor.pedestrianDistance }}</span>
-          </div>
-        </div>
-      </div>
-
     </div>
   </div>
 </template>
@@ -260,7 +302,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { CSS2DRenderer, CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js'
 import gsap from 'gsap'
 import api from '../services/api.js'
-import { connectTelemetry, disconnectTelemetry, lastTelemetry, telemetryConnected } from '../services/telemetrySocket.js'
+import { connectTelemetry, disconnectTelemetry, lastTelemetry, lastTelemetryAt, telemetryConnected } from '../services/telemetrySocket.js'
 import { DEMO_SCENARIO } from '../config/demoScenario.js'
 
 const getWorldYaw = (obj) => {
@@ -273,6 +315,9 @@ const getWorldYaw = (obj) => {
 
 const threeContainer = ref(null)
 const heroDeviceName = DEMO_SCENARIO.heroDeviceName
+const HUMIDITY_WARNING = 45
+const HUMIDITY_ALARM = 75
+const uiNowMs = ref(Date.now())
 
 // 信号灯实时参数
 const signalParams = ref({
@@ -282,6 +327,14 @@ const signalParams = ref({
   voltage: 220,
   current: 2.5,
   signal: -45
+})
+
+const humidityClass = computed(() => {
+  const h = Number(signalParams.value.humidity)
+  if (!Number.isFinite(h)) return ''
+  if (h >= HUMIDITY_ALARM) return 'danger'
+  if (h >= HUMIDITY_WARNING) return 'warn'
+  return 'ok'
 })
 
 // 信号孪生体参数（行业常用：资产/互锁/同步/健康/寿命预测等）
@@ -303,6 +356,29 @@ const signalTwin = ref({
 const telemetryDistanceM = ref(null)
 const telemetryWaterActive = ref(null)
 const pedestrianDesiredVisible = ref(false)
+
+const telemetryStatusText = computed(() => (telemetryConnected.value ? '已接入' : '未接入'))
+const telemetryStatusClass = computed(() => (telemetryConnected.value ? 'ok' : 'warn'))
+
+const telemetryLastSeenText = computed(() => {
+  if (!telemetryConnected.value || !lastTelemetryAt.value) return '--'
+  const deltaS = Math.max(0, Math.round((uiNowMs.value - lastTelemetryAt.value) / 1000))
+  return `${deltaS}s`
+})
+
+const telemetryWaterText = computed(() => {
+  if (!telemetryConnected.value) return '--'
+  if (telemetryWaterActive.value === 1) return '告警'
+  if (telemetryWaterActive.value === 0) return '正常'
+  return '--'
+})
+
+const telemetryWaterClass = computed(() => {
+  if (!telemetryConnected.value) return ''
+  if (telemetryWaterActive.value === 1) return 'danger'
+  if (telemetryWaterActive.value === 0) return 'ok'
+  return ''
+})
 
 const setPedestrianVisible = (visible) => {
   pedestrianDesiredVisible.value = Boolean(visible)
@@ -1717,6 +1793,7 @@ const onWindowResize = () => {
 }
 
 const updateUI = () => {
+  uiNowMs.value = Date.now()
   const lastUpdate = document.getElementById('lastUpdate')
   if (lastUpdate) {
     lastUpdate.textContent = new Date().toLocaleString('zh-CN')
@@ -2347,6 +2424,40 @@ onBeforeUnmount(() => {
 .tm-value.warn { color: #ffcc66; }
 .tm-value.danger { color: #ff5c5c; }
 
+.signal-kpis {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+  padding: 10px;
+  border-radius: 10px;
+  background: rgba(0, 100, 150, 0.10);
+  border: 1px solid rgba(0, 200, 255, 0.18);
+}
+
+.kpi-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.kpi-label {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.kpi-value {
+  font-size: 13px;
+  font-weight: 800;
+  color: #d8f3ff;
+  text-shadow: 0 0 10px rgba(0, 212, 255, 0.15);
+}
+
+.kpi-value.ok { color: #33ff99; }
+.kpi-value.warn { color: #ffcc66; }
+.kpi-value.danger { color: #ff5c5c; }
+
 .panel-alert {
   padding: 10px;
   border-radius: 8px;
@@ -2379,6 +2490,9 @@ onBeforeUnmount(() => {
 
 .stat-label { color: #aaa; }
 .stat-value { color: #00d4ff; font-weight: bold; }
+.stat-value.ok { color: #33ff99; }
+.stat-value.warn { color: #ffcc66; }
+.stat-value.danger { color: #ff5c5c; }
 .stat-value.highlight {
   color: #33ff33;
   text-shadow: 0 0 5px rgba(51, 255, 51, 0.5);
@@ -2574,6 +2688,11 @@ onBeforeUnmount(() => {
   color: #fff;
   font-weight: bold;
   flex: 1;
+}
+
+.sensor-distance {
+  font-size: 18px;
+  letter-spacing: 0.5px;
 }
 
 .sensor-meta {

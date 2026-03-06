@@ -11,6 +11,17 @@ const random = (min, max, decimal = 0) => {
   return decimal > 0 ? parseFloat(value.toFixed(decimal)) : Math.floor(value)
 }
 
+// 可复现的随机数（避免趋势曲线每次刷新都“跳”）
+const mulberry32 = (seed) => {
+  let t = seed >>> 0
+  return () => {
+    t += 0x6d2b79f5
+    let r = Math.imul(t ^ (t >>> 15), 1 | t)
+    r ^= r + Math.imul(r ^ (r >>> 7), 61 | r)
+    return ((r ^ (r >>> 14)) >>> 0) / 4294967296
+  }
+}
+
 // 随机选择数组元素
 const randomChoice = (arr) => arr[random(0, arr.length)]
 
@@ -29,6 +40,71 @@ const risingSeries = (length, start, end, jitter = 0.6, decimal = 1) => {
     const wave = Math.sin(t * Math.PI * 4) * (jitter * 0.55)
     return Math.max(0, Math.min(100, random(base + wave - jitter, base + wave + jitter, decimal)))
   })
+}
+
+const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
+
+const buildHumidityTrend = ({ seed, baselineEnd, peak, current, phaseT, mode }) => {
+  const total = 24
+  const rng = mulberry32(seed)
+
+  // baseline：平稳区间（开场应在 20~40 左右）
+  const baselineCount = clamp(
+    mode === 'falling' ? 10 : 24 - clamp(Math.floor(2 + phaseT * 10), 2, 12),
+    0,
+    total - 2
+  )
+  const baseline = Array.from({ length: baselineCount }, (_, idx) => {
+    const n = rng()
+    const wave = Math.sin((idx / Math.max(1, baselineCount - 1)) * Math.PI * 2) * 0.6
+    const v = 22 + n * 8 + wave // 约 22~30
+    return Number(clamp(v, 18, 36).toFixed(1))
+  })
+
+  if (!baseline.length) baseline.push(Number(clamp(baselineEnd, 18, 36).toFixed(1)))
+
+  const remain = total - baseline.length
+  const riseLen = mode === 'falling' ? clamp(Math.floor(6 + phaseT * 6), 6, 12) : remain
+  const fallLen = mode === 'falling' ? clamp(remain - riseLen, 4, remain) : 0
+
+  const riseCount = mode === 'falling' ? clamp(riseLen, 2, total - 2) : remain
+  const fallCount = mode === 'falling' ? clamp(fallLen, 2, total - riseCount) : 0
+
+  const startRise = baseline[baseline.length - 1]
+  const endRise = Number(clamp(peak, 0, 100).toFixed(1))
+
+  const rise = Array.from({ length: riseCount }, (_, idx) => {
+    const t = riseCount <= 1 ? 1 : idx / (riseCount - 1)
+    // 轻微加速上升：前期更平缓，避免一开场就冲到高值
+    const eased = t * t * (3 - 2 * t)
+    const v = startRise + (endRise - startRise) * eased
+    const jitter = (rng() - 0.5) * 1.2
+    return Number(clamp(v + jitter, 0, 100).toFixed(1))
+  })
+
+  const fallStart = rise.length ? rise[rise.length - 1] : endRise
+  const fallEnd = Number(clamp(current, 0, 100).toFixed(1))
+  const fall = Array.from({ length: fallCount }, (_, idx) => {
+    const t = fallCount <= 1 ? 1 : idx / (fallCount - 1)
+    const eased = t * t * (3 - 2 * t)
+    const v = fallStart + (fallEnd - fallStart) * eased
+    const jitter = (rng() - 0.5) * 0.9
+    return Number(clamp(v + jitter, 0, 100).toFixed(1))
+  })
+
+  let out = [...baseline, ...rise, ...fall]
+  out = out.slice(0, total)
+
+  // 强制最后一个点与当前值一致，保证“模拟进行中”时曲线随时间上升/回落
+  out[total - 1] = fallEnd
+
+  // 避免刚打开就出现“高湿度尾巴”：把尾部（近 3 个点）限制在当前值附近
+  for (let i = total - 3; i < total - 1; i++) {
+    if (i < 0) continue
+    out[i] = Number(clamp(out[i], 0, fallEnd + 3).toFixed(1))
+  }
+
+  return out
 }
 
 export const getWeatherData = () => {
@@ -71,27 +147,39 @@ export const getWeatherData = () => {
   const elapsed = Math.max(0, now - startedAt)
   const riseDurationMs = 60000
   const riseT = Math.max(0, Math.min(1, elapsed / riseDurationMs))
-  const humidityAtTime = (t0) => Number((20 + 72 * Math.max(0, Math.min(1, t0 / riseDurationMs))).toFixed(1))
+  const humidityAtTime = (t0) => Number((20 + 72 * clamp(t0 / riseDurationMs, 0, 1)).toFixed(1))
 
   const mitigationAt = humidityMitigationAppliedAt.value
   let humidity = humidityAtTime(elapsed)
-  let humidityTrend = risingSeries(24, 20, 92, 1.2, 1)
+  let humidityTrend = []
 
   if (Number.isFinite(Number(mitigationAt)) && mitigationAt >= startedAt) {
     const mitigationElapsed = Math.max(0, now - mitigationAt)
     const humidityAtMitigation = humidityAtTime(mitigationAt - startedAt)
     const fallDurationMs = 90000
-    const fallT = Math.max(0, Math.min(1, mitigationElapsed / fallDurationMs))
+    const fallT = clamp(mitigationElapsed / fallDurationMs, 0, 1)
     const target = 35
     const fallHumidity = humidityAtMitigation + (target - humidityAtMitigation) * fallT
     humidity = Number(Math.max(0, Math.min(100, fallHumidity)).toFixed(1))
 
-    const pre = risingSeries(12, 20, humidityAtMitigation, 1.0, 1)
-    const post = risingSeries(12, humidityAtMitigation, target, 0.8, 1).reverse()
-    humidityTrend = [...pre.slice(0, 12), ...post.slice(0, 12)]
+    humidityTrend = buildHumidityTrend({
+      seed: Math.floor(startedAt / 1000),
+      baselineEnd: 24,
+      peak: humidityAtMitigation,
+      current: humidity,
+      phaseT: fallT,
+      mode: 'falling'
+    })
   } else {
     humidity = Number((20 + 72 * riseT).toFixed(1))
-    humidityTrend = risingSeries(24, 20, 92, 1.2, 1)
+    humidityTrend = buildHumidityTrend({
+      seed: Math.floor(startedAt / 1000),
+      baselineEnd: 24,
+      peak: humidity,
+      current: humidity,
+      phaseT: riseT,
+      mode: 'rising'
+    })
   }
 
   if (Array.isArray(humidityTrend) && humidityTrend.length) {
