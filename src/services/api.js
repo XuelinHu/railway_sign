@@ -23,9 +23,9 @@ const memory = {
     next_train: 'G1502 14:35',
   },
   railway: {
-    name: '\u6e58\u6842\u94c1\u8def',
-    start_station: '\u67f3\u5dde\u7ad9',
-    end_station: '\u5357\u5b81\u7ad9',
+    name: 'XX铁路',
+    start_station: 'X站',
+    end_station: 'Y站',
     length_km: 255,
   },
   aiConversations: [
@@ -106,7 +106,7 @@ const getSeismicData = async (range = '24h') => {
   return generateSeries(getSeriesLength(range), 1.2, 4.2, (value, index) => ({
     id: index + 1,
     level: value,
-    location: '\u67f3\u5dde\u5c71\u533a',
+    location: 'XX区域',
     recorded_at: nowIso(),
   }))
 }
@@ -140,7 +140,7 @@ const getCurrentWeather = async () => {
     icon: '\u26c5',
     temperature: randomFloat(20, 33, 1),
     description: '\u591a\u4e91',
-    location: '\u67f3\u5dde\u5e02',
+    location: 'XX区域',
     wind_speed: `${randomFloat(2.0, 4.5, 1)}m/s`,
     humidity: `${Math.round(randomFloat(55, 85, 0))}%`,
     visibility: `${Math.round(randomFloat(8, 16, 0))}km`,

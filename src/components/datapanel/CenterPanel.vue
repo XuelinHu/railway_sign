@@ -166,7 +166,7 @@
 
           <!-- 线路 -->
           <g class="rail-lines">
-            <!-- 京沪线 - 水平主线 -->
+            <!-- 线路示意 -->
             <g class="line-group" v-for="(line, idx) in displayLines" :key="line.id">
               <line :x1="60" :y1="60 + idx * 70" :x2="740" :y2="60 + idx * 70"
                 :stroke="line.color" stroke-width="4" stroke-linecap="round"
@@ -665,11 +665,11 @@ const keyMetrics = computed(() => [
 
 // 显示用的线路
 const displayLines = computed(() => [
-  { id: 'L1', shortName: '京沪', color: '#00d4ff' },
-  { id: 'L2', shortName: '京广', color: '#00ff88' },
-  { id: 'L3', shortName: '沪昆', color: '#ffaa00' },
-  { id: 'L4', shortName: '陇海', color: '#ff6b6b' },
-  { id: 'L5', shortName: '京哈', color: '#aa88ff' }
+  { id: 'L1', shortName: 'XX1', color: '#00d4ff' },
+  { id: 'L2', shortName: 'XX2', color: '#00ff88' },
+  { id: 'L3', shortName: 'XX3', color: '#ffaa00' },
+  { id: 'L4', shortName: 'XX4', color: '#ff6b6b' },
+  { id: 'L5', shortName: 'XX5', color: '#aa88ff' }
 ])
 
 // 显示用的轨道区段

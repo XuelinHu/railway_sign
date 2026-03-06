@@ -3,7 +3,7 @@
  * 提供各种传感器、气象、设备监控等模拟数据
  */
 
-import { severeWeatherEnabled, severeWeatherStartedAt } from './simulationState.js'
+import { severeWeatherEnabled, severeWeatherStartedAt, humidityMitigationAppliedAt } from './simulationState.js'
 
 // 随机数生成工具
 const random = (min, max, decimal = 0) => {
@@ -63,12 +63,40 @@ export const getWeatherData = () => {
     }
   }
 
-  // 恶劣天气：湿度从约 20% 快速上升到 92%，并触发橙/红告警阈值
+  // 恶劣天气演练：
+  // - 湿度从约 20% 在 60s 内上升到约 92%（阈值：45/75）
+  // - “异常消除”后进入处置回落（约 90s 回落到 35% 左右，进入观察）
   const startedAt = severeWeatherStartedAt.value || Date.now()
-  const elapsed = Math.max(0, Date.now() - startedAt)
-  const durationMs = 60000 // 约 1 分钟：20 -> 92
-  const t = Math.max(0, Math.min(1, elapsed / durationMs))
-  const humidity = Number((20 + 72 * t).toFixed(1))
+  const now = Date.now()
+  const elapsed = Math.max(0, now - startedAt)
+  const riseDurationMs = 60000
+  const riseT = Math.max(0, Math.min(1, elapsed / riseDurationMs))
+  const humidityAtTime = (t0) => Number((20 + 72 * Math.max(0, Math.min(1, t0 / riseDurationMs))).toFixed(1))
+
+  const mitigationAt = humidityMitigationAppliedAt.value
+  let humidity = humidityAtTime(elapsed)
+  let humidityTrend = risingSeries(24, 20, 92, 1.2, 1)
+
+  if (Number.isFinite(Number(mitigationAt)) && mitigationAt >= startedAt) {
+    const mitigationElapsed = Math.max(0, now - mitigationAt)
+    const humidityAtMitigation = humidityAtTime(mitigationAt - startedAt)
+    const fallDurationMs = 90000
+    const fallT = Math.max(0, Math.min(1, mitigationElapsed / fallDurationMs))
+    const target = 35
+    const fallHumidity = humidityAtMitigation + (target - humidityAtMitigation) * fallT
+    humidity = Number(Math.max(0, Math.min(100, fallHumidity)).toFixed(1))
+
+    const pre = risingSeries(12, 20, humidityAtMitigation, 1.0, 1)
+    const post = risingSeries(12, humidityAtMitigation, target, 0.8, 1).reverse()
+    humidityTrend = [...pre.slice(0, 12), ...post.slice(0, 12)]
+  } else {
+    humidity = Number((20 + 72 * riseT).toFixed(1))
+    humidityTrend = risingSeries(24, 20, 92, 1.2, 1)
+  }
+
+  if (Array.isArray(humidityTrend) && humidityTrend.length) {
+    humidityTrend[humidityTrend.length - 1] = humidity
+  }
 
   return {
     temperature: random(12, 28, 1),
@@ -88,7 +116,7 @@ export const getWeatherData = () => {
     o3: random(80, 160, 1),
     weatherType: randomChoice(['大雨', '暴雨', '雷阵雨', '霾']),
     temperatureTrend: generateTimeSeries(24, 10, 28, 1),
-    humidityTrend: risingSeries(24, 20, 92, 1.2, 1),
+    humidityTrend,
     forecast: Array.from({ length: 7 }, (_, i) => ({
       date: new Date(Date.now() + i * 86400000).toLocaleDateString('zh-CN', { weekday: 'short' }),
       high: random(18, 28),
@@ -212,11 +240,11 @@ export const getTrainData = () => ({
   freightTonnage: random(1000, 10000),
   avgSpeed: random(60, 120, 1),
   trainsByLine: [
-    { line: '京沪线', count: random(10, 30) },
-    { line: '京广线', count: random(10, 30) },
-    { line: '沪昆线', count: random(10, 30) },
-    { line: '陇海线', count: random(10, 30) },
-    { line: '京哈线', count: random(10, 30) }
+    { line: 'XX1线', count: random(10, 30) },
+    { line: 'XX2线', count: random(10, 30) },
+    { line: 'XX3线', count: random(10, 30) },
+    { line: 'XX4线', count: random(10, 30) },
+    { line: 'XX5线', count: random(10, 30) }
   ],
   trainsByType: [
     { type: '高铁', count: random(20, 50), color: '#00d4ff' },
@@ -226,7 +254,7 @@ export const getTrainData = () => ({
   ],
   realtimePositions: Array.from({ length: 20 }, (_, i) => ({
     id: `G${1000 + i}`,
-    line: randomChoice(['京沪', '京广', '沪昆', '陇海', '京哈']),
+    line: randomChoice(['XX1', 'XX2', 'XX3', 'XX4', 'XX5']),
     position: [random(115, 125, 4), random(30, 45, 4)],
     speed: random(80, 350),
     status: randomChoice(['正常运行', '即将到站', '正在发车', '临时停车'])
@@ -371,7 +399,7 @@ export const getOverviewData = () => ({
 // 地图热点数据
 export const getMapHotspots = () => Array.from({ length: 20 }, (_, i) => ({
   id: i + 1,
-  name: randomChoice(['北京站', '上海站', '广州站', '深圳站', '成都站', '武汉站', '西安站', '郑州站', '南京站', '杭州站']),
+  name: randomChoice(['X站', 'Y站', 'X北站', 'X东站', 'Y北站', 'Y东站', 'X信号所', 'Y信号所', 'XX线路所', 'XX货场']),
   position: [random(100, 130, 4), random(20, 45, 4)],
   value: random(10, 100),
   status: randomChoice(['正常', '繁忙', '拥堵', '维护中']),
@@ -383,11 +411,11 @@ export const getMapHotspots = () => Array.from({ length: 20 }, (_, i) => ({
 export const getSignalDispatchData = () => {
   // 线路定义
   const lines = [
-    { id: 'L1', name: '京沪高速线', color: '#00d4ff', length: 1318 },
-    { id: 'L2', name: '京广高速线', color: '#00ff88', length: 2298 },
-    { id: 'L3', name: '沪昆高速线', color: '#ffaa00', length: 2252 },
-    { id: 'L4', name: '陇海线', color: '#ff6b6b', length: 1759 },
-    { id: 'L5', name: '京哈线', color: '#aa88ff', length: 1249 }
+    { id: 'L1', name: 'XX1线', color: '#00d4ff', length: 1318 },
+    { id: 'L2', name: 'XX2线', color: '#00ff88', length: 2298 },
+    { id: 'L3', name: 'XX3线', color: '#ffaa00', length: 2252 },
+    { id: 'L4', name: 'XX4线', color: '#ff6b6b', length: 1759 },
+    { id: 'L5', name: 'XX5线', color: '#aa88ff', length: 1249 }
   ]
 
   // 信号机状态
@@ -560,11 +588,11 @@ export const getSignalDistribution = () => ({
     { name: '临时停车', value: random(0, 1), color: '#ff6b6b' }
   ],
   lineLoad: [
-    { name: '京沪线', value: random(25, 35), color: '#00d4ff' },
-    { name: '京广线', value: random(20, 30), color: '#00ff88' },
-    { name: '沪昆线', value: random(15, 25), color: '#ffaa00' },
-    { name: '陇海线', value: random(10, 20), color: '#ff6b6b' },
-    { name: '京哈线', value: random(10, 20), color: '#aa88ff' }
+    { name: 'XX1线', value: random(25, 35), color: '#00d4ff' },
+    { name: 'XX2线', value: random(20, 30), color: '#00ff88' },
+    { name: 'XX3线', value: random(15, 25), color: '#ffaa00' },
+    { name: 'XX4线', value: random(10, 20), color: '#ff6b6b' },
+    { name: 'XX5线', value: random(10, 20), color: '#aa88ff' }
   ]
 })
 

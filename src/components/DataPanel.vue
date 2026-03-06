@@ -51,11 +51,15 @@
 
     <div class="global-alerts">
       <transition name="alert-pop">
-        <div v-if="showHumidityAlert" class="global-alert humidity">
+        <div v-if="showHumidityAlert" class="global-alert humidity" :class="humidityAlertClass">
           <div class="alert-title">湿度异常告警</div>
           <div class="alert-desc">
-            <div class="alert-target">{{ humidityAlertTarget }}</div>
-            <div class="alert-hint">传感器监控栏检测到湿度数据超限，请立即排查。</div>
+            <div class="alert-target">{{ heroDeviceName }}</div>
+            <div class="alert-hint">
+              <div class="alert-line">告警内容：盒内湿度持续升高（当前 {{ currentHumidityText }}）</div>
+              <div class="alert-line">关联分析：疑似密封件胶套老化渗水</div>
+              <div class="alert-line">建议处置：立即现场核查盒体密封状态、胶套老化情况及内部受潮情况。</div>
+            </div>
           </div>
           <div class="alert-chart">
             <div class="chart-caption">24小时湿度变化曲线</div>
@@ -82,6 +86,18 @@
           <div class="alert-actions">
             <button class="alert-close" @click="dismissHumidityAlert">关闭弹框</button>
           </div>
+        </div>
+      </transition>
+
+      <transition name="alert-pop">
+        <div v-if="showHumidityObservation" class="global-alert observe">
+          <div class="observe-left">
+            <div class="observe-title">观察中</div>
+            <div class="observe-desc">
+              {{ heroDeviceName }}：盒内湿度回落中（当前 {{ currentHumidityText }}）
+            </div>
+          </div>
+          <button class="observe-close" @click="dismissHumidityObservation">关闭</button>
         </div>
       </transition>
     </div>
@@ -147,8 +163,9 @@ import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import LeftPanel from './datapanel/LeftPanel.vue'
 import CenterPanel from './datapanel/CenterPanel.vue'
 import RightPanel from './datapanel/RightPanel.vue'
-import { getWeatherData, getOverviewData, getSignalDispatchData } from '../services/mockDataService'
-import { severeWeatherEnabled, setSevereWeatherEnabled } from '../services/simulationState.js'
+import { getWeatherData, getOverviewData } from '../services/mockDataService'
+import { severeWeatherEnabled, setSevereWeatherEnabled, markHumidityMitigationApplied } from '../services/simulationState.js'
+import { DEMO_SCENARIO } from '../config/demoScenario.js'
 
 const currentDate = ref('')
 const currentTime = ref('')
@@ -161,7 +178,13 @@ const humidityAnomaly = ref(false)
 const showHumidityAlert = ref(false)
 const humidityAlertDismissed = ref(false)
 const humidityAnomalySuppressed = ref(false)
-const humidityAlertTarget = ref('X站、Y站进站信号机、5/7号道岔信号设备异常告警')
+const showHumidityObservation = ref(false)
+const heroDeviceName = ref(DEMO_SCENARIO.heroDeviceName)
+
+const HUMIDITY_WARNING = 45
+const HUMIDITY_ALARM = 75
+
+let observationAutoHideTimer = null
 
 let timeTimer = null
 let updateTimer = null
@@ -215,35 +238,12 @@ const toggleSevereWeather = () => {
   setSevereWeatherEnabled(!severeWeatherEnabled.value)
 }
 
-const buildHumidityAlertTarget = () => {
-  try {
-    const dispatch = getSignalDispatchData()
-    const lines = dispatch?.lines || []
-    const chosenLine = lines.length ? lines[Math.floor(Math.random() * lines.length)] : null
-    const lineName = chosenLine?.name || ''
-
-    const randSwitchNo = () => Math.floor(1 + Math.random() * 24)
-    let a = randSwitchNo()
-    let b = randSwitchNo()
-    if (a === b) b = (b % 24) + 1
-    const [s1, s2] = a < b ? [a, b] : [b, a]
-
-    // 大数据平台湿度异常告警站点脱敏：京哈站改为 X、Y站
-    if (lineName.includes('京哈')) {
-      return `X站、Y站进站信号机、${s1}/${s2}号道岔信号设备异常告警`
-    }
-
-    const station = ['X站', 'Y站'][Math.floor(Math.random() * 2)]
-    return `${station}进站信号机、${s1}/${s2}号道岔信号设备异常告警`
-  } catch (e) {
-    return 'X站、Y站进站信号机、5/7号道岔信号设备异常告警'
-  }
-}
-
 const clearHumidityAnomaly = () => {
   humidityAnomaly.value = false
   showHumidityAlert.value = false
   humidityAlertDismissed.value = false
+  showHumidityObservation.value = true
+  markHumidityMitigationApplied()
   // 恶劣天气仍在模拟时，允许手动“消除异常”并保持不自动反复弹出
   if (severeWeatherEnabled.value) {
     humidityAnomalySuppressed.value = true
@@ -255,13 +255,37 @@ const dismissHumidityAlert = () => {
   humidityAlertDismissed.value = true
 }
 
+const dismissHumidityObservation = () => {
+  showHumidityObservation.value = false
+}
+
+const currentHumidityText = computed(() => {
+  const h = Number(weather.value?.humidity)
+  if (!Number.isFinite(h)) return '--'
+  return `${h.toFixed(1)}%`
+})
+
+const humidityStage = computed(() => {
+  const h = Number(weather.value?.humidity)
+  if (!Number.isFinite(h)) return 'normal'
+  if (h >= HUMIDITY_ALARM) return 'alarm'
+  if (h >= HUMIDITY_WARNING) return 'warning'
+  return 'normal'
+})
+
+const humidityAlertClass = computed(() => {
+  if (humidityStage.value === 'alarm') return 'alarm'
+  if (humidityStage.value === 'warning') return 'warning'
+  return 'normal'
+})
+
 watch(severeWeatherEnabled, (enabled) => {
   if (enabled) {
     if (!humidityAnomalySuppressed.value) {
-      humidityAlertTarget.value = buildHumidityAlertTarget()
       humidityAnomaly.value = true
       humidityAlertDismissed.value = false
       showHumidityAlert.value = true
+      showHumidityObservation.value = false
     }
     return
   }
@@ -271,7 +295,27 @@ watch(severeWeatherEnabled, (enabled) => {
   humidityAnomaly.value = false
   humidityAlertDismissed.value = false
   showHumidityAlert.value = false
+  showHumidityObservation.value = false
 }, { immediate: true })
+
+watch(
+  () => weather.value?.humidity,
+  (value) => {
+    if (!showHumidityObservation.value) return
+    const h = Number(value)
+    if (!Number.isFinite(h)) return
+    if (h >= HUMIDITY_WARNING) return
+
+    if (observationAutoHideTimer) return
+    observationAutoHideTimer = setTimeout(() => {
+      observationAutoHideTimer = null
+      const latest = Number(weather.value?.humidity)
+      if (showHumidityObservation.value && Number.isFinite(latest) && latest < HUMIDITY_WARNING) {
+        showHumidityObservation.value = false
+      }
+    }, 8000)
+  }
+)
 
 const humidityAlertChartPoints = computed(() => {
   const data = weather.value?.humidityTrend || []
@@ -336,6 +380,7 @@ onUnmounted(() => {
   if (timeTimer) clearInterval(timeTimer)
   if (updateTimer) clearInterval(updateTimer)
   if (fpsTimer) clearInterval(fpsTimer)
+  if (observationAutoHideTimer) clearTimeout(observationAutoHideTimer)
 })
 </script>
 
@@ -555,12 +600,81 @@ onUnmounted(() => {
   min-width: 860px;
   max-width: 980px;
   border-radius: 14px;
-  border: 2px solid rgba(255, 90, 90, 0.95);
-  background: linear-gradient(135deg, rgba(180, 20, 20, 0.96), rgba(120, 12, 12, 0.96));
-  box-shadow: 0 0 30px rgba(255, 35, 35, 0.72);
+  border: 2px solid rgba(255, 185, 80, 0.95);
+  background: linear-gradient(135deg, rgba(200, 40, 40, 0.96), rgba(210, 150, 30, 0.92));
+  box-shadow:
+    0 0 26px rgba(255, 60, 60, 0.55),
+    0 0 22px rgba(255, 200, 90, 0.45);
   padding: 18px 22px;
   pointer-events: auto;
   animation: globalAlertFlash 0.9s ease-in-out infinite;
+}
+
+.global-alert.humidity.warning {
+  border-color: rgba(255, 210, 90, 0.95);
+  background: linear-gradient(135deg, rgba(180, 90, 20, 0.96), rgba(220, 170, 40, 0.92));
+  box-shadow:
+    0 0 22px rgba(255, 180, 60, 0.55),
+    0 0 18px rgba(255, 230, 120, 0.35);
+}
+
+.global-alert.humidity.alarm {
+  border-color: rgba(255, 90, 90, 0.98);
+  background: linear-gradient(135deg, rgba(200, 25, 25, 0.96), rgba(210, 145, 30, 0.9));
+  box-shadow:
+    0 0 32px rgba(255, 35, 35, 0.72),
+    0 0 18px rgba(255, 220, 110, 0.32);
+}
+
+.alert-line {
+  margin-top: 6px;
+  line-height: 1.5;
+}
+
+.global-alert.observe {
+  min-width: 860px;
+  max-width: 980px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 210, 90, 0.55);
+  background: linear-gradient(135deg, rgba(40, 60, 90, 0.78), rgba(140, 95, 20, 0.55));
+  box-shadow:
+    0 0 18px rgba(255, 210, 90, 0.22),
+    0 0 18px rgba(0, 212, 255, 0.18);
+  padding: 12px 18px;
+  animation: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.observe-left {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.observe-title {
+  font-size: 16px;
+  font-weight: 900;
+  letter-spacing: 1px;
+  color: rgba(255, 230, 160, 0.98);
+}
+
+.observe-desc {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.observe-close {
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.10);
+  color: #fff;
+  border-radius: 8px;
+  font-size: 13px;
+  padding: 6px 14px;
+  cursor: pointer;
+  white-space: nowrap;
 }
 
 .alert-title {

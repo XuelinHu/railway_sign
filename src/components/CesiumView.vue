@@ -376,6 +376,7 @@ import * as Cesium from 'cesium'
 import 'cesium/Build/Cesium/Widgets/widgets.css'
 import api from '../services/api.js'
 import { severeWeatherEnabled, setSevereWeatherEnabled } from '../services/simulationState.js'
+import { DEMO_SCENARIO } from '../config/demoScenario.js'
 
 // Cesium Ion（用于 World Imagery / Terrain 等）。优先使用环境变量，未设置则回退到内置 token（便于开箱即用）。
 Cesium.Ion.defaultAccessToken =
@@ -525,9 +526,9 @@ const geoStats = ref({
 
 // ===== 铁道信息 =====
 const currentRailway = ref({
-  name: '湘桂铁路',
-  start: 'XX站',
-  end: 'YY站',
+  name: DEMO_SCENARIO.railwayName,
+  start: DEMO_SCENARIO.stationStart,
+  end: DEMO_SCENARIO.stationEnd,
   length: '255'
 })
 
@@ -544,7 +545,7 @@ const weather = ref({
   icon: '⛅',
   temp: 26,
   description: '多云',
-  location: 'XX市',
+  location: DEMO_SCENARIO.weatherLocation,
   windSpeed: '3.2m/s',
   humidity: '20%',
   visibility: '15km',
@@ -557,7 +558,7 @@ const hoveredWeatherPoint = ref(null)
 const maskedWeather = computed(() => ({
   ...weather.value,
   temp: 'X',
-  location: 'XX市',
+  location: DEMO_SCENARIO.weatherLocation,
   windSpeed: 'X级',
   humidity: 'X%',
   visibility: 'Xkm',
@@ -672,7 +673,7 @@ const refreshWeather = async () => {
         icon: weatherData.icon || '⛅',
         temp: Math.round(weatherData.temperature),
         description: weatherData.description || '多云',
-        location: weatherData.location || 'XX市',
+        location: weatherData.location || DEMO_SCENARIO.weatherLocation,
         windSpeed: weatherData.wind_speed || '3.2m/s',
         humidity: weatherData.humidity || '20%',
         visibility: weatherData.visibility || '15km',
@@ -844,7 +845,7 @@ const sendAiMessage = async () => {
     } else if (userMessage.includes('天气')) {
       response = `当前${weather.value.location}天气${weather.value.description}，气温${weather.value.temp}°C，湿度${weather.value.humidity}，风速${weather.value.windSpeed}。整体天气条件良好，适合列车运行。`
     } else if (userMessage.includes('站点') || userMessage.includes('附近')) {
-      response = '您附近3公里内有以下站点：XX站（主站）、XX北站（货运站）、XX东站（高铁站）。最近的是XX站，距离约X公里。'
+      response = `您附近3公里内有以下站点：${DEMO_SCENARIO.nearbyStations.main}（主站）、${DEMO_SCENARIO.nearbyStations.freight}（货运站）、${DEMO_SCENARIO.nearbyStations.hs}（高铁站）。最近的是${DEMO_SCENARIO.nearbyStations.main}，距离约X公里。`
     } else if (userMessage.includes('你好') || userMessage.includes('您好')) {
       response = '您好！我是铁道监控系统AI助手。我可以帮您查询铁道信息、天气状况、列车运行状态等。请问有什么需要帮助的吗？'
     }
@@ -1871,7 +1872,7 @@ const loadDashboardData = async () => {
           icon: data.weather.icon || '⛅',
           temp: Math.round(data.weather.temperature),
           description: data.weather.description || '多云',
-          location: data.weather.location || 'XX市',
+          location: data.weather.location || DEMO_SCENARIO.weatherLocation,
           windSpeed: data.weather.wind_speed || '3.2m/s',
           humidity: data.weather.humidity || '20%',
           visibility: data.weather.visibility || '15km',
@@ -1906,9 +1907,9 @@ const loadDashboardData = async () => {
       // 更新铁道信息
       if (data.railway) {
         currentRailway.value = {
-          name: data.railway.name || '湘桂铁路',
-          start: 'XX站',
-          end: 'YY站',
+          name: data.railway.name || DEMO_SCENARIO.railwayName,
+          start: DEMO_SCENARIO.stationStart,
+          end: DEMO_SCENARIO.stationEnd,
           length: data.railway.length_km || '255'
         }
       }

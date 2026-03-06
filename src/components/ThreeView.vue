@@ -39,6 +39,10 @@
         <div id="signalList"></div>
         <div class="twin-metrics">
           <div class="tm-item">
+            <span class="tm-label">设备名称</span>
+            <span class="tm-value">{{ heroDeviceName }}</span>
+          </div>
+          <div class="tm-item">
             <span class="tm-label">孪生体ID</span>
             <span class="tm-value">{{ signalTwin.twinId }}</span>
           </div>
@@ -257,6 +261,7 @@ import { CSS2DRenderer, CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRe
 import gsap from 'gsap'
 import api from '../services/api.js'
 import { connectTelemetry, disconnectTelemetry, lastTelemetry, telemetryConnected } from '../services/telemetrySocket.js'
+import { DEMO_SCENARIO } from '../config/demoScenario.js'
 
 const getWorldYaw = (obj) => {
   if (!obj) return 0
@@ -267,6 +272,7 @@ const getWorldYaw = (obj) => {
 }
 
 const threeContainer = ref(null)
+const heroDeviceName = DEMO_SCENARIO.heroDeviceName
 
 // 信号灯实时参数
 const signalParams = ref({
@@ -424,21 +430,21 @@ const logVideo = (index, action, detail = '') => {
 
 const videoList = ref([
   {
-    title: '监控点 1 - 站台A',
+    title: '监控点 1 - 区间A',
     streamPath: `${STREAM_PROXY_BASE}/live`,
     src: '',
     loaded: false,
     status: '待播放'
   },
   {
-    title: '监控点 2 - 信号塔',
+    title: '监控点 2 - 区间B',
     streamPath: `${STREAM_PROXY_BASE}/live`,
     src: '',
     loaded: false,
     status: '待播放'
   },
   {
-    title: '监控点 3 - 铁道口',
+    title: '监控点 3 - 区间C',
     streamPath: `${STREAM_PROXY_BASE}/live`,
     src: '',
     loaded: false,
@@ -534,6 +540,10 @@ let boxSensorLabelAnchor = null
 let autoDemoStarted = false
 let autoDemoWaitTimer = null
 let autoDemoFlyTween = null
+let skyParticles = null
+let skyParticlesMaterial = null
+let endpointGlowTexture = null
+let endpointGlows = []
 
 // 人形感应器面板数据
 const humanoidSensor = ref({
@@ -559,6 +569,101 @@ const trainPath = new THREE.CatmullRomCurve3([
   new THREE.Vector3(100, 3, 100),
   new THREE.Vector3(168, 3, 168),
 ])
+
+const createRadialGlowTexture = () => {
+  const size = 192
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return null
+
+  const cx = size / 2
+  const cy = size / 2
+  const radius = size / 2
+
+  const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius)
+  g.addColorStop(0.0, 'rgba(255,255,255,0.00)')
+  g.addColorStop(0.28, 'rgba(120,220,255,0.00)')
+  g.addColorStop(0.45, 'rgba(120,220,255,0.18)')
+  g.addColorStop(0.62, 'rgba(120,220,255,0.55)')
+  g.addColorStop(0.78, 'rgba(120,220,255,0.16)')
+  g.addColorStop(1.0, 'rgba(120,220,255,0.00)')
+
+  ctx.fillStyle = g
+  ctx.fillRect(0, 0, size, size)
+
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace
+  texture.needsUpdate = true
+  return texture
+}
+
+const createSkyParticles = () => {
+  const count = 1400
+  const width = 520
+  const depth = 520
+  const minY = 70
+  const maxY = 200
+
+  const positions = new Float32Array(count * 3)
+  for (let i = 0; i < count; i++) {
+    const idx = i * 3
+    positions[idx] = (Math.random() - 0.5) * width
+    positions[idx + 1] = minY + Math.random() * (maxY - minY)
+    positions[idx + 2] = (Math.random() - 0.5) * depth
+  }
+
+  const geometry = new THREE.BufferGeometry()
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+
+  skyParticlesMaterial = new THREE.PointsMaterial({
+    color: 0x9fe6ff,
+    size: 1.35,
+    sizeAttenuation: true,
+    transparent: true,
+    opacity: 0.22,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending
+  })
+
+  skyParticles = new THREE.Points(geometry, skyParticlesMaterial)
+  skyParticles.frustumCulled = false
+  scene.add(skyParticles)
+}
+
+const createRailEndpointGlows = () => {
+  if (!endpointGlowTexture) {
+    endpointGlowTexture = createRadialGlowTexture()
+  }
+  if (!endpointGlowTexture) return
+
+  const start = trainPath.getPoint(0)
+  const end = trainPath.getPoint(1)
+
+  const makeGlow = (position, baseScale, baseOpacity, phase) => {
+    const material = new THREE.SpriteMaterial({
+      map: endpointGlowTexture,
+      color: 0x9fe6ff,
+      transparent: true,
+      opacity: baseOpacity,
+      depthWrite: false,
+      depthTest: true,
+      blending: THREE.AdditiveBlending
+    })
+    const sprite = new THREE.Sprite(material)
+    sprite.position.set(position.x, 0.18, position.z)
+    sprite.scale.set(baseScale, baseScale, 1)
+    scene.add(sprite)
+    endpointGlows.push({ sprite, baseScale, baseOpacity, phase })
+  }
+
+  endpointGlows = []
+  makeGlow(start, 22, 0.55, 0.0)
+  makeGlow(start, 14, 0.38, 1.2)
+  makeGlow(end, 22, 0.55, 2.4)
+  makeGlow(end, 14, 0.38, 3.6)
+}
 
 const getClosestPathProgress = (position, samples = 300) => {
   let bestProgress = 0
@@ -635,6 +740,8 @@ const init = () => {
   createGround()
   createMountains()
   createRailway()
+  createSkyParticles()
+  createRailEndpointGlows()
   createSignalLights()
   createTrain()
   createTrees()
@@ -1705,6 +1812,7 @@ const animate = () => {
   }
 
   const delta = clock.getDelta()
+  const t = clock.getElapsedTime()
 
   controls.update()
 
@@ -1738,6 +1846,23 @@ const animate = () => {
 
   updateHumanoidSensorPanel()
   updateBoxSensorLabel()
+
+  if (skyParticles) {
+    skyParticles.rotation.y += delta * 0.03
+    if (skyParticlesMaterial) {
+      skyParticlesMaterial.opacity = 0.16 + (Math.sin(t * 0.7) + 1) * 0.06
+    }
+  }
+
+  if (endpointGlows.length) {
+    endpointGlows.forEach((item, index) => {
+      const p = (Math.sin(t * 1.6 + item.phase) + 1) * 0.5
+      const scale = item.baseScale * (1 + 0.18 * p)
+      item.sprite.scale.set(scale, scale, 1)
+      item.sprite.material.opacity = Math.max(0, Math.min(1, item.baseOpacity * (0.35 + 0.65 * p)))
+      item.sprite.material.rotation = (t * 0.15 + index * 0.4) % (Math.PI * 2)
+    })
+  }
 
   if (mixer) {
     mixer.update(delta)
@@ -1843,6 +1968,26 @@ onBeforeUnmount(() => {
     scene.remove(boxSensorLabelAnchor)
     boxSensorLabelAnchor = null
     boxSensorLabelEntry = null
+  }
+
+  if (skyParticles && scene) {
+    scene.remove(skyParticles)
+    skyParticles.geometry?.dispose?.()
+    skyParticlesMaterial?.dispose?.()
+    skyParticles = null
+    skyParticlesMaterial = null
+  }
+
+  if (endpointGlows.length && scene) {
+    endpointGlows.forEach(({ sprite }) => {
+      scene.remove(sprite)
+      sprite.material?.dispose?.()
+    })
+    endpointGlows = []
+  }
+  if (endpointGlowTexture) {
+    endpointGlowTexture.dispose?.()
+    endpointGlowTexture = null
   }
   window.removeEventListener('resize', onWindowResize)
 
