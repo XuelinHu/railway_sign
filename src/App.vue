@@ -37,7 +37,8 @@ import CesiumView from './components/CesiumView.vue'
 import ThreeView from './components/ThreeView.vue'
 import DataPanel from './components/DataPanel.vue'
 
-const currentTab = ref('cesium')
+// 默认打开：数字孪生面板（ThreeView）
+const currentTab = ref('three')
 
 const switchTab = (tab) => {
   currentTab.value = tab

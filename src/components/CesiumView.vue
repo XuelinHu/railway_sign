@@ -112,6 +112,42 @@
           </div>
         </div>
 
+        <!-- 地理信息（脱敏） -->
+        <div class="panel-card">
+          <div class="panel-header">
+            <span class="panel-title">🛰️ 地理信息</span>
+            <span class="panel-subtitle">GEO STATUS</span>
+          </div>
+          <div class="panel-content">
+            <div class="railway-detail">
+              <div class="detail-item">
+                <span class="detail-label">场景模式</span>
+                <span class="detail-val">3D</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">影像图层</span>
+                <span class="detail-val">World Imagery</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">地形图层</span>
+                <span class="detail-val">World Terrain</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">地形夸张</span>
+                <span class="detail-val">{{ geoStats.terrainExaggeration }}x</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">信标数量</span>
+                <span class="detail-val">{{ geoStats.beaconCount }}</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">雾效密度</span>
+                <span class="detail-val">{{ geoStats.fogDensity }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- 铁道信息 -->
         <div class="panel-card">
           <div class="panel-header">
@@ -153,14 +189,14 @@
           <div class="panel-content">
             <div class="weather-compact">
               <div class="weather-left">
-                <div class="weather-icon-small">{{ weather.icon }}</div>
+                <div class="weather-icon-small">{{ maskedWeather.icon }}</div>
                 <div class="weather-info-compact">
                   <div class="weather-temp-compact">
-                    <span class="temp-value-small">{{ weather.temp }}</span>
+                    <span class="temp-value-small">{{ maskedWeather.temp }}</span>
                     <span class="temp-unit-small">°C</span>
                   </div>
-                  <div class="weather-desc-small">{{ weather.description }}</div>
-                  <div class="weather-location-small">{{ weather.location }}</div>
+                  <div class="weather-desc-small">{{ maskedWeather.description }}</div>
+                  <div class="weather-location-small">{{ maskedWeather.location }}</div>
                 </div>
               </div>
               <div class="weather-right">
@@ -249,11 +285,11 @@
           </div>
         </div>
 
-        <!-- 空气质量 -->
+        <!-- 空气湿度 -->
         <div class="panel-card aqi-card" :class="{ 'aqi-flash': airQualitySevereWarning }">
           <div class="panel-header">
-            <span class="panel-title">空气质量</span>
-            <span class="panel-subtitle">AIR QUALITY</span>
+            <span class="panel-title">空气湿度</span>
+            <span class="panel-subtitle">AIR HUMIDITY</span>
           </div>
           <div class="panel-content">
             <div v-if="airQualitySevereWarning" class="aqi-severe-warning">
@@ -290,6 +326,42 @@
             </svg>
             <div v-if="hoveredAirQualityPoint !== null" class="chart-tooltip aqi-tooltip">
               {{ airQualityTimeLabels[hoveredAirQualityPoint] }}: {{ currentAirQualityData[hoveredAirQualityPoint] }}
+            </div>
+          </div>
+        </div>
+
+        <!-- 地理态势（脱敏） -->
+        <div class="panel-card">
+          <div class="panel-header">
+            <span class="panel-title">🗺️ 地理态势</span>
+            <span class="panel-subtitle">MAP SITUATION</span>
+          </div>
+          <div class="panel-content">
+            <div class="railway-detail">
+              <div class="detail-item">
+                <span class="detail-label">巡航状态</span>
+                <span class="detail-val">{{ cameraCruiseEnabled ? '开启' : '关闭' }}</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">视角俯仰</span>
+                <span class="detail-val">{{ geoStats.pitchDeg }}°</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">视角翻滚</span>
+                <span class="detail-val">{{ geoStats.rollDeg }}°</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">可视范围</span>
+                <span class="detail-val">X km</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">区域名称</span>
+                <span class="detail-val">XX区域</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">更新频率</span>
+                <span class="detail-val">{{ geoStats.refreshHz }}Hz</span>
+              </div>
             </div>
           </div>
         </div>
@@ -436,17 +508,26 @@ const seismicStatusClass = computed(() => {
 
 // ===== 当前位置 =====
 const currentPosition = ref({
-  lon: '109.3887',
-  lat: '24.3076',
-  altitude: '156',
-  heading: '45'
+  lon: 'X',
+  lat: 'Y',
+  altitude: 'X',
+  heading: 'X'
+})
+
+const geoStats = ref({
+  terrainExaggeration: 'X',
+  beaconCount: 0,
+  fogDensity: 'X',
+  pitchDeg: 'X',
+  rollDeg: 'X',
+  refreshHz: 30
 })
 
 // ===== 铁道信息 =====
 const currentRailway = ref({
   name: '湘桂铁路',
-  start: '柳州站',
-  end: '南宁站',
+  start: 'XX站',
+  end: 'YY站',
   length: '255'
 })
 
@@ -463,9 +544,9 @@ const weather = ref({
   icon: '⛅',
   temp: 26,
   description: '多云',
-  location: '柳州市',
+  location: 'XX市',
   windSpeed: '3.2m/s',
-  humidity: '72%',
+  humidity: '20%',
   visibility: '15km',
   pressure: '1013hPa'
 })
@@ -473,12 +554,22 @@ const weatherLoading = ref(false)
 const weatherTimeRange = ref('24h')
 const hoveredWeatherPoint = ref(null)
 
-// 天气紧凑显示项
+const maskedWeather = computed(() => ({
+  ...weather.value,
+  temp: 'X',
+  location: 'XX市',
+  windSpeed: 'X级',
+  humidity: 'X%',
+  visibility: 'Xkm',
+  pressure: 'XhPa'
+}))
+
+// 天气紧凑显示项（脱敏展示）
 const weatherCompactItems = computed(() => [
-  { icon: '💨', label: '风速', value: weather.value.windSpeed },
-  { icon: '💧', label: '湿度', value: weather.value.humidity },
-  { icon: '🌫️', label: '能见度', value: weather.value.visibility },
-  { icon: '🌡️', label: '气压', value: weather.value.pressure }
+  { icon: '💨', label: '风速', value: maskedWeather.value.windSpeed },
+  { icon: '💧', label: '湿度', value: maskedWeather.value.humidity },
+  { icon: '🌫️', label: '能见度', value: maskedWeather.value.visibility },
+  { icon: '🌡️', label: '气压', value: maskedWeather.value.pressure }
 ])
 
 // 温度历史数据 - 近24小时
@@ -499,11 +590,11 @@ const weatherDataMonth = ref([
 
 // 湿度历史数据（用于恶劣天气模拟的上升折线）
 const humidityData24h = ref([
-  38, 39, 40, 41, 42, 44, 46, 47, 48, 50, 52, 54,
-  55, 56, 58, 60, 61, 62, 64, 66, 67, 68, 69, 70
+  18, 18, 19, 19, 20, 20, 20, 21, 21, 20, 20, 19,
+  19, 19, 20, 20, 21, 21, 22, 22, 21, 21, 20, 20
 ])
-const humidityDataWeek = ref([45, 48, 52, 56, 60, 66, 72])
-const humidityDataMonth = ref(Array.from({ length: 30 }, (_, i) => Math.min(80, 35 + i * 1.2)))
+const humidityDataWeek = ref([19, 20, 20, 21, 21, 22, 20])
+const humidityDataMonth = ref(Array.from({ length: 30 }, () => 20 + Math.round((Math.random() - 0.5) * 6)))
 
 const weatherTrendMode = computed(() => (severeWeatherEnabled.value ? 'humidity' : 'temperature'))
 const weatherTrendTitle = computed(() => (weatherTrendMode.value === 'humidity' ? '湿度趋势' : '温度趋势'))
@@ -581,9 +672,9 @@ const refreshWeather = async () => {
         icon: weatherData.icon || '⛅',
         temp: Math.round(weatherData.temperature),
         description: weatherData.description || '多云',
-        location: weatherData.location || '柳州市',
+        location: weatherData.location || 'XX市',
         windSpeed: weatherData.wind_speed || '3.2m/s',
-        humidity: weatherData.humidity || '72%',
+        humidity: weatherData.humidity || '20%',
         visibility: weatherData.visibility || '15km',
         pressure: weatherData.pressure || '1013hPa'
       }
@@ -592,7 +683,7 @@ const refreshWeather = async () => {
     console.error('获取天气失败:', error)
     // 使用备用模拟数据
     weather.value.temp = Math.floor(20 + Math.random() * 10)
-    weather.value.humidity = Math.floor(60 + Math.random() * 20) + '%'
+    weather.value.humidity = Math.floor(18 + Math.random() * 6) + '%'
   } finally {
     weatherLoading.value = false
   }
@@ -616,7 +707,7 @@ const parsePercent = (val, fallback = 0) => {
 }
 
 const airHumidity = computed(() => {
-  return Math.round(Math.max(0, Math.min(100, parsePercent(weather.value.humidity, 60))))
+  return Math.round(Math.max(0, Math.min(100, parsePercent(weather.value.humidity, 20))))
 })
 
 const airHumidityLevel = computed(() => {
@@ -753,7 +844,7 @@ const sendAiMessage = async () => {
     } else if (userMessage.includes('天气')) {
       response = `当前${weather.value.location}天气${weather.value.description}，气温${weather.value.temp}°C，湿度${weather.value.humidity}，风速${weather.value.windSpeed}。整体天气条件良好，适合列车运行。`
     } else if (userMessage.includes('站点') || userMessage.includes('附近')) {
-      response = '您附近3公里内有以下站点：柳州站（主站）、柳州北站（货运站）、柳州东站（高铁站）。最近的是柳州站，距离约1.2公里。'
+      response = '您附近3公里内有以下站点：XX站（主站）、XX北站（货运站）、XX东站（高铁站）。最近的是XX站，距离约X公里。'
     } else if (userMessage.includes('你好') || userMessage.includes('您好')) {
       response = '您好！我是铁道监控系统AI助手。我可以帮您查询铁道信息、天气状况、列车运行状态等。请问有什么需要帮助的吗？'
     }
@@ -922,6 +1013,7 @@ const applySevereWeatherChange = async (enabled) => {
         { name: 'NO2', value: '32μg/m³' }
       ]
     }
+    weather.value.humidity = '20%'
     return
   }
 
@@ -933,10 +1025,10 @@ const applySevereWeatherChange = async (enabled) => {
     installAudioUnlockFallback()
   }
 
-  // 启动后 5 秒：空气湿度慢慢爬升（60%橙色告警，70%红色告警，最终在92~93%徘徊）
+  // 启动后 5 秒：空气湿度加速爬升（默认约20%），60%橙色告警，70%红色告警，最终在92~93%徘徊
   severeWeatherEffectTimer = setTimeout(() => {
     let phase = 'to60'
-    let current = Math.max(30, Math.min(55, parsePercent(weather.value.humidity, 50)))
+    let current = Math.max(18, Math.min(25, parsePercent(weather.value.humidity, 20)))
 
     const shown0 = Math.round(current)
     weather.value.humidity = `${shown0}%`
@@ -945,13 +1037,13 @@ const applySevereWeatherChange = async (enabled) => {
 
     severeWeatherHumidityTimer = setInterval(() => {
       if (phase === 'to60') {
-        current = Math.min(60, current + 1)
+        current = Math.min(60, current + 2)
         if (current >= 60) phase = 'to70'
       } else if (phase === 'to70') {
-        current = Math.min(70, current + 1)
+        current = Math.min(70, current + 2)
         if (current >= 70) phase = 'to92'
       } else if (phase === 'to92') {
-        current = Math.min(92, current + 1)
+        current = Math.min(92, current + 3)
         if (current >= 92) phase = 'hover'
       } else {
         current = 92 + Math.random() * 1.2
@@ -963,7 +1055,7 @@ const applySevereWeatherChange = async (enabled) => {
       humidityData24h.value.push(shown)
 
       airQualitySevereWarning.value = shown >= 70
-    }, 1000)
+    }, 800)
   }, 5000)
 }
 
@@ -1445,10 +1537,17 @@ const setupInteractions = () => {
 const updatePositionDisplay = () => {
   if (!viewer) return
   const cameraPosition = viewer.camera.positionCartographic
-  currentPosition.value.lon = Cesium.Math.toDegrees(cameraPosition.longitude).toFixed(4)
-  currentPosition.value.lat = Cesium.Math.toDegrees(cameraPosition.latitude).toFixed(4)
+  // 脱敏：不展示具体经纬度，仅保留与视图相关的非地点信息
+  currentPosition.value.lon = 'X'
+  currentPosition.value.lat = 'Y'
   currentPosition.value.altitude = Math.round(cameraPosition.height)
   currentPosition.value.heading = Math.round(Cesium.Math.toDegrees(viewer.camera.heading))
+
+  geoStats.value.terrainExaggeration = viewer?.terrainExaggeration ?? 'X'
+  geoStats.value.beaconCount = Array.isArray(beaconPoints) ? beaconPoints.length : 0
+  geoStats.value.fogDensity = Number(viewer?.scene?.fog?.density ?? defaultFogDensity).toFixed(5)
+  geoStats.value.pitchDeg = Math.round(Cesium.Math.toDegrees(viewer.camera.pitch))
+  geoStats.value.rollDeg = Math.round(Cesium.Math.toDegrees(viewer.camera.roll))
 }
 
 const updatePopupPositions = () => {
@@ -1772,9 +1871,9 @@ const loadDashboardData = async () => {
           icon: data.weather.icon || '⛅',
           temp: Math.round(data.weather.temperature),
           description: data.weather.description || '多云',
-          location: data.weather.location || '柳州市',
+          location: data.weather.location || 'XX市',
           windSpeed: data.weather.wind_speed || '3.2m/s',
-          humidity: data.weather.humidity || '72%',
+          humidity: data.weather.humidity || '20%',
           visibility: data.weather.visibility || '15km',
           pressure: data.weather.pressure || '1013hPa'
         }
@@ -1808,8 +1907,8 @@ const loadDashboardData = async () => {
       if (data.railway) {
         currentRailway.value = {
           name: data.railway.name || '湘桂铁路',
-          start: data.railway.start_station || '柳州站',
-          end: data.railway.end_station || '南宁站',
+          start: 'XX站',
+          end: 'YY站',
           length: data.railway.length_km || '255'
         }
       }

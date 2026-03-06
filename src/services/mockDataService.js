@@ -37,7 +37,7 @@ export const getWeatherData = () => {
   if (!enabled) {
     return {
       temperature: random(-5, 35, 1),
-      humidity: random(30, 95, 1),
+      humidity: random(15, 30, 1),
       windSpeed: random(0, 25, 1),
       windDirection: randomChoice(['北', '东北', '东', '东南', '南', '西南', '西', '西北']),
       pressure: random(990, 1030, 1),
@@ -53,7 +53,7 @@ export const getWeatherData = () => {
       o3: random(0, 200, 1),
       weatherType: randomChoice(['晴', '多云', '阴', '小雨', '中雨', '大雨', '雷阵雨', '小雪', '中雪', '大雪', '雾', '霾']),
       temperatureTrend: generateTimeSeries(24, -5, 35, 1),
-      humidityTrend: generateTimeSeries(24, 30, 95, 1),
+      humidityTrend: generateTimeSeries(24, 15, 30, 1),
       forecast: Array.from({ length: 7 }, (_, i) => ({
         date: new Date(Date.now() + i * 86400000).toLocaleDateString('zh-CN', { weekday: 'short' }),
         high: random(15, 35),
@@ -63,12 +63,12 @@ export const getWeatherData = () => {
     }
   }
 
-  // 恶劣天气：湿度默认异常，缓慢从 30 上升到 80，曲线呈明显上升趋势
+  // 恶劣天气：湿度从约 20% 快速上升到 92%，并触发橙/红告警阈值
   const startedAt = severeWeatherStartedAt.value || Date.now()
   const elapsed = Math.max(0, Date.now() - startedAt)
-  const durationMs = 120000 // 约 2 分钟：30 -> 80
+  const durationMs = 60000 // 约 1 分钟：20 -> 92
   const t = Math.max(0, Math.min(1, elapsed / durationMs))
-  const humidity = Number((30 + 50 * t).toFixed(1))
+  const humidity = Number((20 + 72 * t).toFixed(1))
 
   return {
     temperature: random(12, 28, 1),
@@ -88,7 +88,7 @@ export const getWeatherData = () => {
     o3: random(80, 160, 1),
     weatherType: randomChoice(['大雨', '暴雨', '雷阵雨', '霾']),
     temperatureTrend: generateTimeSeries(24, 10, 28, 1),
-    humidityTrend: risingSeries(24, 30, 80, 1.2, 1),
+    humidityTrend: risingSeries(24, 20, 92, 1.2, 1),
     forecast: Array.from({ length: 7 }, (_, i) => ({
       date: new Date(Date.now() + i * 86400000).toLocaleDateString('zh-CN', { weekday: 'short' }),
       high: random(18, 28),

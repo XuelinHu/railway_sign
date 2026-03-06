@@ -161,7 +161,7 @@ const humidityAnomaly = ref(false)
 const showHumidityAlert = ref(false)
 const humidityAlertDismissed = ref(false)
 const humidityAnomalySuppressed = ref(false)
-const humidityAlertTarget = ref('沪昆站X进站信号机、5/7号道岔信号设备异常告警')
+const humidityAlertTarget = ref('X站、Y站进站信号机、5/7号道岔信号设备异常告警')
 
 let timeTimer = null
 let updateTimer = null
@@ -220,17 +220,7 @@ const buildHumidityAlertTarget = () => {
     const dispatch = getSignalDispatchData()
     const lines = dispatch?.lines || []
     const chosenLine = lines.length ? lines[Math.floor(Math.random() * lines.length)] : null
-    const lineName = chosenLine?.name || '沪昆高速线'
-
-    const prefix =
-      lineName.includes('沪昆') ? '沪昆' :
-      lineName.includes('京沪') ? '京沪' :
-      lineName.includes('京广') ? '京广' :
-      lineName.includes('陇海') ? '陇海' :
-      lineName.includes('京哈') ? '京哈' : '沪昆'
-
-    const stationSuffix = ['站X', '站东', '站西', '站南', '站北'][Math.floor(Math.random() * 5)]
-    const station = `${prefix}${stationSuffix}`
+    const lineName = chosenLine?.name || ''
 
     const randSwitchNo = () => Math.floor(1 + Math.random() * 24)
     let a = randSwitchNo()
@@ -238,9 +228,15 @@ const buildHumidityAlertTarget = () => {
     if (a === b) b = (b % 24) + 1
     const [s1, s2] = a < b ? [a, b] : [b, a]
 
+    // 大数据平台湿度异常告警站点脱敏：京哈站改为 X、Y站
+    if (lineName.includes('京哈')) {
+      return `X站、Y站进站信号机、${s1}/${s2}号道岔信号设备异常告警`
+    }
+
+    const station = ['X站', 'Y站'][Math.floor(Math.random() * 2)]
     return `${station}进站信号机、${s1}/${s2}号道岔信号设备异常告警`
   } catch (e) {
-    return '沪昆站X进站信号机、5/7号道岔信号设备异常告警'
+    return 'X站、Y站进站信号机、5/7号道岔信号设备异常告警'
   }
 }
 

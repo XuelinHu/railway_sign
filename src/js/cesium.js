@@ -10,10 +10,10 @@ let beaconPoints = []  // 存储所有信标点位
 let beaconPopups = []  // 存储每个信标点的弹窗元素
 let selectedBeacon = null  // 当前选中的信标
 
-// 柳州火车站坐标
+// XX火车站坐标（地点已脱敏）
 const LIUZHOU_STATION = {
-  lon: 109.38871,  // 柳州火车站经度
-  lat: 24.30755,   // 柳州火车站纬度
+  lon: 109.38871,  // 经度
+  lat: 24.30755,   // 纬度
   height: 500
 }
 
@@ -24,7 +24,7 @@ export async function initCesium() {
       window.updateLoadingStatus('正在初始化 Cesium...')
     }
     console.log('开始初始化 Cesium...')
-    console.log('目标位置: 柳州火车站', LIUZHOU_STATION)
+    console.log('目标位置: XX火车站', LIUZHOU_STATION)
 
     // 创建基础 Viewer 配置
     const viewerOptions = {
@@ -112,11 +112,11 @@ export async function initCesium() {
   }
 }
 
-// 相机飞入到柳州火车站
+// 相机飞入到 XX火车站
 export function flyToLiuZhou() {
   if (!viewer) return
 
-  console.log('相机飞入到柳州火车站...')
+  console.log('相机飞入到 XX火车站...')
 
   // 使用 flyTo 实现平滑的飞入效果
   viewer.camera.flyTo({
@@ -271,11 +271,11 @@ function updateDashboardData() {
 
 // 创建随机发光柱和光波动画
 function createBeaconPoints() {
-  // 在柳州周边随机生成5-8个点位
+  // 在目标区域周边随机生成5-8个点位
   const pointCount = Math.floor(Math.random() * 4) + 5  // 5-8个点
 
   for (let i = 0; i < pointCount; i++) {
-    // 在柳州火车站周围随机分布
+    // 在目标站点周围随机分布
     const lon = LIUZHOU_STATION.lon + (Math.random() - 0.5) * 0.1  // ±0.05度
     const lat = LIUZHOU_STATION.lat + (Math.random() - 0.5) * 0.1  // ±0.05度
     const height = 200 + Math.random() * 300  // 200-500米高度
@@ -496,9 +496,9 @@ export async function init() {
     // 创建随机发光柱和光波
     createBeaconPoints()
 
-    // 相机飞入到柳州火车站
+    // 相机飞入到 XX火车站
     if (window.updateLoadingStatus) {
-      window.updateLoadingStatus('正在飞向柳州火车站...')
+      window.updateLoadingStatus('正在飞向XX火车站...')
     }
 
     setTimeout(() => {

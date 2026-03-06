@@ -61,41 +61,14 @@
           </div>
         </div>
       </div>
-      <!-- 空气质量 -->
+      <!-- 空气湿度 -->
       <div class="air-quality">
-        <div class="aqi-display">
-          <span class="aqi-value" :style="{ color: aqiColor }">{{ weather.airQuality }}</span>
-          <span class="aqi-label">{{ aqiLabel }}</span>
+        <div class="air-quality-header">
+          <span class="air-quality-title">空气湿度</span>
         </div>
-        <div class="pollutants">
-          <div class="pollutant-item">
-            <span class="pollutant-label">PM2.5</span>
-            <div class="pollutant-bar">
-              <div class="pollutant-fill" :style="{ width: (weather.pm25 / 150 * 100) + '%', background: '#ff6b6b' }"></div>
-            </div>
-            <span class="pollutant-value">{{ weather.pm25 }}</span>
-          </div>
-          <div class="pollutant-item">
-            <span class="pollutant-label">PM10</span>
-            <div class="pollutant-bar">
-              <div class="pollutant-fill" :style="{ width: (weather.pm10 / 200 * 100) + '%', background: '#ffaa00' }"></div>
-            </div>
-            <span class="pollutant-value">{{ weather.pm10 }}</span>
-          </div>
-          <div class="pollutant-item">
-            <span class="pollutant-label">SO₂</span>
-            <div class="pollutant-bar">
-              <div class="pollutant-fill" :style="{ width: (weather.so2 / 50 * 100) + '%', background: '#00d4ff' }"></div>
-            </div>
-            <span class="pollutant-value">{{ weather.so2 }}</span>
-          </div>
-          <div class="pollutant-item">
-            <span class="pollutant-label">NO₂</span>
-            <div class="pollutant-bar">
-              <div class="pollutant-fill" :style="{ width: (weather.no2 / 100 * 100) + '%', background: '#00ff88' }"></div>
-            </div>
-            <span class="pollutant-value">{{ weather.no2 }}</span>
-          </div>
+        <div class="aqi-display">
+          <span class="aqi-value" :style="{ color: aqiColor }">{{ humidityShown }}%</span>
+          <span class="aqi-label">{{ aqiLabel }}</span>
         </div>
       </div>
     </div>
@@ -272,23 +245,21 @@ const trendPoints = computed(() => {
   }))
 })
 
-// AQI 颜色和标签
+const humidityShown = computed(() => Math.round(Number(weather.value.humidity) || 0))
+
+// 湿度告警颜色和标签（<60 正常；60~70 橙；>=70 红）
 const aqiColor = computed(() => {
-  const aqi = weather.value.airQuality
-  if (aqi <= 50) return '#00ff88'
-  if (aqi <= 100) return '#ffaa00'
-  if (aqi <= 150) return '#ff9966'
-  if (aqi <= 200) return '#ff6b6b'
-  return '#aa00ff'
+  const h = humidityShown.value
+  if (h < 60) return '#00ff88'
+  if (h < 70) return '#ffaa00'
+  return '#ff2f2f'
 })
 
 const aqiLabel = computed(() => {
-  const aqi = weather.value.airQuality
-  if (aqi <= 50) return '优'
-  if (aqi <= 100) return '良'
-  if (aqi <= 150) return '轻度污染'
-  if (aqi <= 200) return '中度污染'
-  return '重度污染'
+  const h = humidityShown.value
+  if (h < 60) return '正常'
+  if (h < 70) return '橙色告警'
+  return '红色告警'
 })
 
 // 传感器图标
@@ -515,16 +486,31 @@ onUnmounted(() => {
   margin-top: 5px;
 }
 
-/* 空气质量 */
+/* 空气湿度 */
 .air-quality {
   display: flex;
-  gap: 15px;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.air-quality-header {
+  width: 100%;
+  display: flex;
   align-items: center;
+  justify-content: space-between;
+}
+
+.air-quality-title {
+  font-size: 12px;
+  font-weight: bold;
+  color: #00d4ff;
+  letter-spacing: 1px;
 }
 
 .aqi-display {
-  text-align: center;
-  min-width: 60px;
+  text-align: left;
+  min-width: 0;
 }
 
 .aqi-value {

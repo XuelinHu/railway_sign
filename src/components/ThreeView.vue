@@ -37,9 +37,120 @@
           <span class="title-decorator"></span>
         </h2>
         <div id="signalList"></div>
+        <div class="twin-metrics">
+          <div class="tm-item">
+            <span class="tm-label">孪生体ID</span>
+            <span class="tm-value">{{ signalTwin.twinId }}</span>
+          </div>
+          <div class="tm-item">
+            <span class="tm-label">资产编码</span>
+            <span class="tm-value">{{ signalTwin.assetId }}</span>
+          </div>
+          <div class="tm-item">
+            <span class="tm-label">设备类型</span>
+            <span class="tm-value">{{ signalTwin.deviceType }}</span>
+          </div>
+          <div class="tm-item">
+            <span class="tm-label">互锁状态</span>
+            <span class="tm-value" :class="signalTwin.interlocking === '正常' ? 'ok' : 'warn'">{{ signalTwin.interlocking }}</span>
+          </div>
+          <div class="tm-item">
+            <span class="tm-label">工作模式</span>
+            <span class="tm-value">{{ signalTwin.workMode }}</span>
+          </div>
+          <div class="tm-item">
+            <span class="tm-label">同步状态</span>
+            <span class="tm-value" :class="signalTwin.syncStatus === '已同步' ? 'ok' : 'warn'">{{ signalTwin.syncStatus }}</span>
+          </div>
+          <div class="tm-item">
+            <span class="tm-label">同步延迟</span>
+            <span class="tm-value">{{ signalTwin.syncLatencyMs }}ms</span>
+          </div>
+          <div class="tm-item">
+            <span class="tm-label">数据新鲜度</span>
+            <span class="tm-value">{{ signalTwin.dataFreshnessS }}s</span>
+          </div>
+          <div class="tm-item">
+            <span class="tm-label">健康评分</span>
+            <span class="tm-value" :class="signalTwin.healthScore >= 85 ? 'ok' : (signalTwin.healthScore >= 70 ? 'warn' : 'danger')">{{ signalTwin.healthScore }}</span>
+          </div>
+          <div class="tm-item">
+            <span class="tm-label">预测剩余寿命</span>
+            <span class="tm-value">{{ signalTwin.predictedRulDays }}天</span>
+          </div>
+          <div class="tm-item">
+            <span class="tm-label">固件版本</span>
+            <span class="tm-value">{{ signalTwin.firmware }}</span>
+          </div>
+          <div class="tm-item">
+            <span class="tm-label">上次检修</span>
+            <span class="tm-value">{{ signalTwin.lastMaintenance }}</span>
+          </div>
+        </div>
       </div>
 
-      <!-- 信号灯实时参数 -->
+      <!-- 设备状态 -->
+      <div class="panel-section">
+        <h2 class="panel-title">
+          <span class="title-icon">⚙️</span>
+          <span class="title-text">设备状态</span>
+          <span class="title-decorator"></span>
+        </h2>
+        <div class="device-status">
+          <div class="status-row">
+            <span class="status-dot online"></span>
+            <span class="status-label">主控板</span>
+            <span class="status-value online">正常</span>
+          </div>
+          <div class="status-row">
+            <span class="status-dot online"></span>
+            <span class="status-label">通信模块</span>
+            <span class="status-value online">正常</span>
+          </div>
+          <div class="status-row">
+            <span class="status-dot" :class="signalParams.temperature > 50 ? 'warning' : 'online'"></span>
+            <span class="status-label">散热系统</span>
+            <span class="status-value" :class="signalParams.temperature > 50 ? 'warning' : 'online'">{{ signalParams.temperature > 50 ? '告警' : '正常' }}</span>
+          </div>
+          <div class="status-row">
+            <span class="status-dot online"></span>
+            <span class="status-label">电源模块</span>
+            <span class="status-value online">正常</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 右侧数据面板 -->
+    <div class="stats-panel">
+      <!-- 装饰边框 -->
+      <div class="panel-border top-left"></div>
+      <div class="panel-border top-right"></div>
+      <div class="panel-border bottom-left"></div>
+      <div class="panel-border bottom-right"></div>
+      <div class="panel-border glow-line"></div>
+
+      <div class="panel-section">
+        <h2 class="panel-title">
+          <span class="title-icon">🎮</span>
+          <span class="title-text">场景信息</span>
+          <span class="title-decorator"></span>
+        </h2>
+        <div class="stat-item">
+          <span class="stat-label">相机位置:</span>
+          <span class="stat-value" id="cameraPos">--</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">运行时间:</span>
+          <span class="stat-value" id="uptime">0s</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">最后更新:</span>
+          <span class="stat-value" id="lastUpdate">--</span>
+        </div>
+      </div>
+
+      <!-- 主信号灯实时参数 -->
       <div class="panel-section">
         <h2 class="panel-title">
           <span class="title-icon">📊</span>
@@ -109,39 +220,8 @@
         </div>
       </div>
 
-      <!-- 设备状态 -->
-      <div class="panel-section">
-        <h2 class="panel-title">
-          <span class="title-icon">⚙️</span>
-          <span class="title-text">设备状态</span>
-          <span class="title-decorator"></span>
-        </h2>
-        <div class="device-status">
-          <div class="status-row">
-            <span class="status-dot online"></span>
-            <span class="status-label">主控板</span>
-            <span class="status-value online">正常</span>
-          </div>
-          <div class="status-row">
-            <span class="status-dot online"></span>
-            <span class="status-label">通信模块</span>
-            <span class="status-value online">正常</span>
-          </div>
-          <div class="status-row">
-            <span class="status-dot" :class="signalParams.temperature > 50 ? 'warning' : 'online'"></span>
-            <span class="status-label">散热系统</span>
-            <span class="status-value" :class="signalParams.temperature > 50 ? 'warning' : 'online'">{{ signalParams.temperature > 50 ? '告警' : '正常' }}</span>
-          </div>
-          <div class="status-row">
-            <span class="status-dot online"></span>
-            <span class="status-label">电源模块</span>
-            <span class="status-value online">正常</span>
-          </div>
-        </div>
-      </div>
-
       <!-- 人形感应器 -->
-      <div class="panel-section">
+      <div class="panel-section" :class="{ 'panel-alert': pedestrianDesiredVisible }">
         <h2 class="panel-title">
           <span class="title-icon">🧍</span>
           <span class="title-text">人形感应器</span>
@@ -159,83 +239,24 @@
           </div>
           <div class="sensor-row">
             <span class="sensor-label">行人距离</span>
-            <span class="sensor-value warning">{{ humanoidSensor.pedestrianDistance }}</span>
+            <span class="sensor-value" :class="pedestrianDesiredVisible ? 'warning' : ''">{{ humanoidSensor.pedestrianDistance }}</span>
           </div>
         </div>
       </div>
-    </div>
 
-    <!-- 右侧数据面板 - 视频监控 -->
-    <div class="stats-panel">
-      <!-- 装饰边框 -->
-      <div class="panel-border top-left"></div>
-      <div class="panel-border top-right"></div>
-      <div class="panel-border bottom-left"></div>
-      <div class="panel-border bottom-right"></div>
-      <div class="panel-border glow-line"></div>
-
-      <div class="panel-section">
-        <h2 class="panel-title">
-          <span class="title-icon">🎮</span>
-          <span class="title-text">场景信息</span>
-          <span class="title-decorator"></span>
-        </h2>
-        <div class="stat-item">
-          <span class="stat-label">相机位置:</span>
-          <span class="stat-value" id="cameraPos">--</span>
-        </div>
-        <div class="stat-item">
-          <span class="stat-label">运行时间:</span>
-          <span class="stat-value" id="uptime">0s</span>
-        </div>
-        <div class="stat-item">
-          <span class="stat-label">最后更新:</span>
-          <span class="stat-value" id="lastUpdate">--</span>
-        </div>
-      </div>
-
-      <div class="panel-section">
-        <h2 class="panel-title">
-          <span class="title-icon">📹</span>
-          <span class="title-text">实时监控</span>
-          <span class="title-decorator"></span>
-        </h2>
-        <div class="video-grid">
-          <div class="video-card" v-for="(video, index) in videoList" :key="index">
-            <div class="video-header">
-              <span class="video-dot live"></span>
-              <span class="video-title">{{ video.title }}</span>
-            </div>
-            <div class="video-container" @click="loadVideo(index)">
-              <div v-if="!video.loaded" class="video-placeholder">
-                <div class="play-button">▶</div>
-                <div class="video-hint">点击播放</div>
-              </div>
-              <img
-                v-else
-                :src="video.src"
-                class="stream-frame"
-                alt="stream"
-                @load="onVideoLoad(index)"
-                @error="reloadVideo(index)"
-              />
-              <div v-if="video.loaded" class="video-status">{{ video.status }}</div>
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { CSS2DRenderer, CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js'
 import gsap from 'gsap'
 import api from '../services/api.js'
+import { connectTelemetry, disconnectTelemetry, lastTelemetry, telemetryConnected } from '../services/telemetrySocket.js'
 
 const getWorldYaw = (obj) => {
   if (!obj) return 0
@@ -256,6 +277,33 @@ const signalParams = ref({
   current: 2.5,
   signal: -45
 })
+
+// 信号孪生体参数（行业常用：资产/互锁/同步/健康/寿命预测等）
+const signalTwin = ref({
+  twinId: 'TWIN-XX-0001',
+  assetId: 'ASSET-XX-01',
+  deviceType: '进站信号机',
+  interlocking: '正常',
+  workMode: '自动',
+  syncStatus: '已同步',
+  syncLatencyMs: 120,
+  dataFreshnessS: 2,
+  healthScore: 92,
+  predictedRulDays: 180,
+  firmware: 'FW-X.Y',
+  lastMaintenance: '2026-XX-XX'
+})
+
+const telemetryDistanceM = ref(null)
+const telemetryWaterActive = ref(null)
+const pedestrianDesiredVisible = ref(false)
+
+const setPedestrianVisible = (visible) => {
+  pedestrianDesiredVisible.value = Boolean(visible)
+  if (pedestrianObject) {
+    pedestrianObject.visible = pedestrianDesiredVisible.value
+  }
+}
 
 // ===== 参数曲线图相关 =====
 const selectedParam = ref('temperature')
@@ -456,6 +504,8 @@ let signals = []
 let train = null
 let isTrainRunning = false
 let autoRotate = false
+let rafId = 0
+let animationStopped = false
 const speedOptions = [
   { label: '慢速', value: 0.08 },
   { label: '标准', value: 0.12 },
@@ -488,7 +538,7 @@ let autoDemoFlyTween = null
 // 人形感应器面板数据
 const humanoidSensor = ref({
   power: '正常',
-  voltage: '24V',
+  voltage: '5V',
   gps: '--, --',
   pedestrianDistance: '--'
 })
@@ -537,6 +587,12 @@ const getColorByState = (state) => {
 }
 
 const init = () => {
+  animationStopped = false
+  if (rafId) {
+    cancelAnimationFrame(rafId)
+    rafId = 0
+  }
+
   scene = new THREE.Scene()
   scene.background = new THREE.Color(0xf0f0f0)
   scene.fog = new THREE.Fog(0xf0f0f0, 100, 800)
@@ -1058,6 +1114,7 @@ const createSignalLights = () => {
               const stepX = Math.max(1.2, objSize.x || 0)
               obj.position.x += stepX * 2
               pedestrianObject = obj
+              pedestrianObject.visible = pedestrianDesiredVisible.value
             }
           }).catch((e) => console.warn('行人模型加载失败:', e))
 
@@ -1287,53 +1344,51 @@ const updateLabelFields = (entry, next) => {
   }
 }
 
-const toTrainGps = (pos) => {
-  // 简易映射：仅用于展示“列车行进时 GPS 发生变化”
-  const baseLon = 109.39
-  const baseLat = 24.31
-  const scale = 0.000015
-  const lon = baseLon + pos.x * scale
-  const lat = baseLat + pos.z * scale
-  return { lon, lat }
+const toTrainGps = () => {
+  // 地点脱敏：不展示真实坐标
+  return { lon: 'X', lat: 'Y' }
+}
+
+const getPedestrianDistanceMeters = () => {
+  const telemetry = telemetryDistanceM.value
+  if (!Number.isFinite(telemetry)) return null
+  // 约定：后端未回传/无有效数据时 distance 为 0（此时不应触发告警/飘红）
+  if (telemetry <= 0) return null
+  return telemetry
 }
 
 const updateHumanoidSensorPanel = () => {
-  if (!signalObject) return
+  if (!telemetryConnected.value) {
+    humanoidSensor.value.pedestrianDistance = '--'
+    return
+  }
 
-  const refObj = pedestrianObject || workerObject
-  if (!refObj) return
+  const meters = getPedestrianDistanceMeters()
+  if (meters == null || meters >= 2) {
+    humanoidSensor.value.pedestrianDistance = '--'
+    return
+  }
 
-  const dx = refObj.position.x - signalObject.position.x
-  const dy = refObj.position.y - signalObject.position.y
-  const dz = refObj.position.z - signalObject.position.z
-  const dist = Math.sqrt(dx * dx + dy * dy + dz * dz)
-
-  const { lon, lat } = toTrainGps(refObj.position)
-  humanoidSensor.value.gps = `${lon.toFixed(4)}, ${lat.toFixed(4)}`
-  humanoidSensor.value.pedestrianDistance = `${(dist * 1.6).toFixed(1)}m`
+  const { lon, lat } = toTrainGps()
+  humanoidSensor.value.gps = `${lon}, ${lat}`
+  humanoidSensor.value.pedestrianDistance = `${Number(meters).toFixed(2)}m`
 }
 
 const updateBoxSensorLabel = () => {
   if (!boxObject || !boxSensorLabelEntry?.fields) return
-  const refObj = pedestrianObject || workerObject
-  if (!refObj) return
+  const meters = getPedestrianDistanceMeters()
+  const hasPedestrian = telemetryConnected.value && meters != null && meters < 2
 
-  const dx = refObj.position.x - boxObject.position.x
-  const dy = refObj.position.y - boxObject.position.y
-  const dz = refObj.position.z - boxObject.position.z
-  const dist = Math.sqrt(dx * dx + dy * dy + dz * dz)
-  const { lon, lat } = toTrainGps(boxObject.position)
+  // 行人检测传感器与右侧“人形感应器”为同一套数据
+  boxSensor.value.gps = humanoidSensor.value.gps
+  boxSensor.value.pedestrianDistance = hasPedestrian ? humanoidSensor.value.pedestrianDistance : '--'
 
-  boxSensor.value.gps = `${lon.toFixed(4)}, ${lat.toFixed(4)}`
-  boxSensor.value.pedestrianDistance = `${(dist * 1.6).toFixed(1)}m`
-
-  // 行人经过预警：距离近时闪烁增强发光
-  const meters = dist * 1.6
-  const isWarning = meters < 20
+  // 行人经过预警：距离近时闪烁增强发光（无行人则不告警）
+  const isWarning = hasPedestrian && meters < 2
   if (boxSensorLight && boxObject) {
     boxSensorLight.position.set(boxObject.position.x, boxObject.position.y + 4.2, boxObject.position.z)
     const t = Date.now() * 0.01
-    boxSensorLight.intensity = isWarning ? (4.2 + Math.sin(t * 7) * 2.0) : 2.4
+    boxSensorLight.intensity = isWarning ? (4.2 + Math.sin(t * 7) * 2.0) : 0.9
   }
   if (boxObject) {
     boxObject.traverse((child) => {
@@ -1368,9 +1423,9 @@ const updateBoxSensorLabel = () => {
     const t = (Date.now() % period) / period
     const scale = 0.6 + t * 2.4
     boxSensorWave.scale.set(scale, scale, scale)
-    const baseOpacity = isWarning ? 0.45 : 0.28
+    const baseOpacity = isWarning ? 0.45 : 0.12
     boxSensorWave.material.opacity = Math.max(0, (1 - t) * baseOpacity)
-    boxSensorWave.material.color.setHex(isWarning ? 0xff1111 : 0xff3333)
+    boxSensorWave.material.color.setHex(isWarning ? 0xff1111 : 0xaa3333)
   }
 
   // 信息栏红色告警（距离 < 10m）
@@ -1597,6 +1652,23 @@ const updateSignalParams = async () => {
     signalParams.value.current = Math.round((1.5 + Math.random() * 2) * 100) / 100
     signalParams.value.signal = Math.round(-70 + Math.random() * 50)
   }
+
+  // 同步更新孪生体参数（与实时参数联动，便于演示）
+  const latency = Math.round(80 + Math.random() * 260)
+  const freshness = Math.max(1, Math.round(latency / 100))
+  const highTempPenalty = Math.max(0, signalParams.value.temperature - 45) * 0.9
+  const voltagePenalty = Math.max(0, Math.abs(signalParams.value.voltage - 220) - 8) * 0.6
+  const signalPenalty = Math.max(0, -55 - signalParams.value.signal) * 0.35
+  const baseHealth = 95 - highTempPenalty - voltagePenalty - signalPenalty
+  const health = Math.max(55, Math.min(99, Math.round(baseHealth)))
+
+  signalTwin.value.syncLatencyMs = latency
+  signalTwin.value.dataFreshnessS = freshness
+  signalTwin.value.healthScore = health
+  signalTwin.value.syncStatus = latency > 320 ? '延迟偏高' : '已同步'
+  signalTwin.value.interlocking = health < 70 ? '预警' : '正常'
+  signalTwin.value.workMode = latency > 320 ? '降级' : '自动'
+  signalTwin.value.predictedRulDays = Math.max(15, Math.round(220 - (99 - health) * 3.2))
 }
 
 // 加载参数历史数据
@@ -1625,7 +1697,12 @@ const loadParamHistory = async () => {
 }
 
 const animate = () => {
-  requestAnimationFrame(animate)
+  if (animationStopped) return
+  rafId = requestAnimationFrame(animate)
+
+  if (!renderer || !scene || !camera || !controls) {
+    return
+  }
 
   const delta = clock.getDelta()
 
@@ -1648,13 +1725,13 @@ const animate = () => {
 
     // 列车行进：GPS 跟随变化，同时展示温度
     if (trainLabelEntry) {
-      const { lon, lat } = toTrainGps(train.position)
+      const { lon, lat } = toTrainGps()
       const temp = Math.round((26 + Math.sin(trainProgress * Math.PI * 2) * 3 + Math.random() * 0.6) * 10) / 10
       const hum = Math.round((60 + Math.cos(trainProgress * Math.PI * 2) * 6 + Math.random() * 1.2) * 10) / 10
       updateLabelFields(trainLabelEntry, {
         temperature: temp,
         humidity: hum,
-        gps: `${lon.toFixed(4)}, ${lat.toFixed(4)}`
+        gps: `${lon}, ${lat}`
       })
     }
   }
@@ -1667,7 +1744,9 @@ const animate = () => {
   }
 
   renderer.render(scene, camera)
-  labelRenderer.render(scene, camera)
+  if (labelRenderer) {
+    labelRenderer.render(scene, camera)
+  }
 }
 
 onMounted(async () => {
@@ -1679,11 +1758,41 @@ onMounted(async () => {
   // 页面加载完成后自动演示：飞向工作人员 -> 到位后旋转 -> 自动触发行进
   startAutoDemo()
 
+  connectTelemetry()
+  watch(lastTelemetry, (msg) => {
+    if (!msg) return
+    if (Number.isFinite(Number(msg.distance_m))) telemetryDistanceM.value = Number(msg.distance_m)
+    else if (Number.isFinite(Number(msg.distance_cm))) telemetryDistanceM.value = Number(msg.distance_cm) / 100
+    else telemetryDistanceM.value = null
+
+    if (msg.water_active === 0 || msg.water_active === 1) {
+      telemetryWaterActive.value = msg.water_active
+    }
+
+    const meters = getPedestrianDistanceMeters()
+    setPedestrianVisible(Boolean(telemetryConnected.value && meters != null && meters < 2))
+  }, { immediate: true })
+
+  watch(telemetryConnected, (connected) => {
+    if (connected) return
+    telemetryDistanceM.value = null
+    telemetryWaterActive.value = null
+    setPedestrianVisible(false)
+    humanoidSensor.value.pedestrianDistance = '--'
+    boxSensor.value.pedestrianDistance = '--'
+  }, { immediate: true })
+
   // 定期更新信号灯参数
   updateSignalParamsTimer = setInterval(updateSignalParams, 5000)
 })
 
 onBeforeUnmount(() => {
+  animationStopped = true
+  if (rafId) {
+    cancelAnimationFrame(rafId)
+    rafId = 0
+  }
+
   for (const timer of retryTimers.values()) {
     clearTimeout(timer)
   }
@@ -1710,6 +1819,11 @@ onBeforeUnmount(() => {
   if (renderer) {
     renderer.dispose()
   }
+  if (renderer?.domElement?.parentNode) {
+    renderer.domElement.parentNode.removeChild(renderer.domElement)
+  }
+  renderer = null
+
   if (labelRenderer?.domElement?.parentNode) {
     labelRenderer.domElement.parentNode.removeChild(labelRenderer.domElement)
   }
@@ -1731,6 +1845,12 @@ onBeforeUnmount(() => {
     boxSensorLabelEntry = null
   }
   window.removeEventListener('resize', onWindowResize)
+
+  disconnectTelemetry()
+
+  controls = null
+  camera = null
+  scene = null
 })
 </script>
 
@@ -2039,6 +2159,70 @@ onBeforeUnmount(() => {
   color: #fff5cf;
   background: rgba(255, 193, 7, 0.22);
   border: 1px solid rgba(255, 225, 119, 0.45);
+}
+
+.twin-metrics {
+  margin-top: 12px;
+  padding: 10px;
+  background: rgba(0, 80, 120, 0.18);
+  border: 1px solid rgba(0, 200, 255, 0.18);
+  border-radius: 6px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 10px;
+}
+
+.tm-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: rgba(0, 20, 40, 0.35);
+}
+
+.tm-label {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.7);
+  white-space: nowrap;
+}
+
+.tm-value {
+  font-size: 11px;
+  color: #d8f3ff;
+  font-weight: 700;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tm-value.ok { color: #33ff99; }
+.tm-value.warn { color: #ffcc66; }
+.tm-value.danger { color: #ff5c5c; }
+
+.panel-alert {
+  padding: 10px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(255, 40, 40, 0.22), rgba(120, 0, 0, 0.12));
+  border: 1px solid rgba(255, 80, 80, 0.35);
+  box-shadow: 0 0 22px rgba(255, 50, 50, 0.22);
+  animation: panel-alert-pulse 1.2s ease-in-out infinite;
+}
+
+.panel-alert .panel-title {
+  color: #ff4b4b;
+  border-bottom-color: rgba(255, 80, 80, 0.45);
+}
+
+.panel-alert .title-decorator {
+  background: linear-gradient(90deg, #ff4b4b, transparent);
+}
+
+@keyframes panel-alert-pulse {
+  0%, 100% { box-shadow: 0 0 18px rgba(255, 50, 50, 0.18); }
+  50% { box-shadow: 0 0 28px rgba(255, 50, 50, 0.32); }
 }
 
 .stat-item {

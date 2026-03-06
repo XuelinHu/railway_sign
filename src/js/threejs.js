@@ -439,7 +439,7 @@ function createStation() {
       console.log('火车站模型加载成功')
 
       // 创建3D标签
-      createModelLabel(station, '柳州火车站', 30, -5, 85, '109.3887, 24.3076')
+      createModelLabel(station, 'XX火车站', 30, -5, 85, 'X, Y')
     },
     (progress) => {
       logProgress(progress)
