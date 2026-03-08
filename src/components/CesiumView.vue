@@ -679,6 +679,7 @@ const syncWeatherFromMock = () => {
     visibility: typeof w.visibility === 'number' ? `${Number(w.visibility).toFixed(0)}km` : 'Xkm',
     pressure: typeof w.pressure === 'number' ? `${Number(w.pressure).toFixed(0)}hPa` : 'XhPa'
   }
+  airQualitySevereWarning.value = Number(w.humidity) >= 70
 
   // 趋势：优先对齐大数据平台湿度曲线（24h）
   if (Array.isArray(w.humidityTrend) && w.humidityTrend.length) {
@@ -1065,37 +1066,8 @@ const applySevereWeatherChange = async (enabled) => {
   }
 
   // 启动后 5 秒：空气湿度加速爬升（默认约20%），60%橙色告警，70%红色告警，最终在92~93%徘徊
-  severeWeatherEffectTimer = setTimeout(() => {
-    let phase = 'to60'
-    let current = Math.max(18, Math.min(25, parsePercent(weather.value.humidity, 20)))
-
-    const shown0 = Math.round(current)
-    weather.value.humidity = `${shown0}%`
-    humidityData24h.value.shift()
-    humidityData24h.value.push(shown0)
-
-    severeWeatherHumidityTimer = setInterval(() => {
-      if (phase === 'to60') {
-        current = Math.min(60, current + 2)
-        if (current >= 60) phase = 'to70'
-      } else if (phase === 'to70') {
-        current = Math.min(70, current + 2)
-        if (current >= 70) phase = 'to92'
-      } else if (phase === 'to92') {
-        current = Math.min(92, current + 3)
-        if (current >= 92) phase = 'hover'
-      } else {
-        current = 92 + Math.random() * 1.2
-      }
-
-      const shown = Math.round(current)
-      weather.value.humidity = `${shown}%`
-      humidityData24h.value.shift()
-      humidityData24h.value.push(shown)
-
-      airQualitySevereWarning.value = shown >= 70
-    }, 800)
-  }, 5000)
+  // 恶劣天气下：湿度等指标与大数据平台同步（由 mockDataService + simulationState 统一驱动）
+  syncWeatherFromMock()
 }
 
 // ===== Cesium 初始化 =====

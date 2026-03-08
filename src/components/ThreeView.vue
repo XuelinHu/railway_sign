@@ -61,18 +61,31 @@
           <span class="title-decorator"></span>
         </h2>
         <div id="signalList"></div>
-        <div class="signal-kpis">
-          <div class="kpi-item">
-            <div class="kpi-label">温度</div>
-            <div class="kpi-value" :class="signalParams.temperature > 50 ? 'warn' : 'ok'">{{ signalParams.temperature }}°C</div>
+      <div class="signal-kpis">
+        <div class="kpi-item">
+          <div class="kpi-label">温度</div>
+          <div
+            class="kpi-value"
+            :class="[
+              twinEnvVisible ? (signalParams.temperature > 50 ? 'warn' : 'ok') : 'masked',
+              twinEnvVisible ? 'env-glow' : ''
+            ]"
+          >
+            {{ twinEnvVisible ? `${signalParams.temperature}°C` : '--' }}
           </div>
-          <div class="kpi-item">
-            <div class="kpi-label">湿度</div>
-            <div class="kpi-value" :class="humidityClass">{{ signalParams.humidity }}%</div>
+        </div>
+        <div class="kpi-item">
+          <div class="kpi-label">湿度</div>
+          <div
+            class="kpi-value"
+            :class="[twinEnvVisible ? humidityClass : 'masked', twinEnvVisible ? 'env-glow' : '']"
+          >
+            {{ twinEnvVisible ? `${signalParams.humidity}%` : '--' }}
           </div>
-          <div class="kpi-item">
-            <div class="kpi-label">电压</div>
-            <div class="kpi-value" :class="voltageClass === 'voltage-normal' ? 'ok' : 'warn'">{{ signalParams.voltage }}V</div>
+        </div>
+        <div class="kpi-item">
+          <div class="kpi-label">电压</div>
+          <div class="kpi-value" :class="voltageClass === 'voltage-normal' ? 'ok' : 'warn'">{{ signalParams.voltage }}V</div>
           </div>
           <div class="kpi-item">
             <div class="kpi-label">信号强度</div>
@@ -304,6 +317,7 @@ import gsap from 'gsap'
 import api from '../services/api.js'
 import { connectTelemetry, disconnectTelemetry, lastTelemetry, lastTelemetryAt, telemetryConnected } from '../services/telemetrySocket.js'
 import { DEMO_SCENARIO } from '../config/demoScenario.js'
+import { severeWeatherEnabled, syncedHumidity } from '../services/simulationState.js'
 
 const getWorldYaw = (obj) => {
   if (!obj) return 0
@@ -360,8 +374,11 @@ const pedestrianDesiredVisible = ref(false)
 const telemetrySimEnabled = ref(true)
 const telemetrySimLastAt = ref(0)
 let telemetrySimTimer = null
+let telemetrySimPassTimer = null
 
 const telemetryActive = computed(() => telemetryConnected.value || telemetrySimEnabled.value)
+
+const twinEnvVisible = ref(false)
 
 const telemetryStatusText = computed(() => {
   if (telemetryConnected.value) return '已接入'
@@ -400,6 +417,26 @@ const setPedestrianVisible = (visible) => {
   if (pedestrianObject) {
     pedestrianObject.visible = pedestrianDesiredVisible.value
   }
+}
+
+const applyTwinEnvVisibilityToLabels = () => {
+  if (!modelLabels?.length) return
+  for (const entry of modelLabels) {
+    if (!entry?.div) continue
+    entry.div.classList.toggle('env-visible', twinEnvVisible.value)
+    entry.div.classList.toggle('env-hidden', !twinEnvVisible.value)
+  }
+}
+
+const onGlobalKeydown = (event) => {
+  if (!event) return
+  if (event.repeat) return
+  const key = event.key
+  if (key !== 'p' && key !== 'P') return
+  const tag = String(event.target?.tagName || '').toLowerCase()
+  if (tag === 'input' || tag === 'textarea' || tag === 'select') return
+  twinEnvVisible.value = !twinEnvVisible.value
+  applyTwinEnvVisibilityToLabels()
 }
 
 // ===== 参数曲线图相关 =====
@@ -1449,20 +1486,22 @@ const createTrain = () => {
 const createModelLabel = (model, name, temperature, humidity, gpsLon, gpsLat, labelHeight = 8) => {
   const div = document.createElement('div')
   div.className = 'model-label'
+  div.classList.toggle('env-visible', twinEnvVisible.value)
+  div.classList.toggle('env-hidden', !twinEnvVisible.value)
 
   div.innerHTML = `
-    <div class="label-title">${name}</div>
-    <div class="label-row">
-      <span>🌡️ 温度:</span>
-      <span class="label-value" data-field="temperature">${temperature}°C</span>
-    </div>
-    <div class="label-row">
-      <span>💧 湿度:</span>
-      <span class="label-value" data-field="humidity">${humidity}%</span>
-    </div>
-    <div class="label-row">
-      <span>📍 GPS:</span>
-      <span class="label-value" data-field="gps">${gpsLon}, ${gpsLat}</span>
+     <div class="label-title">${name}</div>
+     <div class="label-row env-row">
+       <span>🌡️ 温度:</span>
+       <span class="label-value" data-field="temperature">${temperature}°C</span>
+     </div>
+     <div class="label-row env-row">
+       <span>💧 湿度:</span>
+       <span class="label-value" data-field="humidity">${humidity}%</span>
+     </div>
+     <div class="label-row">
+       <span>📍 GPS:</span>
+       <span class="label-value" data-field="gps">${gpsLon}, ${gpsLat}</span>
     </div>
   `
 
@@ -1489,51 +1528,61 @@ const createModelLabel = (model, name, temperature, humidity, gpsLon, gpsLat, la
     const style = document.createElement('style')
     style.id = 'model-label-styles'
     style.textContent = `
-      .model-label {
-        position: absolute;
-        background: rgba(0, 20, 40, 0.75) !important;
-        border: 1px solid rgba(0, 200, 255, 0.4) !important;
-        border-radius: 6px;
-        padding: 6px 10px;
-        color: #fff;
-        font-size: 12px;
-        pointer-events: none;
-        backdrop-filter: blur(8px);
-        box-shadow: 0 3px 10px rgba(0, 150, 200, 0.25);
-        max-width: 200px;
-        min-width: 150px;
-        transform: translate(-50%, -100%);  /* 居中并在上方 */
-        z-index: 0;  /* 确保在模型后面 */
-      }
-      .model-label.sensor-warning {
-        border-color: rgba(255, 40, 40, 0.95) !important;
-        background: linear-gradient(135deg, rgba(180, 20, 20, 0.88), rgba(90, 10, 10, 0.78)) !important;
-        box-shadow: 0 0 22px rgba(255, 40, 40, 0.55) !important;
-        animation: sensorWarningFlash 0.85s ease-in-out infinite;
-      }
+       .model-label {
+         position: absolute;
+         background: rgba(0, 20, 40, 0.75) !important;
+         border: 1px solid rgba(0, 200, 255, 0.4) !important;
+         border-radius: 6px;
+         padding: 6px 10px;
+         color: #fff;
+         font-size: 13px;
+         pointer-events: none;
+         backdrop-filter: blur(8px);
+         box-shadow: 0 3px 10px rgba(0, 150, 200, 0.25);
+         max-width: 200px;
+         min-width: 150px;
+         transform: translate(-50%, -100%);  /* 居中并在上方 */
+         z-index: 0;  /* 确保在模型后面 */
+       }
+       .model-label.env-hidden .env-row {
+         display: none;
+       }
+       .model-label.env-visible .env-row .label-value {
+         color: #e9fbff !important;
+         text-shadow:
+           0 0 8px rgba(0, 212, 255, 0.75),
+           0 0 16px rgba(0, 200, 255, 0.45),
+           0 0 28px rgba(0, 160, 255, 0.25);
+       }
+       .model-label.sensor-warning {
+         border-color: rgba(255, 40, 40, 0.95) !important;
+         background: linear-gradient(135deg, rgba(180, 20, 20, 0.88), rgba(90, 10, 10, 0.78)) !important;
+         box-shadow: 0 0 22px rgba(255, 40, 40, 0.55) !important;
+         animation: sensorWarningFlash 0.85s ease-in-out infinite;
+       }
       @keyframes sensorWarningFlash {
         0%, 100% { filter: brightness(1); }
         50% { filter: brightness(1.28); }
       }
-      .label-title {
-        font-size: 14px;
-        font-weight: bold;
-        color: #00d4ff;
-        margin-bottom: 6px;
-        padding-bottom: 6px;
-        border-bottom: 1px solid rgba(0, 200, 255, 0.25);
-      }
-      .label-row {
-        display: flex;
-        align-items: center;
-        margin: 4px 0;
-        font-size: 11px;
-      }
-      .label-value {
-        flex: 1;
-        color: #00d4ff;
-        font-weight: bold;
-      }
+       .label-title {
+         font-size: 15px;
+         font-weight: bold;
+         color: #00d4ff;
+         margin-bottom: 6px;
+         padding-bottom: 6px;
+         border-bottom: 1px solid rgba(0, 200, 255, 0.25);
+       }
+       .label-row {
+         display: flex;
+         align-items: center;
+         margin: 4px 0;
+         font-size: 12px;
+       }
+       .label-value {
+         flex: 1;
+         color: #00d4ff;
+         font-weight: bold;
+       }
     `
     document.head.appendChild(style)
   }
@@ -1864,6 +1913,14 @@ const updateSignalParams = async () => {
     signalParams.value.signal = Math.round(-70 + Math.random() * 50)
   }
 
+  // 恶劣天气模拟时：湿度与其它界面同步
+  if (severeWeatherEnabled.value) {
+    const h = Number(syncedHumidity.value)
+    if (Number.isFinite(h)) {
+      signalParams.value.humidity = Math.round(h * 10) / 10
+    }
+  }
+
   // 同步更新孪生体参数（与实时参数联动，便于演示）
   const latency = Math.round(80 + Math.random() * 260)
   const freshness = Math.max(1, Math.round(latency / 100))
@@ -1881,6 +1938,20 @@ const updateSignalParams = async () => {
   signalTwin.value.workMode = latency > 320 ? '降级' : '自动'
   signalTwin.value.predictedRulDays = Math.max(15, Math.round(220 - (99 - health) * 3.2))
 }
+
+watch(
+  [severeWeatherEnabled, syncedHumidity],
+  async ([enabled, h]) => {
+    if (!enabled) {
+      await updateSignalParams()
+      return
+    }
+    const humidity = Number(h)
+    if (!Number.isFinite(humidity)) return
+    signalParams.value.humidity = Math.round(humidity * 10) / 10
+  },
+  { immediate: true }
+)
 
 // 加载参数历史数据
 const loadParamHistory = async () => {
@@ -1987,20 +2058,60 @@ onMounted(async () => {
   // 页面加载完成后自动演示：飞向工作人员 -> 到位后旋转 -> 自动触发行进
   startAutoDemo()
 
-  // 默认前端本地模拟：每 3~4 秒生成一次 20~50cm 的随机距离（不依赖后端/网络）
+  window.addEventListener('keydown', onGlobalKeydown)
+  applyTwinEnvVisibilityToLabels()
+
+  // 默认前端本地模拟：先延迟 7 秒 -> 模拟行人经过（持续 3~5 秒）-> 熄灭 -> 随机间隔再次经过
   const startFrontendTelemetrySim = () => {
-    const scheduleNext = () => {
-      telemetrySimTimer = setTimeout(() => {
-        const distanceCm = 20 + Math.random() * 30
-        const meters = Math.round((distanceCm / 100) * 100) / 100
-        telemetryDistanceM.value = meters
-        telemetryWaterActive.value = 0
-        telemetrySimLastAt.value = Date.now()
-        setPedestrianVisible(Boolean(meters > 0 && meters < 2))
-        scheduleNext()
-      }, 3000 + Math.floor(Math.random() * 1000))
+    const FIRST_DELAY_MS = 7000
+    const PASS_MIN_MS = 3000
+    const PASS_MAX_MS = 5000
+    const IDLE_MIN_MS = 6000
+    const IDLE_MAX_MS = 18000
+
+    const updateTelemetrySim = (distanceM) => {
+      telemetryDistanceM.value = distanceM
+      telemetryWaterActive.value = 0
+      telemetrySimLastAt.value = Date.now()
+      setPedestrianVisible(Boolean(Number.isFinite(distanceM) && distanceM > 0 && distanceM < 2))
     }
-    scheduleNext()
+
+    const scheduleNextPass = (delayMs) => {
+      if (telemetrySimTimer) clearTimeout(telemetrySimTimer)
+      telemetrySimTimer = setTimeout(runPass, Math.max(0, delayMs))
+    }
+
+    const runPass = () => {
+      if (telemetrySimPassTimer) {
+        clearInterval(telemetrySimPassTimer)
+        telemetrySimPassTimer = null
+      }
+
+      const passMs = PASS_MIN_MS + Math.floor(Math.random() * (PASS_MAX_MS - PASS_MIN_MS + 1))
+      const startAt = Date.now()
+
+      const jitterDistance = () => {
+        const base = 0.25 + Math.random() * 1.35 // 0.25m ~ 1.60m
+        const meters = Math.round(base * 100) / 100
+        updateTelemetrySim(meters)
+      }
+
+      jitterDistance()
+      telemetrySimPassTimer = setInterval(() => {
+        const elapsed = Date.now() - startAt
+        if (elapsed >= passMs) {
+          clearInterval(telemetrySimPassTimer)
+          telemetrySimPassTimer = null
+          updateTelemetrySim(0)
+          const idleMs = IDLE_MIN_MS + Math.floor(Math.random() * (IDLE_MAX_MS - IDLE_MIN_MS + 1))
+          scheduleNextPass(idleMs)
+          return
+        }
+        jitterDistance()
+      }, 600)
+    }
+
+    scheduleNextPass(FIRST_DELAY_MS)
   }
 
   if (telemetrySimEnabled.value) {
@@ -2034,6 +2145,10 @@ onBeforeUnmount(() => {
   if (telemetrySimTimer) {
     clearTimeout(telemetrySimTimer)
     telemetrySimTimer = null
+  }
+  if (telemetrySimPassTimer) {
+    clearInterval(telemetrySimPassTimer)
+    telemetrySimPassTimer = null
   }
 
   if (autoDemoWaitTimer) {
@@ -2094,6 +2209,7 @@ onBeforeUnmount(() => {
     endpointGlowTexture = null
   }
   window.removeEventListener('resize', onWindowResize)
+  window.removeEventListener('keydown', onGlobalKeydown)
 
   disconnectTelemetry()
 
@@ -2140,7 +2256,7 @@ onBeforeUnmount(() => {
   border-radius: 5px;
   color: #fff;
   cursor: pointer;
-  font-size: 12px;
+  font-size: 13px;
   transition: all 0.3s;
 }
 
@@ -2166,7 +2282,7 @@ onBeforeUnmount(() => {
 }
 
 .speed-label {
-  font-size: 12px;
+  font-size: 13px;
   color: #a8ddff;
 }
 
@@ -2177,7 +2293,7 @@ onBeforeUnmount(() => {
   border-radius: 4px;
   background: rgba(0, 20, 40, 0.9);
   color: #d8f3ff;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .info-panel {
@@ -2380,7 +2496,7 @@ onBeforeUnmount(() => {
   align-items: center;
   padding: 2px 8px;
   border-radius: 10px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   line-height: 1.2;
 }
@@ -2432,13 +2548,13 @@ onBeforeUnmount(() => {
 }
 
 .tm-label {
-  font-size: 11px;
+  font-size: 12px;
   color: rgba(255, 255, 255, 0.7);
   white-space: nowrap;
 }
 
 .tm-value {
-  font-size: 11px;
+  font-size: 12px;
   color: #d8f3ff;
   font-weight: 700;
   text-align: right;
@@ -2470,7 +2586,7 @@ onBeforeUnmount(() => {
 }
 
 .kpi-label {
-  font-size: 11px;
+  font-size: 12px;
   color: rgba(255, 255, 255, 0.72);
 }
 
@@ -2481,9 +2597,34 @@ onBeforeUnmount(() => {
   text-shadow: 0 0 10px rgba(0, 212, 255, 0.15);
 }
 
+.kpi-value.masked {
+  color: rgba(216, 243, 255, 0.38);
+  font-weight: 700;
+  text-shadow: none;
+}
+
+.kpi-value.env-glow {
+  animation: envGlowPulse 1.55s ease-in-out infinite;
+}
+
 .kpi-value.ok { color: #33ff99; }
 .kpi-value.warn { color: #ffcc66; }
 .kpi-value.danger { color: #ff5c5c; }
+
+@keyframes envGlowPulse {
+  0%, 100% {
+    text-shadow:
+      0 0 10px rgba(0, 212, 255, 0.35),
+      0 0 18px rgba(0, 200, 255, 0.20),
+      0 0 30px rgba(0, 160, 255, 0.12);
+  }
+  50% {
+    text-shadow:
+      0 0 12px rgba(0, 212, 255, 0.65),
+      0 0 24px rgba(0, 200, 255, 0.35),
+      0 0 42px rgba(0, 160, 255, 0.18);
+  }
+}
 
 .panel-alert {
   padding: 10px;
@@ -2644,7 +2785,7 @@ onBeforeUnmount(() => {
 }
 
 .param-label {
-  font-size: 12px;
+  font-size: 13px;
   color: #aaa;
 }
 
@@ -2705,13 +2846,13 @@ onBeforeUnmount(() => {
 }
 
 .sensor-label {
-  font-size: 12px;
+  font-size: 13px;
   color: #aaa;
   min-width: 60px;
 }
 
 .sensor-value {
-  font-size: 12px;
+  font-size: 13px;
   color: #fff;
   font-weight: bold;
   flex: 1;
@@ -2723,7 +2864,7 @@ onBeforeUnmount(() => {
 }
 
 .sensor-meta {
-  font-size: 11px;
+  font-size: 12px;
   color: rgba(255, 255, 255, 0.75);
 }
 
@@ -2764,12 +2905,12 @@ onBeforeUnmount(() => {
 
 .status-label {
   flex: 1;
-  font-size: 12px;
+  font-size: 13px;
   color: #aaa;
 }
 
 .status-value {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: bold;
 }
 
@@ -2818,7 +2959,7 @@ onBeforeUnmount(() => {
 }
 
 .video-title {
-  font-size: 11px;
+  font-size: 12px;
   color: #00d4ff;
   font-weight: bold;
 }
@@ -2845,7 +2986,7 @@ onBeforeUnmount(() => {
   bottom: 8px;
   padding: 2px 8px;
   border-radius: 10px;
-  font-size: 11px;
+  font-size: 12px;
   color: #d8f3ff;
   background: rgba(0, 20, 40, 0.75);
   border: 1px solid rgba(0, 200, 255, 0.35);
@@ -2893,7 +3034,7 @@ onBeforeUnmount(() => {
 
 .video-hint {
   margin-top: 10px;
-  font-size: 12px;
+  font-size: 13px;
   color: #888;
 }
 
@@ -2910,7 +3051,7 @@ onBeforeUnmount(() => {
   border: 1px solid rgba(0, 200, 255, 0.3);
   border-radius: 6px;
   color: #00d4ff;
-  font-size: 12px;
+  font-size: 13px;
   padding: 8px 10px;
   cursor: pointer;
   outline: none;
@@ -2946,7 +3087,7 @@ onBeforeUnmount(() => {
 }
 
 .current-param-label {
-  font-size: 12px;
+  font-size: 13px;
   color: #aaa;
   margin-bottom: 4px;
 }
@@ -2981,7 +3122,7 @@ onBeforeUnmount(() => {
   border: 1px solid rgba(0, 200, 255, 0.5);
   border-radius: 4px;
   padding: 4px 8px;
-  font-size: 11px;
+  font-size: 12px;
   color: #fff;
   text-align: center;
   margin-top: 4px;
@@ -3021,7 +3162,7 @@ onBeforeUnmount(() => {
 }
 
 .pq-value {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: bold;
   color: #00d4ff;
 }

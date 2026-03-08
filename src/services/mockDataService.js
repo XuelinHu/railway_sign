@@ -3,7 +3,7 @@
  * 提供各种传感器、气象、设备监控等模拟数据
  */
 
-import { severeWeatherEnabled, severeWeatherStartedAt, humidityMitigationAppliedAt } from './simulationState.js'
+import { severeWeatherEnabled, severeWeatherStartedAt, humidityMitigationAppliedAt, syncedHumidity } from './simulationState.js'
 
 // 随机数生成工具
 const random = (min, max, decimal = 0) => {
@@ -150,7 +150,8 @@ export const getWeatherData = () => {
   const humidityAtTime = (t0) => Number((20 + 72 * clamp(t0 / riseDurationMs, 0, 1)).toFixed(1))
 
   const mitigationAt = humidityMitigationAppliedAt.value
-  let humidity = humidityAtTime(elapsed)
+  const synced = Number(syncedHumidity.value)
+  let humidity = Number.isFinite(synced) ? synced : humidityAtTime(elapsed)
   let humidityTrend = []
 
   if (Number.isFinite(Number(mitigationAt)) && mitigationAt >= startedAt) {
@@ -158,9 +159,6 @@ export const getWeatherData = () => {
     const humidityAtMitigation = humidityAtTime(mitigationAt - startedAt)
     const fallDurationMs = 90000
     const fallT = clamp(mitigationElapsed / fallDurationMs, 0, 1)
-    const target = 35
-    const fallHumidity = humidityAtMitigation + (target - humidityAtMitigation) * fallT
-    humidity = Number(Math.max(0, Math.min(100, fallHumidity)).toFixed(1))
 
     humidityTrend = buildHumidityTrend({
       seed: Math.floor(startedAt / 1000),
@@ -171,7 +169,6 @@ export const getWeatherData = () => {
       mode: 'falling'
     })
   } else {
-    humidity = Number((20 + 72 * riseT).toFixed(1))
     humidityTrend = buildHumidityTrend({
       seed: Math.floor(startedAt / 1000),
       baselineEnd: 24,

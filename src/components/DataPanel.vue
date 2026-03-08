@@ -84,6 +84,9 @@
             </svg>
           </div>
           <div class="alert-actions">
+            <button class="alert-handle" :disabled="humidityAlertProcessing" @click="markHumidityAlertProcessing">
+              {{ humidityAlertProcessing ? '处理中…' : '处理中' }}
+            </button>
             <button class="alert-close" @click="dismissHumidityAlert">关闭弹框</button>
           </div>
         </div>
@@ -164,7 +167,18 @@ import LeftPanel from './datapanel/LeftPanel.vue'
 import CenterPanel from './datapanel/CenterPanel.vue'
 import RightPanel from './datapanel/RightPanel.vue'
 import { getWeatherData, getOverviewData } from '../services/mockDataService'
-import { severeWeatherEnabled, setSevereWeatherEnabled, markHumidityMitigationApplied } from '../services/simulationState.js'
+import {
+  severeWeatherEnabled,
+  setSevereWeatherEnabled,
+  markHumidityMitigationApplied,
+  syncedHumidity,
+  humidityAlertDismissed,
+  humidityAlertSuppressed,
+  humidityAlertProcessing,
+  setHumidityAlertDismissed,
+  setHumidityAlertSuppressed,
+  setHumidityAlertProcessing
+} from '../services/simulationState.js'
 import { DEMO_SCENARIO } from '../config/demoScenario.js'
 
 const currentDate = ref('')
@@ -176,8 +190,6 @@ const fps = ref(60)
 const dataPoints = ref(12345678)
 const humidityAnomaly = ref(false)
 const showHumidityAlert = ref(false)
-const humidityAlertDismissed = ref(false)
-const humidityAnomalySuppressed = ref(false)
 const showHumidityObservation = ref(false)
 const heroDeviceName = ref(DEMO_SCENARIO.heroDeviceName)
 
@@ -189,6 +201,39 @@ let observationAutoHideTimer = null
 let timeTimer = null
 let updateTimer = null
 let fpsTimer = null
+let alarmAudio = null
+let alarmLastPlayedAt = 0
+
+const ensureAlarmAudio = () => {
+  if (alarmAudio) return alarmAudio
+  alarmAudio = new Audio('/assets/audio/alarm.wav')
+  alarmAudio.preload = 'auto'
+  alarmAudio.volume = 0.95
+  return alarmAudio
+}
+
+const playAlarmOnce = async () => {
+  const audio = ensureAlarmAudio()
+  try {
+    audio.currentTime = 0
+    await audio.play()
+  } catch (error) {
+    // 可能被浏览器自动播放策略拦截：用户下一次交互后可再次触发
+    console.warn('告警音频播放被拦截/失败:', error)
+  }
+}
+
+const maybePlayAlarmOnEnterOrShow = async () => {
+  if (!severeWeatherEnabled.value) return
+  if (!showHumidityAlert.value) return
+  if (humidityAlertDismissed.value) return
+  if (humidityAlertProcessing.value) return
+
+  const now = Date.now()
+  if (now - alarmLastPlayedAt < 500) return
+  alarmLastPlayedAt = now
+  await playAlarmOnce()
+}
 
 // 格式化数字
 const formatNumber = (num) => {
@@ -241,18 +286,26 @@ const toggleSevereWeather = () => {
 const clearHumidityAnomaly = () => {
   humidityAnomaly.value = false
   showHumidityAlert.value = false
-  humidityAlertDismissed.value = false
+  setHumidityAlertDismissed(false)
   showHumidityObservation.value = true
   markHumidityMitigationApplied()
   // 恶劣天气仍在模拟时，允许手动“消除异常”并保持不自动反复弹出
   if (severeWeatherEnabled.value) {
-    humidityAnomalySuppressed.value = true
+    setHumidityAlertSuppressed(true)
   }
 }
 
 const dismissHumidityAlert = () => {
   showHumidityAlert.value = false
-  humidityAlertDismissed.value = true
+  setHumidityAlertDismissed(true)
+}
+
+const markHumidityAlertProcessing = () => {
+  setHumidityAlertProcessing(true)
+  if (alarmAudio) {
+    alarmAudio.pause()
+    alarmAudio.currentTime = 0
+  }
 }
 
 const dismissHumidityObservation = () => {
@@ -281,22 +334,53 @@ const humidityAlertClass = computed(() => {
 
 watch(severeWeatherEnabled, (enabled) => {
   if (enabled) {
-    if (!humidityAnomalySuppressed.value) {
+    if (!humidityAlertSuppressed.value) {
       humidityAnomaly.value = true
-      humidityAlertDismissed.value = false
-      showHumidityAlert.value = true
+      if (!humidityAlertDismissed.value) {
+        showHumidityAlert.value = true
+      }
       showHumidityObservation.value = false
     }
     return
   }
 
   // 退出恶劣天气模拟：恢复默认状态
-  humidityAnomalySuppressed.value = false
   humidityAnomaly.value = false
-  humidityAlertDismissed.value = false
   showHumidityAlert.value = false
   showHumidityObservation.value = false
 }, { immediate: true })
+
+watch(
+  showHumidityAlert,
+  (visible, prev) => {
+    if (visible && !prev) {
+      maybePlayAlarmOnEnterOrShow()
+    }
+  },
+  { immediate: false }
+)
+
+onMounted(() => {
+  // 规则：恶劣天气时，进入大数据面板若弹窗未关闭且未“处理中”，每次切换进入都播放一次告警语音
+  maybePlayAlarmOnEnterOrShow()
+})
+
+watch(
+  syncedHumidity,
+  (value) => {
+    if (!severeWeatherEnabled.value) return
+    const h = Number(value)
+    if (!Number.isFinite(h)) return
+    if (!weather.value) return
+    weather.value.humidity = h
+    if (Array.isArray(weather.value.humidityTrend) && weather.value.humidityTrend.length) {
+      const next = [...weather.value.humidityTrend]
+      next[next.length - 1] = h
+      weather.value.humidityTrend = next
+    }
+  },
+  { immediate: true }
+)
 
 watch(
   () => weather.value?.humidity,
@@ -381,6 +465,11 @@ onUnmounted(() => {
   if (updateTimer) clearInterval(updateTimer)
   if (fpsTimer) clearInterval(fpsTimer)
   if (observationAutoHideTimer) clearTimeout(observationAutoHideTimer)
+  if (alarmAudio) {
+    alarmAudio.pause()
+    alarmAudio.currentTime = 0
+    alarmAudio = null
+  }
 })
 </script>
 
@@ -715,6 +804,22 @@ onUnmounted(() => {
   cursor: pointer;
 }
 
+.alert-handle {
+  margin-top: 14px;
+  border: 1px solid rgba(0, 212, 255, 0.55);
+  background: rgba(0, 212, 255, 0.14);
+  color: rgba(235, 252, 255, 0.98);
+  border-radius: 8px;
+  font-size: 14px;
+  padding: 6px 16px;
+  cursor: pointer;
+}
+
+.alert-handle:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .alert-chart {
   margin-top: 14px;
 }
@@ -738,6 +843,7 @@ onUnmounted(() => {
 .alert-actions {
   display: flex;
   justify-content: flex-end;
+  gap: 10px;
 }
 
 .alert-pop-enter-active,

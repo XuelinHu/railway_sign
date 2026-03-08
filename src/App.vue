@@ -85,7 +85,7 @@ html, body, #app {
   border: 2px solid rgba(0, 200, 255, 0.3);
   border-radius: 8px;
   color: #aaa;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: bold;
   cursor: pointer;
   transition: all 0.3s;
