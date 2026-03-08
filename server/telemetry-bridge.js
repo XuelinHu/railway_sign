@@ -185,47 +185,4 @@ server.listen(PORT, () => {
   log(`listening: http://localhost:${PORT}`)
   log(`upload: POST ${UPLOAD_PATH}`)
   log(`ws: ${WS_PATH}`)
-
-  const simEnabled = (() => {
-    const v = process.env.TELEMETRY_SIM_PEDESTRIAN
-    if (typeof v !== 'string') return false
-    return ['1', 'true', 'yes', 'on'].includes(v.trim().toLowerCase())
-  })()
-
-  if (simEnabled) {
-    log('sim enabled: random pedestrian distance 20-50cm every 3-4s')
-
-    const simDevice = 'sim_pedestrian'
-    const simDeviceId = 'sim-pedestrian-001'
-    const startedAt = Date.now()
-
-    const scheduleNext = () => {
-      const delayMs = 3000 + Math.floor(Math.random() * 1000)
-      setTimeout(() => {
-        const distanceCm = Math.round((20 + Math.random() * 30) * 10) / 10
-        const payload = {
-          type: 'telemetry',
-          device: simDevice,
-          device_id: simDeviceId,
-          ts_ms: Date.now(),
-          uptime_ms: Date.now() - startedAt,
-          wifi_ip: '0.0.0.0',
-          distance_cm: distanceCm,
-          water_active: 0
-        }
-
-        const msg = normalizeTelemetry(payload)
-        lastTelemetry = msg
-
-        const { sent, skipped } = broadcastTelemetry(msg, { from: 'sim' })
-        log(
-          `sim ok: device=${msg.device} id=${msg.device_id} distance_cm=${msg.distance_cm ?? 'null'} ws_sent=${sent} ws_skipped=${skipped} clients=${wss.clients.size}`
-        )
-
-        scheduleNext()
-      }, delayMs)
-    }
-
-    scheduleNext()
-  }
 })

@@ -357,24 +357,39 @@ const telemetryDistanceM = ref(null)
 const telemetryWaterActive = ref(null)
 const pedestrianDesiredVisible = ref(false)
 
-const telemetryStatusText = computed(() => (telemetryConnected.value ? '已接入' : '未接入'))
-const telemetryStatusClass = computed(() => (telemetryConnected.value ? 'ok' : 'warn'))
+const telemetrySimEnabled = ref(true)
+const telemetrySimLastAt = ref(0)
+let telemetrySimTimer = null
+
+const telemetryActive = computed(() => telemetryConnected.value || telemetrySimEnabled.value)
+
+const telemetryStatusText = computed(() => {
+  if (telemetryConnected.value) return '已接入'
+  if (telemetrySimEnabled.value) return '本地模拟'
+  return '未接入'
+})
+const telemetryStatusClass = computed(() => {
+  if (telemetryConnected.value) return 'ok'
+  if (telemetrySimEnabled.value) return 'ok'
+  return 'warn'
+})
 
 const telemetryLastSeenText = computed(() => {
-  if (!telemetryConnected.value || !lastTelemetryAt.value) return '--'
-  const deltaS = Math.max(0, Math.round((uiNowMs.value - lastTelemetryAt.value) / 1000))
+  const at = telemetryConnected.value ? lastTelemetryAt.value : telemetrySimLastAt.value
+  if (!telemetryActive.value || !at) return '--'
+  const deltaS = Math.max(0, Math.round((uiNowMs.value - at) / 1000))
   return `${deltaS}s`
 })
 
 const telemetryWaterText = computed(() => {
-  if (!telemetryConnected.value) return '--'
+  if (!telemetryActive.value) return '--'
   if (telemetryWaterActive.value === 1) return '告警'
   if (telemetryWaterActive.value === 0) return '正常'
   return '--'
 })
 
 const telemetryWaterClass = computed(() => {
-  if (!telemetryConnected.value) return ''
+  if (!telemetryActive.value) return ''
   if (telemetryWaterActive.value === 1) return 'danger'
   if (telemetryWaterActive.value === 0) return 'ok'
   return ''
@@ -1553,7 +1568,7 @@ const getPedestrianDistanceMeters = () => {
 }
 
 const updateHumanoidSensorPanel = () => {
-  if (!telemetryConnected.value) {
+  if (!telemetryActive.value) {
     humanoidSensor.value.pedestrianDistance = '--'
     return
   }
@@ -1572,7 +1587,7 @@ const updateHumanoidSensorPanel = () => {
 const updateBoxSensorLabel = () => {
   if (!boxObject || !boxSensorLabelEntry?.fields) return
   const meters = getPedestrianDistanceMeters()
-  const hasPedestrian = telemetryConnected.value && meters != null && meters < 2
+  const hasPedestrian = telemetryActive.value && meters != null && meters < 2
 
   // 行人检测传感器与右侧“人形感应器”为同一套数据
   boxSensor.value.gps = humanoidSensor.value.gps
@@ -1972,29 +1987,25 @@ onMounted(async () => {
   // 页面加载完成后自动演示：飞向工作人员 -> 到位后旋转 -> 自动触发行进
   startAutoDemo()
 
-  connectTelemetry()
-  watch(lastTelemetry, (msg) => {
-    if (!msg) return
-    if (Number.isFinite(Number(msg.distance_m))) telemetryDistanceM.value = Number(msg.distance_m)
-    else if (Number.isFinite(Number(msg.distance_cm))) telemetryDistanceM.value = Number(msg.distance_cm) / 100
-    else telemetryDistanceM.value = null
-
-    if (msg.water_active === 0 || msg.water_active === 1) {
-      telemetryWaterActive.value = msg.water_active
+  // 默认前端本地模拟：每 3~4 秒生成一次 20~50cm 的随机距离（不依赖后端/网络）
+  const startFrontendTelemetrySim = () => {
+    const scheduleNext = () => {
+      telemetrySimTimer = setTimeout(() => {
+        const distanceCm = 20 + Math.random() * 30
+        const meters = Math.round((distanceCm / 100) * 100) / 100
+        telemetryDistanceM.value = meters
+        telemetryWaterActive.value = 0
+        telemetrySimLastAt.value = Date.now()
+        setPedestrianVisible(Boolean(meters > 0 && meters < 2))
+        scheduleNext()
+      }, 3000 + Math.floor(Math.random() * 1000))
     }
+    scheduleNext()
+  }
 
-    const meters = getPedestrianDistanceMeters()
-    setPedestrianVisible(Boolean(telemetryConnected.value && meters != null && meters < 2))
-  }, { immediate: true })
-
-  watch(telemetryConnected, (connected) => {
-    if (connected) return
-    telemetryDistanceM.value = null
-    telemetryWaterActive.value = null
-    setPedestrianVisible(false)
-    humanoidSensor.value.pedestrianDistance = '--'
-    boxSensor.value.pedestrianDistance = '--'
-  }, { immediate: true })
+  if (telemetrySimEnabled.value) {
+    startFrontendTelemetrySim()
+  }
 
   // 定期更新信号灯参数
   updateSignalParamsTimer = setInterval(updateSignalParams, 5000)
@@ -2019,6 +2030,10 @@ onBeforeUnmount(() => {
   if (updateSignalParamsTimer) {
     clearInterval(updateSignalParamsTimer)
     updateSignalParamsTimer = null
+  }
+  if (telemetrySimTimer) {
+    clearTimeout(telemetrySimTimer)
+    telemetrySimTimer = null
   }
 
   if (autoDemoWaitTimer) {
