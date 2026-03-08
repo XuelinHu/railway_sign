@@ -37,15 +37,18 @@ export const connectTelemetry = () => {
     socket.addEventListener('open', () => {
       telemetryConnected.value = true
       reconnectAttempt = 0
+      console.info('[telemetry] ws open', url)
     })
 
-    socket.addEventListener('close', () => {
+    socket.addEventListener('close', (ev) => {
       telemetryConnected.value = false
+      console.warn('[telemetry] ws close', { code: ev?.code, reason: ev?.reason })
       scheduleReconnect()
     })
 
     socket.addEventListener('error', () => {
       telemetryConnected.value = false
+      console.warn('[telemetry] ws error')
       try {
         socket?.close()
       } catch (_) {
@@ -62,6 +65,16 @@ export const connectTelemetry = () => {
         if (parsed?.topic === 'telemetry' && parsed?.data) {
           lastTelemetry.value = parsed.data
           lastTelemetryAt.value = Date.now()
+          const d = parsed.data
+          console.debug('[telemetry] recv', {
+            device: d?.device,
+            device_id: d?.device_id,
+            type: d?.type,
+            ts_ms: d?.ts_ms,
+            distance_m: d?.distance_m,
+            distance_cm: d?.distance_cm,
+            water_active: d?.water_active
+          })
         }
       } catch (_) {
         // ignore non-json
@@ -99,4 +112,3 @@ export default {
   connectTelemetry,
   disconnectTelemetry
 }
-

@@ -4,10 +4,9 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "proxy": "node server/stream-proxy.js",
     "telemetry": "node server/telemetry-bridge.js",
     "dev": "vite",
-    "dev:all": "concurrently -n telemetry,web -c magenta,cyan,green \"npm:proxy\" \"npm:telemetry\" \"npm:dev\"",
+    "dev:all": "concurrently -n telemetry,web -c magenta,cyan \"npm:telemetry\" \"npm:dev\"",
     "build": "vite build",
     "preview": "vite preview"
   },

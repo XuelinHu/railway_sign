@@ -83,6 +83,9 @@ const server = http.createServer((req, res) => {
 
   if (req.method === 'POST' && pathname === UPLOAD_PATH) {
     const remote = req.socket?.remoteAddress || 'unknown'
+    const contentType = typeof req.headers['content-type'] === 'string' ? req.headers['content-type'] : 'unknown'
+    const contentLength = typeof req.headers['content-length'] === 'string' ? req.headers['content-length'] : 'unknown'
+    log(`upload start: from=${remote} ct=${contentType} len=${contentLength}`)
     let body = ''
     let bodyBytes = 0
 
@@ -102,6 +105,7 @@ const server = http.createServer((req, res) => {
     })
 
     req.on('end', () => {
+      log(`upload end: bytes=${bodyBytes} from=${remote}`)
       const parsed = safeJsonParse(body || '{}')
       if (!parsed.ok) {
         log(`upload rejected: 400 invalid json from=${remote} detail=${parsed.error}`)
@@ -115,14 +119,21 @@ const server = http.createServer((req, res) => {
       const msg = normalizeTelemetry(parsed.value)
       lastTelemetry = msg
 
-      log(
-        `upload ok: device=${msg.device} id=${msg.device_id} type=${msg.type} distance_cm=${msg.distance_cm ?? 'null'} water=${msg.water_active ?? 'null'} clients=${wss.clients.size} from=${remote}`
-      )
-
       const encoded = JSON.stringify({ topic: 'telemetry', data: msg })
+      let sent = 0
+      let skipped = 0
       for (const client of wss.clients) {
-        if (client.readyState === 1) client.send(encoded)
+        if (client.readyState === 1) {
+          client.send(encoded)
+          sent++
+        } else {
+          skipped++
+        }
       }
+
+      log(
+        `upload ok: device=${msg.device} id=${msg.device_id} type=${msg.type} distance_cm=${msg.distance_cm ?? 'null'} water=${msg.water_active ?? 'null'} bytes=${bodyBytes} ws_sent=${sent} ws_skipped=${skipped} clients=${wss.clients.size} from=${remote}`
+      )
 
       writeCommonHeaders(res)
       res.statusCode = 200

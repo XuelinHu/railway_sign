@@ -497,7 +497,10 @@ const onParamTimeChange = () => {
 }
 
 // ===== 视频监控相关 =====
-const STREAM_PROXY_BASE = import.meta.env.VITE_STREAM_PROXY_BASE || 'http://localhost:3001/stream-proxy'
+const STREAM_URL = (() => {
+  const v = import.meta?.env?.VITE_STREAM_URL
+  return typeof v === 'string' ? v.trim() : ''
+})()
 const retryTimers = new Map()
 const logVideo = (index, action, detail = '') => {
   const prefix = `[video-${index + 1}] ${action}`
@@ -507,31 +510,40 @@ const logVideo = (index, action, detail = '') => {
 const videoList = ref([
   {
     title: '监控点 1 - 区间A',
-    streamPath: `${STREAM_PROXY_BASE}/live`,
+    streamPath: STREAM_URL,
     src: '',
     loaded: false,
-    status: '待播放'
+    status: STREAM_URL ? '待播放' : '未配置'
   },
   {
     title: '监控点 2 - 区间B',
-    streamPath: `${STREAM_PROXY_BASE}/live`,
+    streamPath: STREAM_URL,
     src: '',
     loaded: false,
-    status: '待播放'
+    status: STREAM_URL ? '待播放' : '未配置'
   },
   {
     title: '监控点 3 - 区间C',
-    streamPath: `${STREAM_PROXY_BASE}/live`,
+    streamPath: STREAM_URL,
     src: '',
     loaded: false,
-    status: '待播放'
+    status: STREAM_URL ? '待播放' : '未配置'
   }
 ])
 
-const buildStreamUrl = (streamPath) => `${streamPath}?_t=${Date.now()}`
+const buildStreamUrl = (streamPath) => {
+  if (!streamPath) return ''
+  const sep = streamPath.includes('?') ? '&' : '?'
+  return `${streamPath}${sep}_t=${Date.now()}`
+}
 
 const loadVideo = (index) => {
   const video = videoList.value[index]
+  if (!video?.streamPath) {
+    video.status = '未配置'
+    logVideo(index, 'skip', 'VITE_STREAM_URL not set')
+    return
+  }
   if (!video.loaded) {
     video.src = buildStreamUrl(video.streamPath)
     video.loaded = true
