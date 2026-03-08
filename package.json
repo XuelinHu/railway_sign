@@ -5,8 +5,10 @@
   "type": "module",
   "scripts": {
     "telemetry": "node server/telemetry-bridge.js",
+    "telemetry:sim": "powershell -NoProfile -Command \"$env:TELEMETRY_SIM_PEDESTRIAN='1'; node server/telemetry-bridge.js\"",
     "dev": "vite",
     "dev:all": "concurrently -n telemetry,web -c magenta,cyan \"npm:telemetry\" \"npm:dev\"",
+    "dev:demo": "concurrently -n telemetry,web -c magenta,cyan \"npm:telemetry:sim\" \"npm:dev\"",
     "build": "vite build",
     "preview": "vite preview"
   },

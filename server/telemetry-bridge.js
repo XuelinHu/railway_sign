@@ -48,6 +48,21 @@ const normalizeTelemetry = (payload) => {
 
 let lastTelemetry = null
 
+const broadcastTelemetry = (msg, meta = {}) => {
+  const encoded = JSON.stringify({ topic: 'telemetry', data: msg })
+  let sent = 0
+  let skipped = 0
+  for (const client of wss.clients) {
+    if (client.readyState === 1) {
+      client.send(encoded)
+      sent++
+    } else {
+      skipped++
+    }
+  }
+  return { sent, skipped, clients: wss.clients.size, ...meta }
+}
+
 const server = http.createServer((req, res) => {
   if (!req.url) {
     res.statusCode = 400
@@ -119,17 +134,7 @@ const server = http.createServer((req, res) => {
       const msg = normalizeTelemetry(parsed.value)
       lastTelemetry = msg
 
-      const encoded = JSON.stringify({ topic: 'telemetry', data: msg })
-      let sent = 0
-      let skipped = 0
-      for (const client of wss.clients) {
-        if (client.readyState === 1) {
-          client.send(encoded)
-          sent++
-        } else {
-          skipped++
-        }
-      }
+      const { sent, skipped } = broadcastTelemetry(msg, { from: remote })
 
       log(
         `upload ok: device=${msg.device} id=${msg.device_id} type=${msg.type} distance_cm=${msg.distance_cm ?? 'null'} water=${msg.water_active ?? 'null'} bytes=${bodyBytes} ws_sent=${sent} ws_skipped=${skipped} clients=${wss.clients.size} from=${remote}`
@@ -180,4 +185,47 @@ server.listen(PORT, () => {
   log(`listening: http://localhost:${PORT}`)
   log(`upload: POST ${UPLOAD_PATH}`)
   log(`ws: ${WS_PATH}`)
+
+  const simEnabled = (() => {
+    const v = process.env.TELEMETRY_SIM_PEDESTRIAN
+    if (typeof v !== 'string') return false
+    return ['1', 'true', 'yes', 'on'].includes(v.trim().toLowerCase())
+  })()
+
+  if (simEnabled) {
+    log('sim enabled: random pedestrian distance 20-50cm every 3-4s')
+
+    const simDevice = 'sim_pedestrian'
+    const simDeviceId = 'sim-pedestrian-001'
+    const startedAt = Date.now()
+
+    const scheduleNext = () => {
+      const delayMs = 3000 + Math.floor(Math.random() * 1000)
+      setTimeout(() => {
+        const distanceCm = Math.round((20 + Math.random() * 30) * 10) / 10
+        const payload = {
+          type: 'telemetry',
+          device: simDevice,
+          device_id: simDeviceId,
+          ts_ms: Date.now(),
+          uptime_ms: Date.now() - startedAt,
+          wifi_ip: '0.0.0.0',
+          distance_cm: distanceCm,
+          water_active: 0
+        }
+
+        const msg = normalizeTelemetry(payload)
+        lastTelemetry = msg
+
+        const { sent, skipped } = broadcastTelemetry(msg, { from: 'sim' })
+        log(
+          `sim ok: device=${msg.device} id=${msg.device_id} distance_cm=${msg.distance_cm ?? 'null'} ws_sent=${sent} ws_skipped=${skipped} clients=${wss.clients.size}`
+        )
+
+        scheduleNext()
+      }, delayMs)
+    }
+
+    scheduleNext()
+  }
 })
