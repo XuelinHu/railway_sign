@@ -4,7 +4,7 @@ import { ref } from 'vue'
 export const severeWeatherEnabled = ref(false)
 export const severeWeatherStartedAt = ref(null)
 export const humidityMitigationAppliedAt = ref(null)
-export const syncedHumidity = ref(20)
+export const syncedHumidity = ref(22)
 
 // 大数据面板：湿度异常告警弹窗的全局状态（用于跨页面切换保持一致）
 export const humidityAlertDismissed = ref(false)

@@ -1,5 +1,17 @@
-<template>
+﻿<template>
   <div class="right-panel">
+    <div class="panel-section ticker-section">
+      <div class="section-header">
+        <span class="section-icon">播报</span>
+        <span class="section-title">区间滚动播报</span>
+        <span class="section-badge">脱敏</span>
+      </div>
+      <div class="ticker-shell">
+        <div class="ticker-track">
+          <span v-for="(item, idx) in tickerItemsLoop" :key="`${idx}-${item}`" class="ticker-item">{{ item }}</span>
+        </div>
+      </div>
+    </div>
     <!-- 设备监控 -->
     <div class="panel-section equipment-section">
       <div class="section-header">
@@ -268,6 +280,19 @@ const workOrders = ref(getWorkOrderData())
 const activeAlarmTab = ref('all')
 const updateTimer = ref(null)
 
+const tickerItems = [
+  '西南山地上行咽喉区间出现轻雾，当前设备标识已脱敏展示。',
+  '北侧桥隧结合段风速维持 3 级以内，轨旁箱体湿度处于正常范围。',
+  '东坡隧道口至谷地缓坡区间采用匿名区段编码，不展示真实站名与真实人员信息。',
+  '坡脚联络线信号机巡检记录为演示数据，检修班组名称已做泛化处理。',
+  '临水弯道区段视频巡检为模拟画面，地理描述保留地貌特征但不对应真实坐标。',
+  '上行 K 区段传感器在线率稳定，面板内设备编号为资产脱敏编码。',
+  '高填方路基边坡监测数据来自本地仿真，不含真实单位名称与真实位置。'
+]
+
+const tickerItemsLoop = computed(() => [...tickerItems, ...tickerItems])
+
+
 // 告警标签
 const alarmTabs = [
   { label: '全部', value: 'all' },
@@ -393,19 +418,47 @@ onUnmounted(() => {
 }
 
 .section-title {
-  font-size: 14px;
+  font-size: 16px;
   font-weight: bold;
   color: #00d4ff;
   flex: 1;
 }
 
 .section-badge {
-  font-size: 11px;
+  font-size: 13px;
   padding: 2px 8px;
   background: rgba(0, 200, 255, 0.2);
   border: 1px solid rgba(0, 200, 255, 0.4);
   border-radius: 10px;
   color: #00d4ff;
+}
+
+.ticker-shell {
+  overflow: hidden;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 200, 255, 0.22);
+  background: rgba(0, 18, 38, 0.6);
+}
+
+.ticker-track {
+  display: flex;
+  align-items: center;
+  width: max-content;
+  gap: 28px;
+  padding: 10px 0;
+  animation: ticker-scroll 30s linear infinite;
+}
+
+.ticker-item {
+  flex: 0 0 auto;
+  font-size: 14px;
+  color: rgba(230, 247, 255, 0.92);
+  white-space: nowrap;
+}
+
+@keyframes ticker-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
 }
 
 .section-badge.alarm {
@@ -430,7 +483,7 @@ onUnmounted(() => {
 }
 
 .stat-value {
-  font-size: 24px;
+  font-size: 28px;
   font-weight: bold;
   display: block;
 }
@@ -440,7 +493,7 @@ onUnmounted(() => {
 .stat-item.error .stat-value { color: #ff6b6b; }
 
 .stat-label {
-  font-size: 11px;
+  font-size: 13px;
   color: #888;
 }
 
@@ -471,13 +524,13 @@ onUnmounted(() => {
 }
 
 .eq-name {
-  font-size: 12px;
+  font-size: 14px;
   color: #fff;
   flex: 1;
 }
 
 .eq-online {
-  font-size: 11px;
+  font-size: 13px;
   color: #00ff88;
 }
 
@@ -525,7 +578,7 @@ onUnmounted(() => {
   border: 1px solid rgba(0, 200, 255, 0.2);
   border-radius: 15px;
   color: #888;
-  font-size: 11px;
+  font-size: 13px;
   cursor: pointer;
   transition: all 0.3s;
 }
@@ -570,13 +623,13 @@ onUnmounted(() => {
 }
 
 .alarm-title {
-  font-size: 12px;
+  font-size: 15px;
   color: #fff;
   margin-bottom: 3px;
 }
 
 .alarm-desc {
-  font-size: 10px;
+  font-size: 12px;
   color: #aaa;
   margin-bottom: 5px;
 }
@@ -584,7 +637,7 @@ onUnmounted(() => {
 .alarm-meta {
   display: flex;
   gap: 15px;
-  font-size: 9px;
+  font-size: 11px;
   color: #666;
 }
 
@@ -599,7 +652,7 @@ onUnmounted(() => {
   border: 1px solid rgba(0, 200, 255, 0.4);
   border-radius: 4px;
   color: #00d4ff;
-  font-size: 10px;
+  font-size: 12px;
   cursor: pointer;
   transition: all 0.3s;
 }
@@ -609,7 +662,7 @@ onUnmounted(() => {
 }
 
 .handled-tag {
-  font-size: 10px;
+  font-size: 12px;
   color: #00ff88;
 }
 
@@ -651,13 +704,13 @@ onUnmounted(() => {
 }
 
 .sec-value {
-  font-size: 16px;
+  font-size: 20px;
   font-weight: bold;
   color: #fff;
 }
 
 .sec-label {
-  font-size: 10px;
+  font-size: 12px;
   color: #888;
 }
 
@@ -667,7 +720,7 @@ onUnmounted(() => {
 }
 
 .vuln-title, .events-title, .orders-title {
-  font-size: 11px;
+  font-size: 13px;
   color: #888;
   margin-bottom: 8px;
 }
@@ -730,7 +783,7 @@ onUnmounted(() => {
   padding: 6px 8px;
   background: rgba(0, 50, 100, 0.2);
   border-radius: 4px;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .event-type {
@@ -763,7 +816,7 @@ onUnmounted(() => {
 }
 
 .wo-value {
-  font-size: 20px;
+  font-size: 24px;
   font-weight: bold;
   display: block;
 }
@@ -773,7 +826,7 @@ onUnmounted(() => {
 .wo-stat.completed .wo-value { color: #00ff88; }
 
 .wo-label {
-  font-size: 10px;
+  font-size: 12px;
   color: #888;
 }
 
@@ -803,14 +856,14 @@ onUnmounted(() => {
 }
 
 .pie-value {
-  font-size: 14px;
+  font-size: 16px;
   font-weight: bold;
   color: #00ff88;
   display: block;
 }
 
 .pie-label {
-  font-size: 9px;
+  font-size: 11px;
   color: #888;
 }
 
@@ -826,7 +879,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .legend-dot {
@@ -865,7 +918,7 @@ onUnmounted(() => {
 }
 
 .order-priority {
-  font-size: 9px;
+  font-size: 11px;
   padding: 2px 6px;
   border-radius: 3px;
 }
@@ -876,12 +929,12 @@ onUnmounted(() => {
 .order-priority.低 { background: #00d4ff; color: #000; }
 
 .order-id {
-  font-size: 10px;
+  font-size: 12px;
   color: #666;
 }
 
 .order-title {
-  font-size: 11px;
+  font-size: 13px;
   color: #fff;
   margin-bottom: 5px;
 }
@@ -889,7 +942,7 @@ onUnmounted(() => {
 .order-meta {
   display: flex;
   justify-content: space-between;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .order-meta span:first-child {
@@ -906,3 +959,4 @@ onUnmounted(() => {
 .order-status.已完成 { background: rgba(0, 255, 136, 0.2); color: #00ff88; }
 .order-status.已关闭 { background: rgba(255, 255, 255, 0.1); color: #888; }
 </style>
+

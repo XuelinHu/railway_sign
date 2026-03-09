@@ -31,7 +31,7 @@
       <div class="panel-border glow-line"></div>
 
       <!-- 行人距离感应器 -->
-      <div class="panel-section" :class="{ 'panel-alert': pedestrianDesiredVisible }">
+      <div class="panel-section" :class="{ 'panel-alert': pedestrianDesiredVisible, 'panel-boost': pedestrianHotFlash }">
         <h2 class="panel-title">
           <span class="title-icon">🧍</span>
           <span class="title-text">行人距离感应器</span>
@@ -49,7 +49,7 @@
           </div>
           <div class="sensor-row">
             <span class="sensor-label">行人距离</span>
-            <span class="sensor-value sensor-distance" :class="pedestrianDesiredVisible ? 'warning' : ''">{{ humanoidSensor.pedestrianDistance }}</span>
+            <span class="sensor-value sensor-distance" :class="{ warning: pedestrianDesiredVisible, 'sensor-boost': pedestrianHotFlash }">{{ humanoidSensor.pedestrianDistance }}</span>
           </div>
         </div>
       </div>
@@ -229,7 +229,7 @@
         </div>
         <div class="stat-item">
           <span class="stat-label">行人距离:</span>
-          <span class="stat-value" :class="pedestrianDesiredVisible ? 'warn' : ''">{{ humanoidSensor.pedestrianDistance }}</span>
+          <span class="stat-value" :class="{ warn: pedestrianDesiredVisible, 'stat-boost': pedestrianHotFlash }">{{ humanoidSensor.pedestrianDistance }}</span>
         </div>
       </div>
 
@@ -312,10 +312,9 @@ import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js'
 import { CSS2DRenderer, CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js'
 import gsap from 'gsap'
-import api from '../services/api.js'
-import { connectTelemetry, disconnectTelemetry, lastTelemetry, lastTelemetryAt, telemetryConnected } from '../services/telemetrySocket.js'
 import { DEMO_SCENARIO } from '../config/demoScenario.js'
 import { severeWeatherEnabled, syncedHumidity } from '../services/simulationState.js'
 
@@ -336,7 +335,7 @@ const uiNowMs = ref(Date.now())
 // 信号灯实时参数
 const signalParams = ref({
   temperature: 35,
-  humidity: 65,
+  humidity: 23,
   light: 850,
   voltage: 220,
   current: 2.5,
@@ -370,29 +369,30 @@ const signalTwin = ref({
 const telemetryDistanceM = ref(null)
 const telemetryWaterActive = ref(null)
 const pedestrianDesiredVisible = ref(false)
+const pedestrianHotFlash = ref(false)
 
-const telemetrySimEnabled = ref(true)
+const telemetrySimEnabled = ref(false)
 const telemetrySimLastAt = ref(0)
 let telemetrySimTimer = null
 let telemetrySimPassTimer = null
+let pedestrianHotFlashTimer = null
+let pedestrianLoopEnabled = false
 
-const telemetryActive = computed(() => telemetryConnected.value || telemetrySimEnabled.value)
+const telemetryActive = computed(() => telemetrySimEnabled.value)
 
 const twinEnvVisible = ref(false)
 
 const telemetryStatusText = computed(() => {
-  if (telemetryConnected.value) return '已接入'
-  if (telemetrySimEnabled.value) return '本地模拟'
-  return '未接入'
+  if (telemetrySimEnabled.value) return '手动模拟'
+  return '待机'
 })
 const telemetryStatusClass = computed(() => {
-  if (telemetryConnected.value) return 'ok'
   if (telemetrySimEnabled.value) return 'ok'
   return 'warn'
 })
 
 const telemetryLastSeenText = computed(() => {
-  const at = telemetryConnected.value ? lastTelemetryAt.value : telemetrySimLastAt.value
+  const at = telemetrySimLastAt.value
   if (!telemetryActive.value || !at) return '--'
   const deltaS = Math.max(0, Math.round((uiNowMs.value - at) / 1000))
   return `${deltaS}s`
@@ -419,6 +419,17 @@ const setPedestrianVisible = (visible) => {
   }
 }
 
+const triggerPedestrianHotFlash = () => {
+  pedestrianHotFlash.value = true
+  if (pedestrianHotFlashTimer) {
+    clearTimeout(pedestrianHotFlashTimer)
+  }
+  pedestrianHotFlashTimer = setTimeout(() => {
+    pedestrianHotFlash.value = false
+    pedestrianHotFlashTimer = null
+  }, 1200)
+}
+
 const applyTwinEnvVisibilityToLabels = () => {
   if (!modelLabels?.length) return
   for (const entry of modelLabels) {
@@ -432,11 +443,102 @@ const onGlobalKeydown = (event) => {
   if (!event) return
   if (event.repeat) return
   const key = event.key
-  if (key !== 'p' && key !== 'P') return
   const tag = String(event.target?.tagName || '').toLowerCase()
   if (tag === 'input' || tag === 'textarea' || tag === 'select') return
-  twinEnvVisible.value = !twinEnvVisible.value
-  applyTwinEnvVisibilityToLabels()
+  if (key === 'p' || key === 'P') {
+    twinEnvVisible.value = !twinEnvVisible.value
+    applyTwinEnvVisibilityToLabels()
+    return
+  }
+  if (key === 'o' || key === 'O') {
+    telemetrySimEnabled.value = !telemetrySimEnabled.value
+    pedestrianLoopEnabled = telemetrySimEnabled.value
+    if (pedestrianLoopEnabled) {
+      triggerPedestrianHotFlash()
+      startFrontendTelemetrySim()
+      return
+    }
+    stopFrontendTelemetrySim()
+  }
+}
+
+const updateTelemetrySim = (distanceM) => {
+  telemetryDistanceM.value = distanceM
+  telemetryWaterActive.value = 0
+  telemetrySimLastAt.value = Date.now()
+  setPedestrianVisible(Boolean(Number.isFinite(distanceM) && distanceM > 0 && distanceM < 2))
+}
+
+const stopFrontendTelemetrySim = () => {
+  pedestrianLoopEnabled = false
+  pedestrianHotFlash.value = false
+  if (pedestrianHotFlashTimer) {
+    clearTimeout(pedestrianHotFlashTimer)
+    pedestrianHotFlashTimer = null
+  }
+  if (telemetrySimTimer) {
+    clearTimeout(telemetrySimTimer)
+    telemetrySimTimer = null
+  }
+  if (telemetrySimPassTimer) {
+    clearInterval(telemetrySimPassTimer)
+    telemetrySimPassTimer = null
+  }
+  updateTelemetrySim(0)
+}
+
+const startFrontendTelemetrySim = () => {
+  if (!pedestrianLoopEnabled) return
+
+  const PASS_MIN_MS = 3000
+  const PASS_MAX_MS = 5000
+  const IDLE_MIN_MS = 6000
+  const IDLE_MAX_MS = 18000
+
+  const scheduleNextPass = (delayMs) => {
+    if (!pedestrianLoopEnabled) return
+    if (telemetrySimTimer) clearTimeout(telemetrySimTimer)
+    telemetrySimTimer = setTimeout(runPass, Math.max(0, delayMs))
+  }
+
+  const runPass = () => {
+    if (!pedestrianLoopEnabled) return
+    if (telemetrySimPassTimer) {
+      clearInterval(telemetrySimPassTimer)
+      telemetrySimPassTimer = null
+    }
+
+    const passMs = PASS_MIN_MS + Math.floor(Math.random() * (PASS_MAX_MS - PASS_MIN_MS + 1))
+    const startAt = Date.now()
+
+    const jitterDistance = () => {
+      const base = 0.25 + Math.random() * 1.35
+      const meters = Math.round(base * 100) / 100
+      updateTelemetrySim(meters)
+    }
+
+    jitterDistance()
+    telemetrySimPassTimer = setInterval(() => {
+      if (!pedestrianLoopEnabled) {
+        stopFrontendTelemetrySim()
+        return
+      }
+
+      const elapsed = Date.now() - startAt
+      if (elapsed >= passMs) {
+        clearInterval(telemetrySimPassTimer)
+        telemetrySimPassTimer = null
+        updateTelemetrySim(0)
+        const idleMs = IDLE_MIN_MS + Math.floor(Math.random() * (IDLE_MAX_MS - IDLE_MIN_MS + 1))
+        scheduleNextPass(idleMs)
+        return
+      }
+      jitterDistance()
+    }, 600)
+  }
+
+  updateTelemetrySim(0)
+  runPass()
 }
 
 // ===== 参数曲线图相关 =====
@@ -460,7 +562,7 @@ const currentParamValue = computed(() => signalParams.value[selectedParam.value]
 // 参数历史数据 - 1小时（每5分钟一个点，12个点）
 const paramData1h = ref({
   temperature: [32, 33, 34, 35, 34, 33, 35, 36, 35, 34, 35, 35],
-  humidity: [60, 62, 65, 63, 64, 66, 65, 63, 64, 65, 66, 65],
+  humidity: [22, 22, 23, 23, 24, 24, 23, 23, 22, 22, 23, 23],
   light: [800, 850, 900, 880, 860, 870, 850, 840, 850, 860, 850, 850],
   voltage: [218, 220, 222, 219, 221, 220, 218, 220, 221, 220, 219, 220],
   current: [2.3, 2.4, 2.5, 2.4, 2.5, 2.6, 2.5, 2.4, 2.5, 2.5, 2.4, 2.5],
@@ -470,7 +572,7 @@ const paramData1h = ref({
 // 参数历史数据 - 24小时（每小时一个点，24个点）
 const paramData24h = ref({
   temperature: [28, 27, 26, 25, 24, 24, 25, 27, 30, 33, 36, 38, 40, 41, 40, 39, 37, 35, 33, 31, 30, 29, 28, 27],
-  humidity: [75, 78, 80, 82, 85, 85, 83, 78, 70, 65, 60, 58, 55, 53, 55, 58, 62, 65, 68, 70, 72, 74, 75, 76],
+  humidity: [21, 21, 20, 20, 20, 21, 21, 22, 22, 23, 23, 24, 24, 24, 23, 23, 22, 22, 22, 21, 21, 21, 20, 20],
   light: [0, 0, 0, 0, 0, 50, 200, 500, 800, 1100, 1400, 1600, 1800, 1700, 1500, 1200, 900, 600, 300, 100, 20, 0, 0, 0],
   voltage: [215, 216, 218, 218, 219, 220, 220, 221, 222, 220, 219, 218, 217, 218, 219, 220, 221, 220, 219, 218, 217, 216, 215, 215],
   current: [2.0, 1.9, 1.8, 1.8, 1.9, 2.0, 2.2, 2.4, 2.6, 2.8, 3.0, 3.1, 3.2, 3.1, 3.0, 2.8, 2.6, 2.4, 2.2, 2.1, 2.0, 2.0, 1.9, 1.9],
@@ -480,7 +582,7 @@ const paramData24h = ref({
 // 参数历史数据 - 一周（每天一个点，7个点）
 const paramDataWeek = ref({
   temperature: [32, 35, 38, 36, 34, 33, 35],
-  humidity: [70, 65, 60, 62, 68, 72, 65],
+  humidity: [22, 23, 22, 24, 23, 22, 23],
   light: [850, 900, 950, 880, 820, 800, 850],
   voltage: [220, 218, 222, 219, 221, 220, 220],
   current: [2.5, 2.6, 2.7, 2.5, 2.4, 2.5, 2.5],
@@ -664,6 +766,7 @@ let clock = new THREE.Clock()
 let startTime = Date.now()
 let mixer = null
 let gltfLoader = null
+const gltfAssetCache = new Map()
 let modelLabels = []
 let trainLabelEntry = null
 let updateUiTimer = null
@@ -684,6 +787,44 @@ let skyParticles = null
 let skyParticlesMaterial = null
 let endpointGlowTexture = null
 let endpointGlows = []
+
+const ensureGltfLoader = () => {
+  if (!gltfLoader) {
+    gltfLoader = new GLTFLoader()
+  }
+  return gltfLoader
+}
+
+const getCachedModelClone = async (url) => {
+  const cachedAsset = gltfAssetCache.get(url)
+  if (cachedAsset) {
+    const gltf = await cachedAsset
+    return {
+      scene: cloneSkinned(gltf.scene),
+      animations: gltf.animations || []
+    }
+  }
+
+  const loader = ensureGltfLoader()
+  const assetPromise = new Promise((resolve, reject) => {
+    loader.load(
+      url,
+      (gltf) => resolve(gltf),
+      undefined,
+      (error) => reject(error)
+    )
+  })
+
+  gltfAssetCache.set(url, assetPromise)
+  const gltf = await assetPromise.catch((error) => {
+    gltfAssetCache.delete(url)
+    throw error
+  })
+  return {
+    scene: cloneSkinned(gltf.scene),
+    animations: gltf.animations || []
+  }
+}
 
 // 人形感应器面板数据
 const humanoidSensor = ref({
@@ -1042,9 +1183,7 @@ const createMountains = () => {
 }
 
 const createRailway = () => {
-  if (!gltfLoader) {
-    gltfLoader = new GLTFLoader()
-  }
+  ensureGltfLoader()
 
   // 铁轨方向：X轴旋转45度 (Math.PI / 4 = 45度)
   // 沿着X-Z对角线方向放置铁轨，确保在同一条直线上
@@ -1067,10 +1206,8 @@ const createRailway = () => {
 
   console.log('铁轨位置 (45度角, 紧密排列):', railPositions)
 
-  gltfLoader.load(
-    '/assets/models/railway.glb',
-    (gltf) => {
-      const template = gltf.scene
+  getCachedModelClone('/assets/models/railway.glb')
+    .then(({ scene: template }) => {
       template.traverse((child) => {
         if (child.isMesh) {
           child.castShadow = true
@@ -1079,25 +1216,21 @@ const createRailway = () => {
       })
 
       railPositions.forEach((pos, index) => {
-        const railway = template.clone(true)
+        const railway = cloneSkinned(template)
         railway.scale.set(12, 12, 12)
         railway.position.set(pos.x, 0, pos.z)
         railway.rotation.y = pos.rotation
         scene.add(railway)
         console.log(`铁轨段 ${index + 1} 加载成功，位置: (${pos.x}, ${pos.z})`)
       })
-    },
-    undefined,
-    (error) => {
+    })
+    .catch((error) => {
       console.error('铁轨模型加载失败:', error)
-    }
-  )
+    })
 }
 
 const createSignalLights = () => {
-  if (!gltfLoader) {
-    gltfLoader = new GLTFLoader()
-  }
+  ensureGltfLoader()
 
   const getObjectSize = (object3d) => {
     const box = new THREE.Box3().setFromObject(object3d)
@@ -1188,45 +1321,36 @@ const createSignalLights = () => {
   }
 
   const loadAndPlaceNear = async ({ url, desiredHeight, position, rotation = {}, afterPlace }) => {
-    return await new Promise((resolve, reject) => {
-      gltfLoader.load(
-        url,
-        (gltf) => {
-          const obj = gltf.scene
-          if (rotation.x != null) obj.rotation.x = rotation.x
-          if (rotation.y != null) obj.rotation.y = rotation.y
-          if (rotation.z != null) obj.rotation.z = rotation.z
+    const { scene: obj } = await getCachedModelClone(url)
+    if (rotation.x != null) obj.rotation.x = rotation.x
+    if (rotation.y != null) obj.rotation.y = rotation.y
+    if (rotation.z != null) obj.rotation.z = rotation.z
 
-          const { size } = getObjectSize(obj)
-          const baseHeight = Math.max(0.0001, size.y || 0.0001)
-          const scale = desiredHeight / baseHeight
-          obj.scale.setScalar(scale)
+    const { size } = getObjectSize(obj)
+    const baseHeight = Math.max(0.0001, size.y || 0.0001)
+    const scale = desiredHeight / baseHeight
+    obj.scale.setScalar(scale)
 
-          obj.position.set(position.x, position.y ?? 0, position.z)
-          placeOnGround(obj)
+    obj.position.set(position.x, position.y ?? 0, position.z)
+    placeOnGround(obj)
 
-          if (typeof afterPlace === 'function') {
-            try {
-              afterPlace(obj, getObjectSize(obj).size)
-            } catch (e) {
-              console.warn('模型后处理失败:', e)
-            }
-          }
+    if (typeof afterPlace === 'function') {
+      try {
+        afterPlace(obj, getObjectSize(obj).size)
+      } catch (e) {
+        console.warn('模型后处理失败:', e)
+      }
+    }
 
-          obj.traverse((child) => {
-            if (child.isMesh) {
-              child.castShadow = true
-              child.receiveShadow = true
-            }
-          })
-
-          scene.add(obj)
-          resolve(obj)
-        },
-        undefined,
-        (error) => reject(error)
-      )
+    obj.traverse((child) => {
+      if (child.isMesh) {
+        child.castShadow = true
+        child.receiveShadow = true
+      }
     })
+
+    scene.add(obj)
+    return obj
   }
 
   // 只创建一个信号灯，放在铁轨旁边
@@ -1241,10 +1365,8 @@ const createSignalLights = () => {
   const signalNames = ['主信号灯']
 
   signalPositions.forEach((pos, index) => {
-    gltfLoader.load(
-      '/assets/models/sign.glb',
-      (gltf) => {
-        const signGroup = gltf.scene
+    getCachedModelClone('/assets/models/sign.glb')
+      .then(({ scene: signGroup }) => {
         // 信号灯在现有基础上缩放为当前的 1/3
         const signScale = (11.2 * 0.8) / 3
         signGroup.scale.set(signScale, signScale, signScale)
@@ -1426,24 +1548,19 @@ const createSignalLights = () => {
         createModelLabel(signGroup, signalNames[index], 28, 65, '109.3887', '24.3076', 2.4)
         updateSignalUI()
         console.log(`信号灯 ${signalNames[index]} 加载成功`)
-      },
-      undefined,
-      (error) => {
+      })
+      .catch((error) => {
         console.error(`信号灯 ${signalNames[index]} 加载失败:`, error)
-      }
-    )
+      })
   })
 }
 
 const createTrain = () => {
-  if (!gltfLoader) {
-    gltfLoader = new GLTFLoader()
-  }
+  ensureGltfLoader()
 
-  gltfLoader.load(
-    '/assets/models/locomotive.glb',
-    (gltf) => {
-      train = gltf.scene
+  getCachedModelClone('/assets/models/locomotive.glb')
+    .then(({ scene: trainScene, animations }) => {
+      train = trainScene
       train.scale.set(12, 12, 12)
       // 列车方向：由X轴向Z轴旋转45度，与铁轨方向一致
       // 铁轨方向是 Math.PI / 4 = 45度
@@ -1465,9 +1582,9 @@ const createTrain = () => {
 
       scene.add(train)
 
-      if (gltf.animations && gltf.animations.length > 0) {
+      if (animations.length > 0) {
         mixer = new THREE.AnimationMixer(train)
-        const action = mixer.clipAction(gltf.animations[0])
+        const action = mixer.clipAction(animations[0])
         action.play()
       }
 
@@ -1475,12 +1592,10 @@ const createTrain = () => {
       trainLabelEntry = createModelLabel(train, '火车头', 28, 70, '109.3900', '24.3100', 1.2)
 
       console.log('火车头模型加载成功 - 45度角方向，Y轴抬高')
-    },
-    undefined,
-    (error) => {
+    })
+    .catch((error) => {
       console.error('火车头模型加载失败:', error)
-    }
-  )
+    })
 }
 
 const createModelLabel = (model, name, temperature, humidity, gpsLon, gpsLat, labelHeight = 8) => {
@@ -1887,31 +2002,14 @@ const updateUI = () => {
   }
 }
 
-// 更新信号灯参数（从API获取实时数据）
+// 更新信号灯参数（本地模拟）
 const updateSignalParams = async () => {
-  try {
-    // 从API获取信号灯数据
-    const signals = await api.getSignals()
-    if (signals && signals.length > 0) {
-      // 使用第一个信号灯的数据
-      const signal = signals[0]
-      signalParams.value.temperature = Math.round(signal.temperature * 10) / 10
-      signalParams.value.humidity = Math.round(signal.humidity * 10) / 10
-      signalParams.value.light = Math.round(signal.light_intensity)
-      signalParams.value.voltage = Math.round(signal.voltage * 10) / 10
-      signalParams.value.current = Math.round(signal.current * 100) / 100
-      signalParams.value.signal = Math.round(signal.signal_strength)
-    }
-  } catch (error) {
-    console.error('获取信号灯参数失败:', error)
-    // 使用备用模拟数据
-    signalParams.value.temperature = Math.round((30 + Math.random() * 25) * 10) / 10
-    signalParams.value.humidity = Math.round((50 + Math.random() * 40) * 10) / 10
-    signalParams.value.light = Math.round(500 + Math.random() * 1500)
-    signalParams.value.voltage = Math.round((210 + Math.random() * 30) * 10) / 10
-    signalParams.value.current = Math.round((1.5 + Math.random() * 2) * 100) / 100
-    signalParams.value.signal = Math.round(-70 + Math.random() * 50)
-  }
+  signalParams.value.temperature = Math.round((31 + Math.random() * 8) * 10) / 10
+  signalParams.value.humidity = Math.round((21 + Math.random() * 4) * 10) / 10
+  signalParams.value.light = Math.round(550 + Math.random() * 950)
+  signalParams.value.voltage = Math.round((216 + Math.random() * 8) * 10) / 10
+  signalParams.value.current = Math.round((1.8 + Math.random() * 0.8) * 100) / 100
+  signalParams.value.signal = Math.round(-58 + Math.random() * 10)
 
   // 恶劣天气模拟时：湿度与其它界面同步
   if (severeWeatherEnabled.value) {
@@ -1953,29 +2051,11 @@ watch(
   { immediate: true }
 )
 
-// 加载参数历史数据
+// 正常态参数历史数据保持在较低湿度，避免页面初始即出现异常
 const loadParamHistory = async () => {
-  try {
-    const params = ['temperature', 'humidity', 'light', 'voltage', 'current', 'signal']
-    for (const param of params) {
-      const data = await api.getParamHistory(param, '24h', 1)
-      if (data && data.length > 0) {
-        const values = data.map(d => d.param_value)
-        // 更新对应的时间范围数据
-        if (values.length >= 24) {
-          paramData24h.value[param] = values.slice(-24)
-        }
-        if (values.length >= 12) {
-          paramData1h.value[param] = values.slice(-12)
-        }
-        if (values.length >= 7) {
-          paramDataWeek.value[param] = values.slice(-7)
-        }
-      }
-    }
-  } catch (error) {
-    console.error('加载参数历史失败:', error)
-  }
+  paramData1h.value.humidity = [22, 22, 23, 23, 24, 24, 23, 23, 22, 22, 23, 23]
+  paramData24h.value.humidity = [21, 21, 20, 20, 20, 21, 21, 22, 22, 23, 23, 24, 24, 24, 23, 23, 22, 22, 22, 21, 21, 21, 20, 20]
+  paramDataWeek.value.humidity = [22, 23, 22, 24, 23, 22, 23]
 }
 
 const animate = () => {
@@ -2010,7 +2090,7 @@ const animate = () => {
     if (trainLabelEntry) {
       const { lon, lat } = toTrainGps()
       const temp = Math.round((26 + Math.sin(trainProgress * Math.PI * 2) * 3 + Math.random() * 0.6) * 10) / 10
-      const hum = Math.round((60 + Math.cos(trainProgress * Math.PI * 2) * 6 + Math.random() * 1.2) * 10) / 10
+      const hum = Math.round((22 + Math.cos(trainProgress * Math.PI * 2) * 1.4 + Math.random() * 0.6) * 10) / 10
       updateLabelFields(trainLabelEntry, {
         temperature: temp,
         humidity: hum,
@@ -2050,7 +2130,6 @@ const animate = () => {
 }
 
 onMounted(async () => {
-  // 从API加载参数历史数据
   await loadParamHistory()
   await updateSignalParams()
 
@@ -2060,63 +2139,7 @@ onMounted(async () => {
 
   window.addEventListener('keydown', onGlobalKeydown)
   applyTwinEnvVisibilityToLabels()
-
-  // 默认前端本地模拟：先延迟 7 秒 -> 模拟行人经过（持续 3~5 秒）-> 熄灭 -> 随机间隔再次经过
-  const startFrontendTelemetrySim = () => {
-    const FIRST_DELAY_MS = 7000
-    const PASS_MIN_MS = 3000
-    const PASS_MAX_MS = 5000
-    const IDLE_MIN_MS = 6000
-    const IDLE_MAX_MS = 18000
-
-    const updateTelemetrySim = (distanceM) => {
-      telemetryDistanceM.value = distanceM
-      telemetryWaterActive.value = 0
-      telemetrySimLastAt.value = Date.now()
-      setPedestrianVisible(Boolean(Number.isFinite(distanceM) && distanceM > 0 && distanceM < 2))
-    }
-
-    const scheduleNextPass = (delayMs) => {
-      if (telemetrySimTimer) clearTimeout(telemetrySimTimer)
-      telemetrySimTimer = setTimeout(runPass, Math.max(0, delayMs))
-    }
-
-    const runPass = () => {
-      if (telemetrySimPassTimer) {
-        clearInterval(telemetrySimPassTimer)
-        telemetrySimPassTimer = null
-      }
-
-      const passMs = PASS_MIN_MS + Math.floor(Math.random() * (PASS_MAX_MS - PASS_MIN_MS + 1))
-      const startAt = Date.now()
-
-      const jitterDistance = () => {
-        const base = 0.25 + Math.random() * 1.35 // 0.25m ~ 1.60m
-        const meters = Math.round(base * 100) / 100
-        updateTelemetrySim(meters)
-      }
-
-      jitterDistance()
-      telemetrySimPassTimer = setInterval(() => {
-        const elapsed = Date.now() - startAt
-        if (elapsed >= passMs) {
-          clearInterval(telemetrySimPassTimer)
-          telemetrySimPassTimer = null
-          updateTelemetrySim(0)
-          const idleMs = IDLE_MIN_MS + Math.floor(Math.random() * (IDLE_MAX_MS - IDLE_MIN_MS + 1))
-          scheduleNextPass(idleMs)
-          return
-        }
-        jitterDistance()
-      }, 600)
-    }
-
-    scheduleNextPass(FIRST_DELAY_MS)
-  }
-
-  if (telemetrySimEnabled.value) {
-    startFrontendTelemetrySim()
-  }
+  stopFrontendTelemetrySim()
 
   // 定期更新信号灯参数
   updateSignalParamsTimer = setInterval(updateSignalParams, 5000)
@@ -2149,6 +2172,10 @@ onBeforeUnmount(() => {
   if (telemetrySimPassTimer) {
     clearInterval(telemetrySimPassTimer)
     telemetrySimPassTimer = null
+  }
+  if (pedestrianHotFlashTimer) {
+    clearTimeout(pedestrianHotFlashTimer)
+    pedestrianHotFlashTimer = null
   }
 
   if (autoDemoWaitTimer) {
@@ -2210,8 +2237,6 @@ onBeforeUnmount(() => {
   }
   window.removeEventListener('resize', onWindowResize)
   window.removeEventListener('keydown', onGlobalKeydown)
-
-  disconnectTelemetry()
 
   controls = null
   camera = null
@@ -2644,6 +2669,27 @@ onBeforeUnmount(() => {
   background: linear-gradient(90deg, #ff4b4b, transparent);
 }
 
+.panel-boost {
+  animation: panel-boost-flash 0.32s ease-out 3;
+}
+
+@keyframes panel-boost-flash {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 rgba(0, 212, 255, 0);
+  }
+  50% {
+    transform: scale(1.015);
+    box-shadow:
+      0 0 18px rgba(0, 212, 255, 0.45),
+      0 0 34px rgba(0, 212, 255, 0.22);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 rgba(0, 212, 255, 0);
+  }
+}
+
 @keyframes panel-alert-pulse {
   0%, 100% { box-shadow: 0 0 18px rgba(255, 50, 50, 0.18); }
   50% { box-shadow: 0 0 28px rgba(255, 50, 50, 0.32); }
@@ -2863,6 +2909,15 @@ onBeforeUnmount(() => {
   letter-spacing: 0.5px;
 }
 
+.sensor-boost,
+.stat-boost {
+  color: #8ffbff !important;
+  text-shadow:
+    0 0 10px rgba(0, 212, 255, 0.75),
+    0 0 20px rgba(0, 212, 255, 0.4);
+  animation: telemetry-hot-flash 0.32s ease-out 3;
+}
+
 .sensor-meta {
   font-size: 12px;
   color: rgba(255, 255, 255, 0.75);
@@ -2870,6 +2925,18 @@ onBeforeUnmount(() => {
 
 .sensor-value.online { color: #33ff33; }
 .sensor-value.warning { color: #ffaa00; }
+
+@keyframes telemetry-hot-flash {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.68;
+    transform: scale(1.08);
+  }
+}
 
 .status-row {
   display: flex;

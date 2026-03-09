@@ -894,24 +894,24 @@ const handleMinimapMove = (e) => {
 }
 
 .metric-value .value {
-  font-size: 22px;
+  font-size: 26px;
   font-weight: bold;
   color: #fff;
 }
 
 .metric-value .unit {
-  font-size: 11px;
+  font-size: 13px;
   color: #888;
 }
 
 .metric-label {
-  font-size: 11px;
+  font-size: 13px;
   color: #888;
   margin-top: 3px;
 }
 
 .metric-trend {
-  font-size: 10px;
+  font-size: 12px;
   margin-top: 3px;
 }
 
@@ -938,14 +938,14 @@ const handleMinimapMove = (e) => {
 }
 
 .viz-title {
-  font-size: 14px;
+  font-size: 16px;
   color: #00d4ff;
   font-weight: bold;
   margin: 0;
 }
 
 .viz-time {
-  font-size: 12px;
+  font-size: 14px;
   color: #fff;
   font-family: monospace;
 }
@@ -1025,7 +1025,7 @@ const handleMinimapMove = (e) => {
 }
 
 .sum-value {
-  font-size: 16px;
+  font-size: 20px;
   font-weight: 700;
   color: #fff;
   line-height: 1.1;
@@ -1038,7 +1038,7 @@ const handleMinimapMove = (e) => {
 
 .sum-label {
   margin-top: 4px;
-  font-size: 10px;
+  font-size: 12px;
   color: rgba(255, 255, 255, 0.55);
 }
 
@@ -1061,7 +1061,7 @@ const handleMinimapMove = (e) => {
   top: 0;
   z-index: 2;
   text-align: left;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
   color: rgba(255, 255, 255, 0.85);
   padding: 10px 10px;
@@ -1071,7 +1071,7 @@ const handleMinimapMove = (e) => {
 
 .life-table-grid tbody td {
   padding: 10px 10px;
-  font-size: 11px;
+  font-size: 13px;
   color: rgba(255, 255, 255, 0.78);
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   vertical-align: middle;
@@ -1096,7 +1096,7 @@ const handleMinimapMove = (e) => {
 
 .col-name .name-sub {
   margin-top: 2px;
-  font-size: 10px;
+  font-size: 12px;
   color: rgba(255, 255, 255, 0.55);
 }
 
@@ -1137,7 +1137,7 @@ const handleMinimapMove = (e) => {
 
 .col-life .life-sub {
   margin-top: 2px;
-  font-size: 10px;
+  font-size: 12px;
   color: rgba(255, 255, 255, 0.55);
 }
 
@@ -1148,7 +1148,7 @@ const handleMinimapMove = (e) => {
   min-width: 64px;
   padding: 3px 8px;
   border-radius: 999px;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
   border: 1px solid rgba(255, 255, 255, 0.10);
   background: rgba(0, 0, 0, 0.12);
@@ -1289,7 +1289,7 @@ const handleMinimapMove = (e) => {
 }
 
 .stat-label {
-  font-size: 10px;
+  font-size: 12px;
   color: #888;
 }
 
@@ -1308,7 +1308,7 @@ const handleMinimapMove = (e) => {
 }
 
 .panel-title {
-  font-size: 12px;
+  font-size: 14px;
   color: #00d4ff;
   font-weight: bold;
   margin-bottom: 10px;
@@ -1406,7 +1406,7 @@ const handleMinimapMove = (e) => {
 }
 
 .cmd-type {
-  font-size: 10px;
+  font-size: 12px;
   padding: 2px 6px;
   background: rgba(0, 200, 255, 0.2);
   border-radius: 3px;
@@ -1414,13 +1414,13 @@ const handleMinimapMove = (e) => {
 }
 
 .cmd-train {
-  font-size: 11px;
+  font-size: 13px;
   color: #fff;
   font-weight: bold;
 }
 
 .cmd-status {
-  font-size: 9px;
+  font-size: 11px;
   margin-left: auto;
 }
 
@@ -1430,7 +1430,7 @@ const handleMinimapMove = (e) => {
 .cmd-status.已取消 { color: #888; }
 
 .cmd-content {
-  font-size: 10px;
+  font-size: 12px;
   color: #aaa;
   margin-bottom: 4px;
 }
@@ -1438,7 +1438,7 @@ const handleMinimapMove = (e) => {
 .cmd-meta {
   display: flex;
   justify-content: space-between;
-  font-size: 9px;
+  font-size: 11px;
   color: #666;
 }
 
@@ -1466,7 +1466,7 @@ const handleMinimapMove = (e) => {
 }
 
 .eff-value {
-  font-size: 16px;
+  font-size: 20px;
   font-weight: bold;
   color: #00d4ff;
 }
@@ -1477,7 +1477,7 @@ const handleMinimapMove = (e) => {
 }
 
 .eff-label {
-  font-size: 9px;
+  font-size: 11px;
   color: #888;
   margin-top: 3px;
 }
@@ -1487,7 +1487,7 @@ const handleMinimapMove = (e) => {
 }
 
 .chart-title {
-  font-size: 10px;
+  font-size: 12px;
   color: #888;
   margin-bottom: 8px;
 }
@@ -1530,7 +1530,7 @@ const handleMinimapMove = (e) => {
 }
 
 .bar-label {
-  font-size: 8px;
+  font-size: 10px;
   color: #666;
   margin-top: 3px;
 }

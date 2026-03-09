@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="data-panel-container">
     <!-- 背景粒子效果 -->
     <div class="particles-bg">
@@ -867,12 +867,12 @@ onUnmounted(() => {
 }
 
 .date {
-  font-size: 12px;
+  font-size: 14px;
   color: #888;
 }
 
 .time {
-  font-size: 18px;
+  font-size: 22px;
   color: #00d4ff;
   font-weight: bold;
   font-family: monospace;
@@ -893,7 +893,7 @@ onUnmounted(() => {
 }
 
 .weather-temp {
-  font-size: 14px;
+  font-size: 16px;
   color: #fff;
   font-weight: bold;
 }
@@ -942,7 +942,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
+  font-size: 13px;
   color: #888;
 }
 
@@ -970,7 +970,7 @@ onUnmounted(() => {
 }
 
 .version {
-  font-size: 10px;
+  font-size: 12px;
   color: #666;
   padding: 2px 8px;
   background: rgba(0, 50, 100, 0.5);
@@ -978,12 +978,12 @@ onUnmounted(() => {
 }
 
 .copyright {
-  font-size: 10px;
+  font-size: 12px;
   color: #666;
 }
 
 .update-time, .fps {
-  font-size: 11px;
+  font-size: 13px;
   color: #888;
 }
 
@@ -1038,3 +1038,4 @@ onUnmounted(() => {
   border-top: none;
 }
 </style>
+

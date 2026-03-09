@@ -370,14 +370,14 @@ onUnmounted(() => {
 }
 
 .section-title {
-  font-size: 14px;
+  font-size: 16px;
   font-weight: bold;
   color: #00d4ff;
   flex: 1;
 }
 
 .section-badge {
-  font-size: 11px;
+  font-size: 13px;
   padding: 2px 8px;
   background: rgba(0, 200, 255, 0.2);
   border: 1px solid rgba(0, 200, 255, 0.4);
@@ -432,7 +432,7 @@ onUnmounted(() => {
 }
 
 .weather-value {
-  font-size: 16px;
+  font-size: 20px;
   font-weight: bold;
   color: #fff;
 }
@@ -444,7 +444,7 @@ onUnmounted(() => {
 }
 
 .weather-label {
-  font-size: 11px;
+  font-size: 13px;
   color: #888;
   margin-top: 5px;
 }
@@ -455,7 +455,7 @@ onUnmounted(() => {
 }
 
 .chart-title {
-  font-size: 12px;
+  font-size: 14px;
   color: #aaa;
   margin-bottom: 8px;
 }
@@ -481,7 +481,7 @@ onUnmounted(() => {
 .chart-labels {
   display: flex;
   justify-content: space-between;
-  font-size: 10px;
+  font-size: 12px;
   color: #666;
   margin-top: 5px;
 }
@@ -514,13 +514,13 @@ onUnmounted(() => {
 }
 
 .aqi-value {
-  font-size: 28px;
+  font-size: 34px;
   font-weight: bold;
   display: block;
 }
 
 .aqi-label {
-  font-size: 12px;
+  font-size: 14px;
   color: #888;
 }
 
@@ -631,13 +631,13 @@ onUnmounted(() => {
 }
 
 .sensor-name {
-  font-size: 12px;
+  font-size: 14px;
   color: #fff;
   flex: 1;
 }
 
 .sensor-status {
-  font-size: 10px;
+  font-size: 12px;
   padding: 2px 6px;
   border-radius: 4px;
 }
@@ -662,13 +662,13 @@ onUnmounted(() => {
 }
 
 .sensor-value {
-  font-size: 18px;
+  font-size: 22px;
   font-weight: bold;
   color: #00d4ff;
 }
 
 .sensor-unit {
-  font-size: 11px;
+  font-size: 13px;
   color: #888;
   margin-left: 4px;
 }
@@ -676,7 +676,7 @@ onUnmounted(() => {
 .sensor-meta {
   display: flex;
   justify-content: space-between;
-  font-size: 10px;
+  font-size: 12px;
   color: #666;
   margin-bottom: 5px;
 }
@@ -714,12 +714,12 @@ onUnmounted(() => {
 }
 
 .env-label {
-  font-size: 10px;
+  font-size: 12px;
   color: #aaa;
 }
 
 .env-unit {
-  font-size: 9px;
+  font-size: 11px;
   color: #666;
 }
 </style>

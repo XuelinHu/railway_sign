@@ -113,7 +113,7 @@ export const getWeatherData = () => {
   if (!enabled) {
     return {
       temperature: random(-5, 35, 1),
-      humidity: random(15, 30, 1),
+      humidity: random(21, 25, 1),
       windSpeed: random(0, 25, 1),
       windDirection: randomChoice(['北', '东北', '东', '东南', '南', '西南', '西', '西北']),
       pressure: random(990, 1030, 1),
@@ -129,7 +129,7 @@ export const getWeatherData = () => {
       o3: random(0, 200, 1),
       weatherType: randomChoice(['晴', '多云', '阴', '小雨', '中雨', '大雨', '雷阵雨', '小雪', '中雪', '大雪', '雾', '霾']),
       temperatureTrend: generateTimeSeries(24, -5, 35, 1),
-      humidityTrend: generateTimeSeries(24, 15, 30, 1),
+      humidityTrend: generateTimeSeries(24, 21, 25, 1),
       forecast: Array.from({ length: 7 }, (_, i) => ({
         date: new Date(Date.now() + i * 86400000).toLocaleDateString('zh-CN', { weekday: 'short' }),
         high: random(15, 35),

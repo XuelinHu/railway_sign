@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="cesium-view">
     <!-- Cesium 容器 -->
     <div id="cesiumContainer" ref="cesiumContainer"></div>
@@ -23,6 +23,26 @@
     <!-- 左侧面板 - 地理信息与铁道数据 -->
     <transition name="slide-left">
       <div v-show="leftPanelVisible" class="side-panel left-panel">
+        <div class="panel-card">
+          <div class="panel-header">
+            <span class="panel-title">📡 地理预告</span>
+            <span class="panel-subtitle">GEO BULLETIN</span>
+          </div>
+          <div class="panel-content">
+            <div class="geo-ticker-shell">
+              <div class="geo-ticker-track">
+                <span
+                  v-for="(item, idx) in geoTickerItemsLoop"
+                  :key="`${idx}-${item}`"
+                  class="geo-ticker-item"
+                >
+                  {{ item }}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- 地理震动监测 -->
         <div class="panel-card">
           <div class="panel-header">
@@ -374,7 +394,6 @@
 import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import * as Cesium from 'cesium'
 import 'cesium/Build/Cesium/Widgets/widgets.css'
-import api from '../services/api.js'
 import { severeWeatherEnabled, setSevereWeatherEnabled } from '../services/simulationState.js'
 import { DEMO_SCENARIO } from '../config/demoScenario.js'
 import { getWeatherData as getMockWeatherData } from '../services/mockDataService.js'
@@ -524,6 +543,15 @@ const geoStats = ref({
   rollDeg: 'X',
   refreshHz: 30
 })
+const geoTickerItems = [
+  '地理网格 G-07 区段云层底高回落至 820m，山口通视条件保持良好。',
+  '巡检轨迹 T2 线回传完成，沿线坡脚监测点位未见异常位移。',
+  '北侧缓坡监测面风速提升至 5.1m/s，地表湿度仍处正常区间。',
+  '影像拼接通道已刷新，谷地区域热源识别维持低活跃状态。',
+  '地理围栏 F-12 完成一次自动校准，边界误差收敛至 0.6m 内。',
+  '沿线雾效采样显示能见度稳定，低洼区暂未触发二级遮蔽提示。'
+]
+const geoTickerItemsLoop = computed(() => [...geoTickerItems, ...geoTickerItems])
 
 // ===== 铁道信息 =====
 const currentRailway = ref({
@@ -705,25 +733,20 @@ const refreshWeather = async () => {
       syncWeatherFromMock()
       return
     }
-    // 从API获取当前天气
-    const weatherData = await api.getCurrentWeather()
-    if (weatherData) {
-      weather.value = {
-        icon: weatherData.icon || '⛅',
-        temp: Math.round(weatherData.temperature),
-        description: weatherData.description || '多云',
-        location: weatherData.location || DEMO_SCENARIO.weatherLocation,
-        windSpeed: weatherData.wind_speed || '3.2m/s',
-        humidity: weatherData.humidity || '20%',
-        visibility: weatherData.visibility || '15km',
-        pressure: weatherData.pressure || '1013hPa'
-      }
+    weather.value = {
+      icon: '⛅',
+      temp: 24 + Math.floor(Math.random() * 5),
+      description: '多云',
+      location: DEMO_SCENARIO.weatherLocation,
+      windSpeed: `${(2.2 + Math.random() * 1.8).toFixed(1)}m/s`,
+      humidity: `${20 + Math.floor(Math.random() * 5)}%`,
+      visibility: `${12 + Math.floor(Math.random() * 4)}km`,
+      pressure: `${1010 + Math.floor(Math.random() * 6)}hPa`
     }
   } catch (error) {
-    console.error('获取天气失败:', error)
-    // 使用备用模拟数据
-    weather.value.temp = Math.floor(20 + Math.random() * 10)
-    weather.value.humidity = Math.floor(18 + Math.random() * 6) + '%'
+    console.error('本地天气刷新失败:', error)
+    weather.value.temp = 24
+    weather.value.humidity = '22%'
   } finally {
     weatherLoading.value = false
   }
@@ -1878,104 +1901,51 @@ const updateData = () => {
 
 // 从API加载仪表盘数据
 const loadDashboardData = async () => {
-  try {
-    const data = await api.getDashboard()
-    if (data) {
-      // 更新天气数据
-      if (data.weather) {
-        weather.value = {
-          icon: data.weather.icon || '⛅',
-          temp: Math.round(data.weather.temperature),
-          description: data.weather.description || '多云',
-          location: data.weather.location || DEMO_SCENARIO.weatherLocation,
-          windSpeed: data.weather.wind_speed || '3.2m/s',
-          humidity: data.weather.humidity || '20%',
-          visibility: data.weather.visibility || '15km',
-          pressure: data.weather.pressure || '1013hPa'
-        }
-      }
-
-      // 更新空气质量
-      if (data.airQuality) {
-        airQuality.value = {
-          aqi: data.airQuality.aqi || 45,
-          level: data.airQuality.level || '优',
-          pollutants: [
-            { name: 'PM2.5', value: `${data.airQuality.pm25 || 23}μg/m³` },
-            { name: 'PM10', value: `${data.airQuality.pm10 || 45}μg/m³` },
-            { name: 'O3', value: `${data.airQuality.o3 || 68}μg/m³` },
-            { name: 'NO2', value: `${data.airQuality.no2 || 32}μg/m³` }
-          ]
-        }
-      }
-
-      // 更新列车统计
-      if (data.trainStats) {
-        trainStats.value = {
-          passed: data.trainStats.passed_count || 42,
-          total: data.trainStats.total_count || 58,
-          onTime: 100,
-          nextTrain: data.trainStats.next_train || 'G1502 14:35'
-        }
-      }
-
-      // 更新铁道信息
-      if (data.railway) {
-        currentRailway.value = {
-          name: data.railway.name || DEMO_SCENARIO.railwayName,
-          start: DEMO_SCENARIO.stationStart,
-          end: DEMO_SCENARIO.stationEnd,
-          length: data.railway.length_km || '255'
-        }
-      }
-
-      // 更新地震数据
-      if (data.seismic && data.seismic.length > 0) {
-        const latestSeismic = data.seismic[data.seismic.length - 1]
-        const normalized = Math.max(1.8, Math.min(3.0, Number(latestSeismic.level) || 2.2))
-        seismicLevel.value = Number((seismicLevel.value * 0.7 + normalized * 0.3).toFixed(2))
-      }
-    }
-  } catch (error) {
-    console.error('加载仪表盘数据失败:', error)
+  await refreshWeather()
+  airQuality.value = {
+    aqi: 45,
+    level: '优',
+    pollutants: [
+      { name: 'PM2.5', value: '23μg/m³' },
+      { name: 'PM10', value: '45μg/m³' },
+      { name: 'O3', value: '68μg/m³' },
+      { name: 'NO2', value: '32μg/m³' }
+    ]
   }
+  trainStats.value = {
+    passed: 42,
+    total: 58,
+    onTime: 100,
+    nextTrain: 'G1502 14:35'
+  }
+  currentRailway.value = {
+    name: DEMO_SCENARIO.railwayName,
+    start: DEMO_SCENARIO.stationStart,
+    end: DEMO_SCENARIO.stationEnd,
+    length: '255'
+  }
+  seismicLevel.value = 2.2
 }
 
 // 从API加载地震历史数据
 const loadSeismicData = async (range = '24h') => {
-  try {
-    const data = await api.getSeismicData(range)
-    if (data && data.length > 0) {
-      const values = data.map((d) => Math.max(1.7, Math.min(3.2, Number(d.level) || 2.2)))
-      if (range === '24h') {
-        seismicData24h.value = values.slice(-24)
-      } else if (range === 'week') {
-        seismicDataWeek.value = values.slice(-7)
-      } else if (range === 'month') {
-        seismicDataMonth.value = values.slice(-30)
-      }
-    }
-  } catch (error) {
-    console.error('加载地震数据失败:', error)
+  if (range === '24h') {
+    seismicData24h.value = [2.1, 2.0, 2.2, 2.1, 2.3, 2.2, 2.1, 2.2, 2.3, 2.2, 2.1, 2.2, 2.1, 2.0, 2.1, 2.2, 2.3, 2.2, 2.1, 2.2, 2.1, 2.0, 2.1, 2.2]
+  } else if (range === 'week') {
+    seismicDataWeek.value = [2.2, 2.1, 2.3, 2.4, 2.2, 2.1, 2.2]
+  } else if (range === 'month') {
+    seismicDataMonth.value = Array.from({ length: 30 }, (_, idx) => Number((2.0 + Math.sin(idx / 4) * 0.18).toFixed(2)))
   }
 }
 
 // 从API加载天气历史数据
 const loadWeatherHistory = async (range = '24h') => {
-  try {
-    const data = await api.getWeatherData(range)
-    if (data && data.length > 0) {
-      const temps = data.map(d => Math.round(d.temperature))
-      if (range === '24h') {
-        weatherData24h.value = temps.slice(-24)
-      } else if (range === 'week') {
-        weatherDataWeek.value = temps.slice(-7)
-      } else if (range === 'month') {
-        weatherDataMonth.value = temps.slice(-30)
-      }
-    }
-  } catch (error) {
-    console.error('加载天气历史数据失败:', error)
+  if (range === '24h') {
+    weatherData24h.value = [22, 22, 21, 21, 20, 20, 21, 22, 23, 24, 25, 26, 27, 27, 26, 26, 25, 24, 24, 23, 23, 22, 22, 21]
+  } else if (range === 'week') {
+    weatherDataWeek.value = [23, 24, 23, 25, 24, 23, 24]
+  } else if (range === 'month') {
+    weatherDataMonth.value = Array.from({ length: 30 }, (_, idx) => 22 + Math.round(Math.sin(idx / 5) * 3))
   }
 }
 
@@ -2193,6 +2163,60 @@ watch(severeWeatherEnabled, (enabled) => {
 
 .panel-content {
   padding: 15px;
+}
+
+.geo-ticker-shell {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(0, 200, 255, 0.2);
+  border-radius: 8px;
+  background: linear-gradient(90deg, rgba(0, 24, 46, 0.9), rgba(0, 44, 78, 0.78));
+}
+
+.geo-ticker-shell::before,
+.geo-ticker-shell::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  width: 28px;
+  height: 100%;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.geo-ticker-shell::before {
+  left: 0;
+  background: linear-gradient(90deg, rgba(0, 18, 35, 0.96), rgba(0, 18, 35, 0));
+}
+
+.geo-ticker-shell::after {
+  right: 0;
+  background: linear-gradient(270deg, rgba(0, 18, 35, 0.96), rgba(0, 18, 35, 0));
+}
+
+.geo-ticker-track {
+  display: flex;
+  align-items: center;
+  gap: 36px;
+  width: max-content;
+  padding: 10px 0;
+  animation: geo-ticker-scroll 30s linear infinite;
+}
+
+.geo-ticker-item {
+  color: #dff7ff;
+  font-size: 14px;
+  white-space: nowrap;
+  text-shadow: 0 0 12px rgba(0, 212, 255, 0.28);
+}
+
+@keyframes geo-ticker-scroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
 }
 
 /* 震动监测 */
@@ -2671,3 +2695,5 @@ watch(severeWeatherEnabled, (enabled) => {
 .loading-text { color: #00d4ff; font-size: 18px; }
 
 </style>
+
+
