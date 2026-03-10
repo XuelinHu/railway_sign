@@ -770,6 +770,7 @@ let gltfLoader = null
 const gltfAssetCache = new Map()
 let modelLabels = []
 let trainLabelEntry = null
+let signalLabelEntry = null
 let updateUiTimer = null
 let updateSignalParamsTimer = null
 let signalObject = null
@@ -1560,8 +1561,12 @@ const createSignalLights = () => {
           name: signalNames[index]
         })
 
-        // 主信号灯信息栏高度在现有基础上再加一倍
-        createModelLabel(signGroup, signalNames[index], 28, 65, '109.3887', '24.3076', 2.4)
+        // 主信号灯信息栏高度在现有基础上再加一倍（湿度与恶劣天气演练同步）
+        if (!signalLabelEntry) {
+          const t0 = Math.round(Number(signalParams.value.temperature) * 10) / 10
+          const h0 = Math.round(Number(signalParams.value.humidity) * 10) / 10
+          signalLabelEntry = createModelLabel(signGroup, signalNames[index], t0, h0, '109.3887', '24.3076', 2.4)
+        }
         updateSignalUI()
         console.log(`信号灯 ${signalNames[index]} 加载成功`)
       })
@@ -2113,6 +2118,13 @@ const animate = () => {
         gps: `${lon}, ${lat}`
       })
     }
+  }
+
+  if (signalLabelEntry) {
+    updateLabelFields(signalLabelEntry, {
+      temperature: Math.round(Number(signalParams.value.temperature) * 10) / 10,
+      humidity: Math.round(Number(signalParams.value.humidity) * 10) / 10
+    })
   }
 
   updateHumanoidSensorPanel()

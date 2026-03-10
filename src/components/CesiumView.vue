@@ -3,6 +3,8 @@
     <!-- Cesium 容器 -->
     <div id="cesiumContainer" ref="cesiumContainer"></div>
 
+    <div v-if="!networkOnline" class="offline-badge">离线：使用缓存数据</div>
+
     <!-- 控制按钮 -->
     <div class="control-buttons">
       <button class="reset-btn" @click="resetView">🎯 复位视角</button>
@@ -407,6 +409,82 @@ Cesium.Ion.defaultAccessToken =
 const cesiumContainer = ref(null)
 const leftPanelVisible = ref(true)
 const rightPanelVisible = ref(true)
+
+const networkOnline = ref(typeof navigator !== 'undefined' ? navigator.onLine : true)
+let cacheSaveTimer = null
+let onlineHandler = null
+let offlineHandler = null
+const CESIUM_CACHE_KEY = 'railway_sign:cesium_cache:v1'
+
+const readCesiumCache = () => {
+  try {
+    const raw = localStorage.getItem(CESIUM_CACHE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    if (!parsed || parsed.v !== 1) return null
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+const writeCesiumCache = () => {
+  try {
+    const payload = {
+      v: 1,
+      at: Date.now(),
+      weather: weather.value,
+      airQuality: airQuality.value,
+      airQualitySevereWarning: airQualitySevereWarning.value,
+      seismicLevel: seismicLevel.value,
+      seismicTimeRange: seismicTimeRange.value,
+      seismicData24h: seismicData24h.value,
+      seismicDataWeek: seismicDataWeek.value,
+      seismicDataMonth: seismicDataMonth.value,
+      currentPosition: currentPosition.value,
+      geoStats: geoStats.value,
+      currentRailway: currentRailway.value,
+      trainStats: trainStats.value,
+      weatherData24h: weatherData24h.value,
+      weatherDataWeek: weatherDataWeek.value,
+      weatherDataMonth: weatherDataMonth.value,
+      humidityData24h: humidityData24h.value,
+      humidityDataWeek: humidityDataWeek.value,
+      humidityDataMonth: humidityDataMonth.value
+    }
+    localStorage.setItem(CESIUM_CACHE_KEY, JSON.stringify(payload))
+  } catch {
+    // ignore
+  }
+}
+
+const restoreCesiumCache = () => {
+  const cached = readCesiumCache()
+  if (!cached) return false
+  try {
+    if (cached.weather) weather.value = cached.weather
+    if (cached.airQuality) airQuality.value = cached.airQuality
+    if (typeof cached.airQualitySevereWarning === 'boolean') airQualitySevereWarning.value = cached.airQualitySevereWarning
+    if (typeof cached.seismicLevel === 'number') seismicLevel.value = cached.seismicLevel
+    if (cached.seismicTimeRange) seismicTimeRange.value = cached.seismicTimeRange
+    if (Array.isArray(cached.seismicData24h)) seismicData24h.value = cached.seismicData24h
+    if (Array.isArray(cached.seismicDataWeek)) seismicDataWeek.value = cached.seismicDataWeek
+    if (Array.isArray(cached.seismicDataMonth)) seismicDataMonth.value = cached.seismicDataMonth
+    if (cached.currentPosition) currentPosition.value = cached.currentPosition
+    if (cached.geoStats) geoStats.value = cached.geoStats
+    if (cached.currentRailway) currentRailway.value = cached.currentRailway
+    if (cached.trainStats) trainStats.value = cached.trainStats
+    if (Array.isArray(cached.weatherData24h)) weatherData24h.value = cached.weatherData24h
+    if (Array.isArray(cached.weatherDataWeek)) weatherDataWeek.value = cached.weatherDataWeek
+    if (Array.isArray(cached.weatherDataMonth)) weatherDataMonth.value = cached.weatherDataMonth
+    if (Array.isArray(cached.humidityData24h)) humidityData24h.value = cached.humidityData24h
+    if (Array.isArray(cached.humidityDataWeek)) humidityDataWeek.value = cached.humidityDataWeek
+    if (Array.isArray(cached.humidityDataMonth)) humidityDataMonth.value = cached.humidityDataMonth
+    return true
+  } catch {
+    return false
+  }
+}
 
 let viewer = null
 let beaconPoints = []
@@ -1951,24 +2029,51 @@ const loadWeatherHistory = async (range = '24h') => {
 }
 
 onMounted(async () => {
+  onlineHandler = () => { networkOnline.value = true }
+  offlineHandler = () => { networkOnline.value = false }
+  window.addEventListener('online', onlineHandler)
+  window.addEventListener('offline', offlineHandler)
+
+  restoreCesiumCache()
+  cacheSaveTimer = setInterval(writeCesiumCache, 1500)
+
   try {
-    // 从API加载数据
+    // 本地加载数据（即使 Cesium 初始化失败也不影响面板展示）
     await loadDashboardData()
     await loadSeismicData('24h')
     await loadWeatherHistory('24h')
+  } catch (error) {
+    console.warn('面板数据初始化失败，将尝试使用缓存数据:', error)
+    restoreCesiumCache()
+  }
 
+  try {
     await initCesium()
     installCameraCruiseAutoPause()
     setTimeout(() => flyToLiuZhou(), 500)
     setupInteractions()
-    updateDataTimer = setInterval(updateData, 2000)
   } catch (error) {
-    console.error('初始化失败:', error)
+    console.warn('Cesium 初始化失败（可能离线），面板将继续使用缓存数据:', error)
   }
+
+  updateDataTimer = setInterval(updateData, 2000)
   window.vueHidePopup = hidePopup
 })
 
 onBeforeUnmount(() => {
+  if (onlineHandler) {
+    window.removeEventListener('online', onlineHandler)
+    onlineHandler = null
+  }
+  if (offlineHandler) {
+    window.removeEventListener('offline', offlineHandler)
+    offlineHandler = null
+  }
+  if (cacheSaveTimer) {
+    clearInterval(cacheSaveTimer)
+    cacheSaveTimer = null
+  }
+  writeCesiumCache()
   if (updateDataTimer) {
     clearInterval(updateDataTimer)
     updateDataTimer = null
@@ -2019,6 +2124,23 @@ watch(severeWeatherEnabled, (enabled) => {
 #cesiumContainer {
   width: 100%;
   height: 100%;
+}
+
+.offline-badge {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 120;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(120, 0, 0, 0.75);
+  border: 1px solid rgba(255, 90, 90, 0.55);
+  color: #fff;
+  font-size: 14px;
+  letter-spacing: 0.5px;
+  box-shadow: 0 0 18px rgba(255, 60, 60, 0.22);
+  backdrop-filter: blur(8px);
 }
 
 /* 控制按钮 */
