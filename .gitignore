@@ -63,6 +63,12 @@ coverage/
 .temp/
 tmp/
 
+# Microsoft Word 临时/锁文件
+~$*.doc
+~$*.docx
+*.doc~$
+*.docx~$
+
 # Cesium
 Cesium/
 .cesium/
