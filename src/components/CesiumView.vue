@@ -1091,6 +1091,7 @@ const applySevereWeatherChange = async (enabled) => {
   // 启动后 5 秒：空气湿度加速爬升（默认约20%），60%橙色告警，70%红色告警，最终在92~93%徘徊
   // 恶劣天气下：湿度等指标与大数据平台同步（由 mockDataService + simulationState 统一驱动）
   syncWeatherFromMock()
+  severeWeatherHumidityTimer = setInterval(syncWeatherFromMock, 300)
 }
 
 // ===== Cesium 初始化 =====

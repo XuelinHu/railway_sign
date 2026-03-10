@@ -19,8 +19,28 @@ const computeSyncedSevereHumidity = (nowMs = Date.now()) => {
   const startedAt = Number(severeWeatherStartedAt.value) || nowMs
   const now = Number(nowMs) || Date.now()
 
-  const riseDurationMs = 60000
-  const humidityAtTime = (elapsedMs) => Number((20 + 72 * clamp(elapsedMs / riseDurationMs, 0, 1)).toFixed(1))
+  // Early 天气演练：湿度 4 秒内进入红色告警（>=70%），随后再缓慢爬升到高位平台
+  const stage1Ms = 4000
+  const stage2Ms = 20000
+  const base = 22
+  const redTarget = 75
+  const peak = 92
+
+  const easeOutQuad = (t) => t * (2 - t)
+  const lerp = (a, b, t) => a + (b - a) * t
+
+  const humidityAtTime = (elapsedMs) => {
+    const e = Math.max(0, Number(elapsedMs) || 0)
+    if (e <= stage1Ms) {
+      const t = easeOutQuad(clamp(e / stage1Ms, 0, 1))
+      return Number(lerp(base, redTarget, t).toFixed(1))
+    }
+    if (e <= stage1Ms + stage2Ms) {
+      const t = easeOutQuad(clamp((e - stage1Ms) / stage2Ms, 0, 1))
+      return Number(lerp(redTarget, peak, t).toFixed(1))
+    }
+    return Number(peak.toFixed(1))
+  }
 
   const mitigationAt = Number(humidityMitigationAppliedAt.value)
   const elapsed = Math.max(0, now - startedAt)
@@ -46,7 +66,7 @@ const tickSyncedHumidity = () => {
 const startHumiditySync = () => {
   if (humiditySyncTimer) return
   tickSyncedHumidity()
-  humiditySyncTimer = setInterval(tickSyncedHumidity, 800)
+  humiditySyncTimer = setInterval(tickSyncedHumidity, 250)
 }
 
 const stopHumiditySync = () => {

@@ -454,6 +454,7 @@ const onGlobalKeydown = (event) => {
     telemetrySimEnabled.value = !telemetrySimEnabled.value
     pedestrianLoopEnabled = telemetrySimEnabled.value
     if (pedestrianLoopEnabled) {
+      playPedestrianNotice()
       triggerPedestrianHotFlash()
       startFrontendTelemetrySim()
       return
@@ -787,6 +788,21 @@ let skyParticles = null
 let skyParticlesMaterial = null
 let endpointGlowTexture = null
 let endpointGlows = []
+let pedestrianNoticeAudio = null
+
+const playPedestrianNotice = async () => {
+  try {
+    if (!pedestrianNoticeAudio) {
+      pedestrianNoticeAudio = new Audio('/assets/audio/pedestrian_notice.wav')
+      pedestrianNoticeAudio.preload = 'auto'
+      pedestrianNoticeAudio.volume = 0.85
+    }
+    pedestrianNoticeAudio.currentTime = 0
+    await pedestrianNoticeAudio.play()
+  } catch (e) {
+    console.warn('行人语音播放失败（可能被浏览器拦截）:', e)
+  }
+}
 
 const ensureGltfLoader = () => {
   if (!gltfLoader) {
@@ -2176,6 +2192,11 @@ onBeforeUnmount(() => {
   if (pedestrianHotFlashTimer) {
     clearTimeout(pedestrianHotFlashTimer)
     pedestrianHotFlashTimer = null
+  }
+  if (pedestrianNoticeAudio) {
+    pedestrianNoticeAudio.pause()
+    pedestrianNoticeAudio.currentTime = 0
+    pedestrianNoticeAudio = null
   }
 
   if (autoDemoWaitTimer) {

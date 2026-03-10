@@ -139,15 +139,32 @@ export const getWeatherData = () => {
     }
   }
 
-  // 恶劣天气演练：
-  // - 湿度从约 20% 在 60s 内上升到约 92%（阈值：45/75）
+  // 恶劣天气演练（Early）：
+  // - 湿度在 4s 内进入红色告警（>=70%），随后缓慢上升至高位平台（~92%）
   // - “异常消除”后进入处置回落（约 90s 回落到 35% 左右，进入观察）
   const startedAt = severeWeatherStartedAt.value || Date.now()
   const now = Date.now()
   const elapsed = Math.max(0, now - startedAt)
-  const riseDurationMs = 60000
-  const riseT = Math.max(0, Math.min(1, elapsed / riseDurationMs))
-  const humidityAtTime = (t0) => Number((20 + 72 * clamp(t0 / riseDurationMs, 0, 1)).toFixed(1))
+  const stage1Ms = 4000
+  const stage2Ms = 20000
+  const base = 22
+  const redTarget = 75
+  const peak = 92
+  const easeOutQuad = (t) => t * (2 - t)
+  const lerp = (a, b, t) => a + (b - a) * t
+  const humidityAtTime = (t0) => {
+    const e = Math.max(0, Number(t0) || 0)
+    if (e <= stage1Ms) {
+      const t = easeOutQuad(clamp(e / stage1Ms, 0, 1))
+      return Number(lerp(base, redTarget, t).toFixed(1))
+    }
+    if (e <= stage1Ms + stage2Ms) {
+      const t = easeOutQuad(clamp((e - stage1Ms) / stage2Ms, 0, 1))
+      return Number(lerp(redTarget, peak, t).toFixed(1))
+    }
+    return Number(peak.toFixed(1))
+  }
+  const riseT = Math.max(0, Math.min(1, elapsed / stage1Ms))
 
   const mitigationAt = humidityMitigationAppliedAt.value
   const synced = Number(syncedHumidity.value)
