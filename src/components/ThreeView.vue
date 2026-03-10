@@ -57,7 +57,7 @@
       <div class="panel-section">
         <h2 class="panel-title">
           <span class="title-icon">🚦</span>
-          <span class="title-text">信号灯监控</span>
+          <span class="title-text">X站101号信号机</span>
           <span class="title-decorator"></span>
         </h2>
         <div id="signalList"></div>
@@ -354,7 +354,7 @@ const humidityClass = computed(() => {
 const signalTwin = ref({
   twinId: 'TWIN-XX-0001',
   assetId: 'ASSET-XX-01',
-  deviceType: '进站信号机',
+  deviceType: 'X站101号信号机',
   interlocking: '正常',
   workMode: '自动',
   syncStatus: '已同步',
@@ -1362,7 +1362,7 @@ const createSignalLights = () => {
   ]
 
   const signalStates = ['red']
-  const signalNames = ['主信号灯']
+  const signalNames = ['X站101号信号机']
 
   signalPositions.forEach((pos, index) => {
     getCachedModelClone('/assets/models/sign.glb')

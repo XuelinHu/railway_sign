@@ -5,7 +5,7 @@ export const DEMO_SCENARIO = {
   stationEnd: 'Y站',
   railwayName: 'XX铁路',
   weatherLocation: 'XX区域',
-  heroDeviceName: 'X站至Y站区间上行进站信号机',
+  heroDeviceName: 'X站101号信号机',
   humidityIncident: {
     title: '湿度异常告警',
     alarmContent: '告警内容：盒内湿度持续升高',

@@ -77,7 +77,12 @@
               </div>
             </div>
 
-            <div class="life-table-scroll">
+            <div
+              class="life-table-scroll"
+              ref="lifeScrollRef"
+              @mouseenter="pauseLifeAutoScroll"
+              @mouseleave="resumeLifeAutoScroll"
+            >
               <table class="life-table-grid">
                 <thead>
                   <tr>
@@ -90,7 +95,7 @@
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="row in lifeRows" :key="row.id" :class="row.level">
+                  <tr v-for="(row, idx) in lifeRowsLoop" :key="`${row.id}-${idx}`" :class="row.level">
                     <td class="col-name">
                       <div class="name-main">{{ row.name }}</div>
                       <div class="name-sub">{{ row.note }}</div>
@@ -416,7 +421,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { getSignalDispatchData, getSignalDistribution, getDispatchEfficiency } from '../../services/mockDataService'
 
 const dispatchData = ref(getSignalDispatchData())
@@ -425,6 +430,76 @@ const efficiency = ref(getDispatchEfficiency())
 const currentTime = ref('')
 const updateTimer = ref(null)
 const lifeTimer = ref(null)
+const lifeScrollRef = ref(null)
+const lifeRowsLoop = computed(() => {
+  const rows = lifeRows.value || []
+  return rows.length ? [...rows, ...rows] : []
+})
+let lifeAutoScrollRafId = 0
+let lifeAutoScrollLastAt = 0
+let lifeAutoScrollPaused = false
+
+const stopLifeAutoScroll = () => {
+  if (lifeAutoScrollRafId) {
+    cancelAnimationFrame(lifeAutoScrollRafId)
+    lifeAutoScrollRafId = 0
+  }
+  lifeAutoScrollLastAt = 0
+}
+
+const pauseLifeAutoScroll = () => {
+  lifeAutoScrollPaused = true
+}
+
+const resumeLifeAutoScroll = () => {
+  lifeAutoScrollPaused = false
+}
+
+const startLifeAutoScroll = () => {
+  stopLifeAutoScroll()
+  let initialized = false
+  const step = (ts) => {
+    const el = lifeScrollRef.value
+    if (!el) {
+      lifeAutoScrollRafId = requestAnimationFrame(step)
+      return
+    }
+    if (!lifeAutoScrollLastAt) {
+      lifeAutoScrollLastAt = ts
+      lifeAutoScrollRafId = requestAnimationFrame(step)
+      return
+    }
+
+    const deltaMs = ts - lifeAutoScrollLastAt
+    lifeAutoScrollLastAt = ts
+    if (lifeAutoScrollPaused) {
+      lifeAutoScrollRafId = requestAnimationFrame(step)
+      return
+    }
+
+    const maxScrollTop = Math.max(0, el.scrollHeight - el.clientHeight)
+    if (maxScrollTop <= 0) {
+      lifeAutoScrollRafId = requestAnimationFrame(step)
+      return
+    }
+
+    const half = Math.floor(el.scrollHeight / 2)
+    if (!initialized && half > 0) {
+      el.scrollTop = 0
+      initialized = true
+    }
+
+    const speedPxPerS = 35
+    el.scrollTop += (deltaMs / 1000) * speedPxPerS
+
+    if (half > 0 && el.scrollTop >= half) {
+      el.scrollTop = 0
+    }
+
+    lifeAutoScrollRafId = requestAnimationFrame(step)
+  }
+  lifeAutoScrollRafId = requestAnimationFrame(step)
+}
 
 const toYmd = (date) => {
   const y = date.getFullYear()
@@ -444,10 +519,10 @@ const clamp = (v, min, max) => Math.max(min, Math.min(max, v))
 
 const baseLifeItems = [
   { id: 'filament', name: '信号灯灯丝寿命', note: '热疲劳 / 点亮次数', designDays: 180 },
-  { id: 'bracket', name: '信号机支架', note: '结构疲劳 / 振动', designDays: 3650 },
-  { id: 'shell', name: '信号机保护外壳', note: '紫外老化 / 冲击', designDays: 2400 },
-  { id: 'transformer', name: '信号机变压器', note: '温升老化 / 绝缘退化', designDays: 3000 },
-  { id: 'seal', name: '信号机防水胶套', note: '材料疲劳 / 密封退化', designDays: 900 }
+  { id: 'bracket', name: 'X站101号信号机支架', note: '结构疲劳 / 振动', designDays: 3650 },
+  { id: 'shell', name: 'X站101号信号机保护外壳', note: '紫外老化 / 冲击', designDays: 2400 },
+  { id: 'transformer', name: 'X站101号信号机变压器', note: '温升老化 / 绝缘退化', designDays: 3000 },
+  { id: 'seal', name: 'X站101号信号机防水胶套', note: '材料疲劳 / 密封退化', designDays: 900 }
 ]
 
 const lifeBase = ref(baseLifeItems.map((it, idx) => {
@@ -746,7 +821,7 @@ const activeRoutes = computed(() => {
 
 // 调度统计
 const dispatchStats = computed(() => [
-  { label: '信号机', value: `${dispatchData.value.stats.openSignals}/${dispatchData.value.stats.totalSignals}`, color: '#00ff88' },
+  { label: 'X站101号信号机', value: `${dispatchData.value.stats.openSignals}/${dispatchData.value.stats.totalSignals}`, color: '#00ff88' },
   { label: '道岔', value: `${dispatchData.value.stats.normalSwitches}/${dispatchData.value.stats.totalSwitches}`, color: '#00d4ff' },
   { label: '占用区段', value: dispatchData.value.stats.occupiedSections, color: '#ff6b6b' },
   { label: '运行列车', value: dispatchData.value.stats.runningTrains, color: '#ffaa00' },
@@ -772,7 +847,7 @@ const pieData = computed(() => {
   }
 
   return [
-    createPieData(signalDist.value.signalStatus, '信号机状态', '台'),
+    createPieData(signalDist.value.signalStatus, 'X站101号信号机状态', '台'),
     createPieData(signalDist.value.switchStatus, '道岔状态', '组'),
     createPieData(signalDist.value.trackStatus, '轨道区段', '段'),
     createPieData(signalDist.value.trainStatus, '列车状态', '列')
@@ -819,7 +894,7 @@ const updateTime = () => {
   })
 }
 
-onMounted(() => {
+onMounted(async () => {
   updateTime()
   setInterval(updateTime, 1000)
 
@@ -831,6 +906,8 @@ onMounted(() => {
 
   updateLifeRows()
   lifeTimer.value = setInterval(updateLifeRows, 1500)
+  await nextTick()
+  startLifeAutoScroll()
 
   // 全局鼠标移动和释放事件（用于小地图拖拽）
   window.addEventListener('mousemove', handleMinimapMove)
@@ -840,9 +917,19 @@ onMounted(() => {
 onUnmounted(() => {
   if (updateTimer.value) clearInterval(updateTimer.value)
   if (lifeTimer.value) clearInterval(lifeTimer.value)
+  stopLifeAutoScroll()
   window.removeEventListener('mousemove', handleMinimapMove)
   window.removeEventListener('mouseup', endDrag)
 })
+
+watch(
+  () => lifeRowsLoop.value.length,
+  async (len) => {
+    if (!len) return
+    await nextTick()
+    startLifeAutoScroll()
+  }
+)
 
 // 小地图移动处理
 const handleMinimapMove = (e) => {
@@ -1048,6 +1135,12 @@ const handleMinimapMove = (e) => {
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(0, 0, 0, 0.12);
+  scrollbar-width: none;
+}
+
+.life-table-scroll::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
 
 .life-table-grid {
