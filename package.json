@@ -8,7 +8,8 @@
     "dev": "vite",
     "dev:all": "concurrently -n telemetry,web -c magenta,cyan \"npm:telemetry\" \"npm:dev\"",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "softdocs": "node scripts/build-soft-copyright-pdfs.mjs"
   },
   "keywords": [],
   "author": "",
@@ -27,6 +28,11 @@
   "devDependencies": {
     "@vitejs/plugin-vue": "^6.0.4",
     "concurrently": "^9.2.0",
+    "dompurify": "^3.3.2",
+    "jsdom": "^28.1.0",
+    "marked": "^17.0.4",
+    "mermaid": "^11.13.0",
+    "pdf-lib": "^1.17.1",
     "typescript": "^5.9.3",
     "vite": "^7.3.1",
     "vite-plugin-cesium": "^1.2.23"
