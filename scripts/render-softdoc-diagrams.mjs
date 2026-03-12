@@ -7,7 +7,7 @@ import { diagramSpecs } from './softdoc-diagrams.mjs'
 const root = process.cwd()
 const tempRoot = path.join(root, '.tmp', 'softdocs')
 const htmlDir = path.join(tempRoot, 'diagram-pages')
-const imageDir = path.join(tempRoot, 'diagrams')
+const imageDir = path.join(root, 'docs', 'assets', 'diagrams')
 
 const browserCandidates = [
   'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
@@ -52,17 +52,21 @@ const buildHtml = (diagram) => `<!DOCTYPE html>
       justify-content: center;
     }
     .canvas {
-      width: ${diagram.width - 120}px;
-      height: ${diagram.height - 120}px;
+      width: ${diagram.width - 24}px;
+      height: ${diagram.height - 24}px;
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 24px;
+      padding: 6px;
       background: #ffffff;
     }
     .mermaid {
-      width: 100%;
+      width: auto;
+      height: auto;
       text-align: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
     svg {
       max-width: 100%;
@@ -80,12 +84,45 @@ const buildHtml = (diagram) => `<!DOCTYPE html>
       startOnLoad: false,
       theme: 'default',
       securityLevel: 'loose',
-      flowchart: { useMaxWidth: true, htmlLabels: true },
-      sequence: { useMaxWidth: true, wrap: true }
+      themeVariables: {
+        fontSize: '32px'
+      },
+      flowchart: {
+        useMaxWidth: false,
+        htmlLabels: true,
+        nodeSpacing: 56,
+        rankSpacing: 86,
+        diagramPadding: 8
+      },
+      sequence: {
+        useMaxWidth: false,
+        wrap: true,
+        diagramMarginX: 12,
+        diagramMarginY: 12,
+        actorMargin: 60,
+        width: 300,
+        height: 100,
+        boxMargin: 18,
+        boxTextMargin: 12,
+        noteMargin: 18,
+        messageMargin: 36
+      },
+      er: {
+        useMaxWidth: false,
+        diagramPadding: 8,
+        entityPadding: 20,
+        fontSize: 28
+      }
     });
     await mermaid.run({ querySelector: '.mermaid' });
+    const svg = document.querySelector('svg');
+    if (svg) {
+      svg.removeAttribute('style');
+      svg.style.maxWidth = '100%';
+      svg.style.maxHeight = '100%';
+    }
     if (document.fonts?.ready) await document.fonts.ready;
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, 2500));
   </script>
 </body>
 </html>`
@@ -107,6 +144,7 @@ for (const diagram of diagramSpecs) {
       '--hide-scrollbars',
       '--allow-file-access-from-files',
       '--run-all-compositor-stages-before-draw',
+      '--virtual-time-budget=30000',
       '--default-background-color=ffffff',
       `--window-size=${diagram.width},${diagram.height}`,
       `--screenshot=${imagePath}`,

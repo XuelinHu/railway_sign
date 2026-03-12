@@ -1,6 +1,12 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { diagramImageMarkdown } from './softdoc-diagrams.mjs'
+import {
+  buildFigureSection,
+  diagramImageBaseRelative,
+  diagramSpecs,
+  screenshotImageBaseRelative,
+  screenshotSpecs
+} from './softdoc-diagrams.mjs'
 
 const root = process.cwd()
 const docsDir = path.join(root, 'docs')
@@ -162,11 +168,16 @@ const extractReactiveNames = (content) => {
   return unique(names)
 }
 
-const buildMarkdownTable = (headers, rows) => {
+const buildMarkdownTable = (headers, rows, caption = '') => {
   const head = `| ${headers.join(' | ')} |`
   const split = `| ${headers.map(() => '---').join(' | ')} |`
   const body = rows.map((row) => `| ${row.join(' | ')} |`).join('\n')
-  return [head, split, body].filter(Boolean).join('\n')
+  const blocks = []
+  if (caption) {
+    blocks.push(`<div class="table-caption">${caption}</div>`)
+  }
+  blocks.push([head, split, body].join('\n'))
+  return blocks.join('\n\n')
 }
 
 const pageMatrixTable = buildMarkdownTable(
@@ -178,7 +189,8 @@ const pageMatrixTable = buildMarkdownTable(
     ['左侧环境面板', '`src/components/datapanel/LeftPanel.vue`', '气象监测、传感器列表、环境指标', '趋势查看、传感器状态浏览'],
     ['中部调度面板', '`src/components/datapanel/CenterPanel.vue`', '线路总览、寿命预测、调度命令、趋势统计', '缩放拖拽、最小地图定位、全屏显示'],
     ['右侧告警面板', '`src/components/datapanel/RightPanel.vue`', '设备监控、告警列表、安全监控、工单信息', '告警筛选、处理状态查看']
-  ]
+  ],
+  '表 13-1 页面与菜单矩阵'
 )
 
 const envVarTable = buildMarkdownTable(
@@ -191,7 +203,8 @@ const envVarTable = buildMarkdownTable(
     ['`TELEMETRY_WS_PATH`', '配置 WebSocket 路径', '`/ws`', '`server/telemetry-bridge.js`'],
     ['`TELEMETRY_UPLOAD_PATH`', '配置上传路径', '`/upload`', '`server/telemetry-bridge.js`'],
     ['`TELEMETRY_MAX_BODY_BYTES`', '限制上传请求体大小', '`32768`', '`server/telemetry-bridge.js`']
-  ]
+  ],
+  '表 14-1 环境变量清单'
 )
 
 const npmScriptTable = buildMarkdownTable(
@@ -202,18 +215,20 @@ const npmScriptTable = buildMarkdownTable(
     ['`npm run dev:all`', '并行启动前端与遥测服务', '适用于联调演示'],
     ['`npm run build`', '生成前端静态构建产物', '用于部署的前端资源'],
     ['`npm run preview`', '预览构建结果', '本地预览页面']
-  ]
+  ],
+  '表 14-2 启动与构建命令清单'
 )
 
 const fileMatrixTable = buildMarkdownTable(
   ['文件', '行数', '职责说明'],
-  fileStats.map((item) => [item.path, String(item.lines), fileDescriptions[item.path] || '系统相关文件'])
+  fileStats.map((item) => [item.path, String(item.lines), fileDescriptions[item.path] || '系统相关文件']),
+  '表 15-1 主要源码文件职责矩阵'
 )
 
 const functionCatalogSection = designInventoryFiles.map((relativePath) => {
   const names = extractFunctionNames(fileContents.get(relativePath) || '')
   const rows = names.map((name, index) => [String(index + 1), name])
-  return `### ${relativePath}\n\n${buildMarkdownTable(['序号', '函数/方法名'], rows)}`
+  return `### ${relativePath}\n\n${buildMarkdownTable(['序号', '函数/方法名'], rows, `${relativePath} 函数目录表`)}`
 }).join('\n\n')
 
 const reactiveCatalogFiles = [
@@ -230,47 +245,102 @@ const reactiveCatalogFiles = [
 const reactiveCatalogSection = reactiveCatalogFiles.map((relativePath) => {
   const names = extractReactiveNames(fileContents.get(relativePath) || '')
   const rows = names.map((name, index) => [String(index + 1), name])
-  return `### ${relativePath}\n\n${buildMarkdownTable(['序号', '响应式变量'], rows)}`
+  return `### ${relativePath}\n\n${buildMarkdownTable(['序号', '响应式变量'], rows, `${relativePath} 响应式变量目录表`)}`
 }).join('\n\n')
+
+const visualAssetRows = [
+  ['1', '图 3-1', '系统用例图', 'docs/assets/diagrams/01-use-case.png', '系统概述'],
+  ['2', '图 3-2', '总体业务流程图', 'docs/assets/diagrams/02-business-flow.png', '系统概述'],
+  ['3', '图 4-1', '系统架构图', 'docs/assets/diagrams/03-system-architecture.png', '总体设计'],
+  ['4', '图 4-2', '部署拓扑图', 'docs/assets/diagrams/04-deployment-topology.png', '总体设计'],
+  ['5', '图 4-3', '首页默认孪生面板截图', 'docs/assets/screenshots/01-home-twin.png', '界面设计'],
+  ['6', '图 4-4', '地理信息可视化页面截图', 'docs/assets/screenshots/02-gis-tab.png', '界面设计'],
+  ['7', '图 4-5', '大数据可视化平台截图', 'docs/assets/screenshots/03-data-tab.png', '界面设计'],
+  ['8', '图 5-1', '监测联动流程图', 'docs/assets/diagrams/05-telemetry-flow.png', '详细设计'],
+  ['9', '图 5-2', '遥测接入时序图', 'docs/assets/diagrams/06-telemetry-sequence.png', '详细设计'],
+  ['10', '图 6-1', '数据对象 E-R 图', 'docs/assets/diagrams/08-entity-relationship.png', '数据设计'],
+  ['11', '图 7-1', '遥测桥接健康检查截图', 'docs/assets/screenshots/04-telemetry-health.png', '接口设计']
+]
+
+const visualAssetIndexSection = `
+## 18 附录六：图形与截图材料索引
+
+${buildMarkdownTable(['序号', '图号', '名称', '文件路径', '所属章节'], visualAssetRows, '表 18-1 图形与截图材料索引表')}
+
+本附录用于对设计说明书中使用的系统图、流程图、部署图、E-R 图以及界面截图进行集中索引说明，便于在材料核查、PDF 抽检和后续重新导出时快速定位对应的原始文件。表中按图号给出文件路径与所属章节，能够直接对应到设计说明书正文中的图题、图注与说明文字，确保图文关系一致、章节引用一致、归档文件一致。
+
+从材料组织方式看，系统结构类图形统一放置在 \`docs/assets/diagrams\` 目录下，界面运行结果截图统一放置在 \`docs/assets/screenshots\` 目录下。这样处理的目的，是在清理临时目录后仍然可以保证 Markdown 源文件与最终 PDF 指向稳定的正式资产路径，不依赖临时缓存或中间生成目录，也不会因为后续清理动作导致文档内图片丢失或失效。
+
+从复核方式看，审阅人员可先根据本附录核对图号、名称和章节，再逐项检查正文中的图题位置、图像清晰度和说明文字完整性。对于系统图，应重点核对结构关系、箭头方向与节点名称是否与正文描述一致；对于界面截图，应重点核对截图内容是否真实对应当前项目运行结果、文字是否清晰可辨、是否存在过度拉伸或缩放失真。本附录同时为后续更新 Skill 流程提供了明确的资产清单基础。
+`
+
+const getDiagramSection = (id, prefix) => buildFigureSection(prefix, diagramSpecs.find((item) => item.id === id), diagramImageBaseRelative)
+const getScreenshotSection = (id, prefix) => buildFigureSection(prefix, screenshotSpecs.find((item) => item.id === id), screenshotImageBaseRelative)
 
 const useCaseDiagram = `
 ### 3.5 系统用例图
 
-${diagramImageMarkdown('use-case')}
+${getDiagramSection('use-case', '图 3-1')}
 
 ### 3.6 总体业务流程图
 
-${diagramImageMarkdown('business-flow')}
+${getDiagramSection('business-flow', '图 3-2')}
 `
 
 const architectureDiagrams = `
 ### 4.6 系统架构图
 
-${diagramImageMarkdown('architecture')}
+${getDiagramSection('architecture', '图 4-1')}
 
 ### 4.7 部署拓扑图
 
-${diagramImageMarkdown('deployment')}
+${getDiagramSection('deployment', '图 4-2')}
 `
 
 const detailedDesignDiagrams = `
 ### 5.8 监测联动流程图
 
-${diagramImageMarkdown('telemetry-flow')}
+${getDiagramSection('telemetry-flow', '图 5-1')}
 
 ### 5.9 遥测接入时序图
 
-${diagramImageMarkdown('telemetry-sequence')}
+${getDiagramSection('telemetry-sequence', '图 5-2')}
 
 ### 5.10 恶劣天气与湿度异常状态图
 
-${diagramImageMarkdown('weather-state')}
+${getDiagramSection('weather-state', '图 5-3')}
+`
+
+const mainPageScreenshotSections = `
+### 4.8 主要页面界面截图
+
+${getScreenshotSection('twin-home', '图 4-3')}
+
+${getScreenshotSection('gis-tab', '图 4-4')}
+
+${getScreenshotSection('data-tab', '图 4-5')}
+`
+
+const interfaceScreenshotSection = `
+### 7.6 接口运行截图
+
+${getScreenshotSection('telemetry-health', '图 7-1')}
+`
+
+const erDiagramSection = `
+### 6.6 数据对象关系图
+
+${getDiagramSection('entity-relationship', '图 6-1')}
 `
 
 const detailedAppendices = `
+<div class="page-break"></div>
+
 ## 13 附录一：页面与菜单矩阵
 
 ${pageMatrixTable}
+
+<div class="page-break"></div>
 
 ## 14 附录二：部署、环境变量与运行命令
 
@@ -282,25 +352,42 @@ ${envVarTable}
 
 ${npmScriptTable}
 
+<div class="page-break"></div>
+
 ## 15 附录三：主要源码文件职责矩阵
 
 ${fileMatrixTable}
+
+<div class="page-break"></div>
 
 ## 16 附录四：核心函数目录
 
 ${functionCatalogSection}
 
+<div class="page-break"></div>
+
 ## 17 附录五：主要响应式状态目录
 
 ${reactiveCatalogSection}
+
+<div class="page-break"></div>
+
+${visualAssetIndexSection}
 `
+
+const filteredDetailedDesignDiagrams = detailedDesignDiagrams
+  .replace(/\n### 5\.10[\s\S]*?\$\{getDiagramSection\('weather-state',\s*'[^']*'\)\}\n/, '\n')
 
 const buildEnhancedDesignDoc = (baseDoc) => {
   let enhanced = baseDoc
   enhanced = enhanced.replace('## 4 总体设计', `${useCaseDiagram}\n\n## 4 总体设计`)
-  enhanced = enhanced.replace('## 5 详细设计', `${architectureDiagrams}\n\n## 5 详细设计`)
-  enhanced = enhanced.replace('## 6 数据设计', `${detailedDesignDiagrams}\n\n## 6 数据设计`)
+  enhanced = enhanced.replace('## 5 详细设计', `${architectureDiagrams}\n\n${mainPageScreenshotSections}\n\n## 5 详细设计`)
+  enhanced = enhanced.replace('## 6 数据设计', `${filteredDetailedDesignDiagrams}\n\n## 6 数据设计`)
+  enhanced = enhanced.replace('## 7 接口设计', `${erDiagramSection}\n\n## 7 接口设计`)
+  enhanced = enhanced.replace('## 8 运行环境设计', `${interfaceScreenshotSection}\n\n## 8 运行环境设计`)
   enhanced = enhanced.replace(`文档整理日期：${today}`, `${detailedAppendices}\n\n文档整理日期：${today}`)
+  enhanced = enhanced.replace(/\n### 5\.10 恶劣天气与湿度异常状态图[\s\S]*?(?=\n## 6 数据设计)/, '\n\n')
+  enhanced = enhanced.replace(/\| 10 \| 图 5-3 \| 恶劣天气与湿度异常状态图 \| docs\/assets\/diagrams\/07-weather-state\.png \| 详细设计 \|\n/g, '')
   return enhanced
 }
 
@@ -474,7 +561,7 @@ ${statsTable}
 
 const buildCodeDoc = () => {
   const out = []
-  out.push(`# 软件名称：${finalName}源代码整理稿`)
+  out.push(`# ${finalName}源代码整理稿`)
   out.push('')
   out.push('## 1. 项目概述')
   out.push('')
@@ -957,6 +1044,8 @@ const designPdfPath = path.join(docsDir, '软件设计说明书.pdf')
 const hasSourcePdf = await exists(sourcePdfPath)
 const hasDesignPdf = await exists(designPdfPath)
 const designDocEnhanced = buildEnhancedDesignDoc(designDoc)
+  .replace(/\r?\n### 5\.10 恶劣天气与湿度异常状态图[\s\S]*?(?=\r?\n## 6 数据设计)/, '\n\n')
+  .replace(/\| 10 \| 图 5-3 \| 恶劣天气与湿度异常状态图 \| docs\/assets\/diagrams\/07-weather-state\.png \| 详细设计 \|\r?\n/g, '')
 
 const resultListDoc = `# 软著材料整理结果
 
