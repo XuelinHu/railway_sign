@@ -10,7 +10,7 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 WEB_NAME="${PM2_WEB_NAME:-railway-sign-web}"
 TELEMETRY_NAME="${PM2_TELEMETRY_NAME:-railway-sign-telemetry}"
 WEB_HOST="${WEB_HOST:-0.0.0.0}"
-WEB_PORT="${WEB_PORT:-4201}"
+WEB_PORT="${WEB_PORT:-4202}"
 TELEMETRY_PORT="${TELEMETRY_PORT:-8080}"
 
 cd "${PROJECT_ROOT}"
@@ -35,7 +35,7 @@ Environment variables:
   PM2_WEB_NAME        PM2 process name for the web service. Default: railway-sign-web
   PM2_TELEMETRY_NAME  PM2 process name for the telemetry service. Default: railway-sign-telemetry
   WEB_HOST            Host used by vite preview. Default: 0.0.0.0
-  WEB_PORT            Port used by vite preview. Default: 4201
+  WEB_PORT            Port used by vite preview. Default: 4202
   TELEMETRY_PORT      Port used by telemetry bridge. Default: 8080
 EOF
 }
