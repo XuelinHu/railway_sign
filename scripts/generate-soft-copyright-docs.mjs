@@ -1,4 +1,4 @@
-import fs from 'node:fs/promises'
+﻿import fs from 'node:fs/promises'
 import path from 'node:path'
 import {
   buildFigureSection,
@@ -10,7 +10,7 @@ import {
 
 const root = process.cwd()
 const docsDir = path.join(root, 'docs')
-const finalName = '铁路信号数字孪生监测与可视化分析平台'
+const finalName = '铁路信号设备数字孪生系统'
 const version = 'V1.0'
 const today = new Date().toLocaleDateString('zh-CN')
 
@@ -184,7 +184,7 @@ const pageMatrixTable = buildMarkdownTable(
   ['页面/视图', '入口位置', '主要内容', '主要交互'],
   [
     ['地理信息可视化', '`src/App.vue` 顶层 Tab', 'Cesium 地图、地理态势、天气与地震面板、AI 对话', '复位视角、巡航控制、恶劣天气模拟、面板显示切换'],
-    ['信号机孪生面板', '`src/App.vue` 顶层 Tab', 'Three.js 三维设备、列车动画、视频监控、参数曲线', '切换信号、控制列车、视频重连、参数维度切换'],
+    ['铁路信号设备孪生面板', '`src/App.vue` 顶层 Tab', 'Three.js 三维设备、多信号机场景、设备弹窗、参数曲线', '切换信号、控制列车、故障联动、电源屏与设备监测查看'],
     ['大数据可视化平台', '`src/App.vue` 顶层 Tab', '环境监测、设备统计、告警信息、寿命预测、调度信息', '恶劣天气模拟、异常消除、筛选告警、缩放寿命图'],
     ['左侧环境面板', '`src/components/datapanel/LeftPanel.vue`', '气象监测、传感器列表、环境指标', '趋势查看、传感器状态浏览'],
     ['中部调度面板', '`src/components/datapanel/CenterPanel.vue`', '线路总览、寿命预测、调度命令、趋势统计', '缩放拖拽、最小地图定位、全屏显示'],
@@ -482,7 +482,7 @@ const extractionDoc = `# 项目材料关键信息提取
 ## 6. 页面与菜单结构
 
 - 顶层菜单一：地理信息可视化
-- 顶层菜单二：X站101号信号机孪生面板
+- 顶层菜单二：铁路信号设备孪生面板
 - 顶层菜单三：大数据可视化平台
 - 大屏内部包含左侧环境/传感器、中央调度/寿命、右侧告警/设备概览三大区域。
 
@@ -780,7 +780,7 @@ const designDoc = `# ${finalName}软件设计说明书
 ### 4.4 菜单与页面结构
 
 - 一级页面一：地理信息可视化
-- 一级页面二：X站101号信号机孪生面板
+- 一级页面二：铁路信号设备孪生面板
 - 一级页面三：大数据可视化平台
 - 大数据平台子页面结构：左侧环境态势、中部调度态势、右侧设备告警与统计
 
@@ -1085,3 +1085,4 @@ await fs.writeFile(path.join(docsDir, '软件设计说明书.md'), designDocEnha
 await fs.writeFile(path.join(docsDir, '软著材料整理结果.md'), resultListDoc, 'utf8')
 
 console.log(`Generated soft-copyright docs at ${docsDir}`)
+

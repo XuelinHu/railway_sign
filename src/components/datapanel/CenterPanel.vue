@@ -519,10 +519,10 @@ const clamp = (v, min, max) => Math.max(min, Math.min(max, v))
 
 const baseLifeItems = [
   { id: 'filament', name: '信号灯灯丝寿命', note: '热疲劳 / 点亮次数', designDays: 180 },
-  { id: 'bracket', name: 'X站101号信号机支架', note: '结构疲劳 / 振动', designDays: 3650 },
-  { id: 'shell', name: 'X站101号信号机保护外壳', note: '紫外老化 / 冲击', designDays: 2400 },
-  { id: 'transformer', name: 'X站101号信号机变压器', note: '温升老化 / 绝缘退化', designDays: 3000 },
-  { id: 'seal', name: 'X站101号信号机防水胶套', note: '材料疲劳 / 密封退化', designDays: 900 }
+  { id: 'bracket', name: '1495信号机支架', note: '结构疲劳 / 振动', designDays: 3650 },
+  { id: 'shell', name: '1495信号机保护外壳', note: '紫外老化 / 冲击', designDays: 2400 },
+  { id: 'transformer', name: '1495信号机变压器', note: '温升老化 / 绝缘退化', designDays: 3000 },
+  { id: 'seal', name: '1495信号机防水胶套', note: '材料疲劳 / 密封退化', designDays: 900 }
 ]
 
 const lifeBase = ref(baseLifeItems.map((it, idx) => {
@@ -821,7 +821,7 @@ const activeRoutes = computed(() => {
 
 // 调度统计
 const dispatchStats = computed(() => [
-  { label: 'X站101号信号机', value: `${dispatchData.value.stats.openSignals}/${dispatchData.value.stats.totalSignals}`, color: '#00ff88' },
+  { label: '1491-1497信号机', value: `${dispatchData.value.stats.openSignals}/${dispatchData.value.stats.totalSignals}`, color: '#00ff88' },
   { label: '道岔', value: `${dispatchData.value.stats.normalSwitches}/${dispatchData.value.stats.totalSwitches}`, color: '#00d4ff' },
   { label: '占用区段', value: dispatchData.value.stats.occupiedSections, color: '#ff6b6b' },
   { label: '运行列车', value: dispatchData.value.stats.runningTrains, color: '#ffaa00' },
@@ -847,7 +847,7 @@ const pieData = computed(() => {
   }
 
   return [
-    createPieData(signalDist.value.signalStatus, 'X站101号信号机状态', '台'),
+    createPieData(signalDist.value.signalStatus, '1491-1497信号机状态', '台'),
     createPieData(signalDist.value.switchStatus, '道岔状态', '组'),
     createPieData(signalDist.value.trackStatus, '轨道区段', '段'),
     createPieData(signalDist.value.trainStatus, '列车状态', '列')

@@ -1,28 +1,26 @@
 <template>
   <div id="app">
-    <!-- Tab 切换栏 -->
     <div class="tab-container">
       <button
         :class="['tab-btn', { active: currentTab === 'cesium' }]"
         @click="switchTab('cesium')"
       >
-        🌍 地理信息可视化
+        🗺️ 地理信息可视化
       </button>
       <button
         :class="['tab-btn', { active: currentTab === 'three' }]"
         @click="switchTab('three')"
       >
-        🎮 X站101号信号机孪生面板
+        🚦 铁路信号设备孪生面板
       </button>
       <button
         :class="['tab-btn', { active: currentTab === 'data' }]"
         @click="switchTab('data')"
       >
-        📊 大数据可视化平台
+        📊 数据可视化平台
       </button>
     </div>
 
-    <!-- 内容区域 -->
     <div class="content-container">
       <CesiumView v-if="currentTab === 'cesium'" />
       <ThreeView v-else-if="currentTab === 'three'" />
@@ -37,13 +35,11 @@ import CesiumView from './components/CesiumView.vue'
 import ThreeView from './components/ThreeView.vue'
 import DataPanel from './components/DataPanel.vue'
 
-// 默认打开：数字孪生面板（ThreeView）
 const currentTab = ref('three')
 
 const switchTab = (tab) => {
   currentTab.value = tab
 }
-
 </script>
 
 <style>
@@ -61,7 +57,6 @@ html, body, #app {
   background: #000;
 }
 
-/* Tab 切换栏样式 */
 .tab-container {
   position: fixed;
   top: 0;
@@ -108,7 +103,6 @@ html, body, #app {
   box-shadow: 0 0 20px rgba(0, 200, 255, 0.5);
 }
 
-/* 内容区域 */
 .content-container {
   width: 100%;
   height: 100%;

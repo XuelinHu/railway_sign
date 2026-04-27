@@ -18,7 +18,7 @@
       <div class="header-left">
         <div class="logo">
           <span class="logo-icon">🚄</span>
-          <span class="logo-text">铁路信号智能监控平台</span>
+          <span class="logo-text">铁路信号设备数字孪生系统</span>
         </div>
       </div>
       <div class="header-center">
@@ -52,13 +52,13 @@
     <div class="global-alerts">
       <transition name="alert-pop">
         <div v-if="showHumidityAlert" class="global-alert humidity" :class="humidityAlertClass">
-          <div class="alert-title">湿度异常告警</div>
+          <div class="alert-title">{{ humidityAlertPayload.title }}</div>
           <div class="alert-desc">
             <div class="alert-target">{{ heroDeviceName }}</div>
             <div class="alert-hint">
-              <div class="alert-line">告警内容：盒内湿度持续升高（当前 {{ currentHumidityText }}）</div>
-              <div class="alert-line">关联分析：疑似密封件胶套老化渗水</div>
-              <div class="alert-line">建议处置：立即现场核查盒体密封状态、胶套老化情况及内部受潮情况。</div>
+              <div class="alert-line">告警内容：{{ humidityAlertPayload.content }}</div>
+              <div class="alert-line">关联分析：{{ humidityAlertPayload.analysis }}</div>
+              <div class="alert-line">建议处置：{{ humidityAlertPayload.suggestion }}</div>
             </div>
           </div>
           <div class="alert-chart">
@@ -143,7 +143,7 @@
       </div>
       <div class="footer-center">
         <span class="version">v2.0.0</span>
-        <span class="copyright">© 2024 铁路信号监控系统</span>
+        <span class="copyright">© 2024 铁路信号设备数字孪生系统</span>
       </div>
       <div class="footer-right">
         <span class="update-time">数据更新: {{ lastUpdate }}</span>
@@ -317,6 +317,15 @@ const currentHumidityText = computed(() => {
   if (!Number.isFinite(h)) return '--'
   return `${h.toFixed(1)}%`
 })
+
+const getHumidityAlertPayload = () => ({
+  title: '湿度异常告警',
+  content: `盒内湿度持续升高（当前 ${currentHumidityText.value}）`,
+  analysis: '疑似密封件胶套老化渗水',
+  suggestion: '立即现场核查盒体密封状态、胶套老化情况及内部受潮情况。'
+})
+
+const humidityAlertPayload = computed(() => getHumidityAlertPayload())
 
 const humidityStage = computed(() => {
   const h = Number(weather.value?.humidity)
