@@ -19,6 +19,8 @@
         </div>
       </div>
       <button class="control-btn" @click="toggleRotation">🔄 自动旋转</button>
+      <button class="control-btn" @click="openDeviceModal('power')">⚡ 电源屏</button>
+      <button class="control-btn" @click="restoreNormalState">🛠 恢复异常</button>
     </div>
 
     <!-- 左侧数据面板 -->
@@ -57,11 +59,35 @@
       <div class="panel-section">
         <h2 class="panel-title">
           <span class="title-icon">🚦</span>
-          <span class="title-text">X站101号信号机</span>
+          <span class="title-text">信号机清单</span>
           <span class="title-decorator"></span>
         </h2>
-        <div id="signalList"></div>
+        <div class="signal-select-wrap">
+          <select v-model="selectedSignalId" class="signal-select">
+            <option v-for="item in signalCatalog" :key="item.id" :value="item.id">
+              {{ item.id }}信号机
+            </option>
+          </select>
+        </div>
+        <div class="signal-select-meta">
+          <div class="signal-select-row">
+            <span>接入状态</span>
+            <strong :class="telemetryStatusClass">{{ telemetryStatusText }}</strong>
+          </div>
+          <div class="signal-select-row">
+            <span>硬件安装</span>
+            <strong :class="installStatusClass">{{ installStatusText }}</strong>
+          </div>
+        </div>
       <div class="signal-kpis">
+        <div class="kpi-item">
+          <div class="kpi-label">当前选中</div>
+          <div class="kpi-value ok">{{ heroDeviceName }}</div>
+        </div>
+        <div class="kpi-item">
+          <div class="kpi-label">信号状态</div>
+          <div class="kpi-value" :class="activeSignalStateClass">{{ activeSignalStateText }}</div>
+        </div>
         <div class="kpi-item">
           <div class="kpi-label">温度</div>
           <div
@@ -148,6 +174,21 @@
         </div>
       </div>
 
+      <div class="panel-section">
+        <h2 class="panel-title">
+          <span class="title-icon">🚨</span>
+          <span class="title-text">告警联动</span>
+          <span class="title-decorator"></span>
+        </h2>
+        <div class="alarm-feed">
+          <div v-for="item in alertFeed" :key="item.id" class="alarm-card" :class="`alarm-card-${item.level}`">
+            <div class="alarm-title">{{ item.title }}</div>
+            <div class="alarm-desc">{{ item.description }}</div>
+          </div>
+          <div v-if="latestVoiceText" class="alarm-voice">最近语音播报：{{ latestVoiceText }}</div>
+        </div>
+      </div>
+
       <!-- 设备状态 -->
       <div class="panel-section">
         <h2 class="panel-title">
@@ -156,25 +197,10 @@
           <span class="title-decorator"></span>
         </h2>
         <div class="device-status">
-          <div class="status-row">
-            <span class="status-dot online"></span>
-            <span class="status-label">主控板</span>
-            <span class="status-value online">正常</span>
-          </div>
-          <div class="status-row">
-            <span class="status-dot online"></span>
-            <span class="status-label">通信模块</span>
-            <span class="status-value online">正常</span>
-          </div>
-          <div class="status-row">
-            <span class="status-dot" :class="signalParams.temperature > 50 ? 'warning' : 'online'"></span>
-            <span class="status-label">散热系统</span>
-            <span class="status-value" :class="signalParams.temperature > 50 ? 'warning' : 'online'">{{ signalParams.temperature > 50 ? '告警' : '正常' }}</span>
-          </div>
-          <div class="status-row">
-            <span class="status-dot online"></span>
-            <span class="status-label">电源模块</span>
-            <span class="status-value online">正常</span>
+          <div v-for="row in deviceStatusRows" :key="row.label" class="status-row">
+            <span class="status-dot" :class="row.className"></span>
+            <span class="status-label">{{ row.label }}</span>
+            <span class="status-value" :class="row.className">{{ row.value }}</span>
           </div>
         </div>
       </div>
@@ -192,7 +218,7 @@
       <div class="panel-section">
         <h2 class="panel-title">
           <span class="title-icon">🎮</span>
-          <span class="title-text">场景信息</span>
+          <span class="title-text">铁路信号设备数字孪生系统</span>
           <span class="title-decorator"></span>
         </h2>
         <div class="stat-item">
@@ -206,6 +232,10 @@
         <div class="stat-item">
           <span class="stat-label">最后更新:</span>
           <span class="stat-value" id="lastUpdate">--</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">系统时间:</span>
+          <span class="stat-value">{{ panelTimeText }}</span>
         </div>
       </div>
 
@@ -224,12 +254,56 @@
           <span class="stat-value">{{ telemetryLastSeenText }}</span>
         </div>
         <div class="stat-item">
+          <span class="stat-label">硬件安装:</span>
+          <span class="stat-value" :class="installStatusClass">{{ installStatusText }}</span>
+        </div>
+        <div class="stat-item">
           <span class="stat-label">进水检测:</span>
           <span class="stat-value" :class="telemetryWaterClass">{{ telemetryWaterText }}</span>
         </div>
         <div class="stat-item">
           <span class="stat-label">行人距离:</span>
           <span class="stat-value" :class="{ warn: pedestrianDesiredVisible, 'stat-boost': pedestrianHotFlash }">{{ humanoidSensor.pedestrianDistance }}</span>
+        </div>
+      </div>
+
+      <div class="panel-section">
+        <h2 class="panel-title">
+          <span class="title-icon">🧩</span>
+          <span class="title-text">设备交互</span>
+          <span class="title-decorator"></span>
+        </h2>
+        <div class="shortcut-grid">
+          <button class="shortcut-card" @click="openDeviceModal('power')">
+            <span class="shortcut-title">电源屏</span>
+            <span class="shortcut-desc">动态电压线 + 系统时钟</span>
+          </button>
+          <button class="shortcut-card" @click="openDeviceModal('turnout')">
+            <span class="shortcut-title">道岔监测</span>
+            <span class="shortcut-desc">查看道岔电压参数</span>
+          </button>
+          <button class="shortcut-card" @click="openDeviceModal('track')">
+            <span class="shortcut-title">轨道电路</span>
+            <span class="shortcut-desc">查看调谐单元电容值</span>
+          </button>
+          <button class="shortcut-card" @click="openDeviceModal('signal', selectedSignalId)">
+            <span class="shortcut-title">信号机</span>
+            <span class="shortcut-desc">查看当前信号机监测曲线</span>
+          </button>
+        </div>
+      </div>
+
+      <div v-if="false" class="panel-section">
+        <h2 class="panel-title">
+          <span class="title-icon">⌨️</span>
+          <span class="title-text">键盘控制</span>
+          <span class="title-decorator"></span>
+        </h2>
+        <div class="key-grid">
+          <div class="key-chip"><b>K</b><span>接入状态改为已接入</span></div>
+          <div class="key-chip"><b>M</b><span>硬件安装完成，信号机恢复正常</span></div>
+          <div class="key-chip"><b>P</b><span>1495 信号机故障掉压并灭灯</span></div>
+          <div class="key-chip"><b>L</b><span>1435 调谐单元故障掉压</span></div>
         </div>
       </div>
 
@@ -304,6 +378,57 @@
       </div>
 
     </div>
+
+    <div v-if="deviceModal.visible" class="device-modal-backdrop" @click.self="closeDeviceModal">
+      <div class="device-modal">
+        <div class="device-modal-header">
+          <div>
+            <div class="device-modal-title">{{ modalTypeText }}</div>
+            <div class="device-modal-subtitle">系统时间：{{ panelTimeText }}</div>
+          </div>
+          <button class="device-modal-close" @click="closeDeviceModal">关闭</button>
+        </div>
+        <div class="device-modal-stats">
+          <div v-for="item in modalPreviewStats" :key="item.label" class="device-modal-stat">
+            <span>{{ item.label }}</span>
+            <strong>{{ item.value }}</strong>
+          </div>
+        </div>
+        <div class="device-modal-chart">
+          <div class="device-modal-axis-meta">
+            <span>{{ modalYAxisTitle }}</span>
+            <span>{{ modalXAxisTitle }}</span>
+          </div>
+          <svg viewBox="0 0 320 140" class="device-modal-svg">
+            <defs>
+              <linearGradient id="deviceModalGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" :style="`stop-color:${modalChartColor};stop-opacity:0.42`" />
+                <stop offset="100%" :style="`stop-color:${modalChartColor};stop-opacity:0.02`" />
+              </linearGradient>
+            </defs>
+            <text v-for="tick in modalYAxisTicks" :key="`modal-tick-${tick.y}`" x="12" :y="tick.y + 4" class="device-axis-text">{{ tick.label }}</text>
+            <line x1="16" y1="30" x2="304" y2="30" class="device-grid-line" />
+            <line x1="16" y1="74" x2="304" y2="74" class="device-grid-line" />
+            <line x1="16" y1="118" x2="304" y2="118" class="device-grid-line" />
+            <polygon :points="modalAreaPoints" fill="url(#deviceModalGradient)" />
+            <polyline :points="modalLinePoints" :stroke="modalChartColor" class="device-modal-polyline" />
+            <circle v-for="(point, index) in modalChartPoints" :key="`${point.time}-${index}`" :cx="point.x" :cy="point.y" r="2.4" :fill="modalChartColor" />
+          </svg>
+          <div class="device-modal-time-row">
+            <span>{{ modalChartPoints[0]?.time }}</span>
+            <span>{{ modalChartPoints[Math.floor(modalChartPoints.length / 2)]?.time }}</span>
+            <span>{{ modalChartPoints[modalChartPoints.length - 1]?.time }}</span>
+          </div>
+        </div>
+        <div class="device-modal-footer">
+          <div class="device-modal-note">{{ modalAlertText }}</div>
+          <div class="device-modal-actions">
+            <button class="control-btn" @click="restoreNormalState">异常消除</button>
+            <button class="control-btn" @click="closeDeviceModal">继续观察</button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -327,10 +452,62 @@ const getWorldYaw = (obj) => {
 }
 
 const threeContainer = ref(null)
-const heroDeviceName = DEMO_SCENARIO.heroDeviceName
+const SIGNAL_IDS = ['1491', '1493', '1495', '1497']
+const signalCatalog = [
+  { id: '1491', assetId: 'SIG-1491', twinId: 'TWIN-SIG-1491', gps: '109.3881, 24.3071', voltageBase: 221, currentBase: 2.3, tempBase: 31.5 },
+  { id: '1493', assetId: 'SIG-1493', twinId: 'TWIN-SIG-1493', gps: '109.3884, 24.3074', voltageBase: 220, currentBase: 2.2, tempBase: 32.2 },
+  { id: '1495', assetId: 'SIG-1495', twinId: 'TWIN-SIG-1495', gps: '109.3887, 24.3076', voltageBase: 220, currentBase: 2.4, tempBase: 35.0 },
+  { id: '1497', assetId: 'SIG-1497', twinId: 'TWIN-SIG-1497', gps: '109.3890, 24.3079', voltageBase: 219, currentBase: 2.1, tempBase: 31.8 }
+]
+const selectedSignalId = ref('1491')
+const selectedSignal = computed(() => signalCatalog.find((item) => item.id === selectedSignalId.value) || signalCatalog[0])
+const heroDeviceName = computed(() => `${selectedSignal.value.id}信号机`)
 const HUMIDITY_WARNING = 45
 const HUMIDITY_ALARM = 75
 const uiNowMs = ref(Date.now())
+const createSignalRuntime = () => ({
+  connected: false,
+  installed: false,
+  connectedAt: 0,
+  installedAt: 0
+})
+const signalRuntimeState = ref(Object.fromEntries(SIGNAL_IDS.map((id) => [id, createSignalRuntime()])))
+const signalFaultSignalId = ref(null)
+const getSignalRuntime = (signalId) => signalRuntimeState.value[signalId] || createSignalRuntime()
+const telemetryConnected = computed({
+  get: () => Boolean(getSignalRuntime(selectedSignalId.value).connected),
+  set: (value) => {
+    const current = getSignalRuntime(selectedSignalId.value)
+    const nextConnected = Boolean(value)
+    signalRuntimeState.value[selectedSignalId.value] = {
+      ...current,
+      connected: nextConnected,
+      connectedAt: nextConnected ? (current.connectedAt || Date.now()) : 0
+    }
+  }
+})
+const signalHardwareReady = computed({
+  get: () => Boolean(getSignalRuntime(selectedSignalId.value).installed),
+  set: (value) => {
+    const current = getSignalRuntime(selectedSignalId.value)
+    const nextInstalled = Boolean(value)
+    signalRuntimeState.value[selectedSignalId.value] = {
+      ...current,
+      installed: nextInstalled,
+      installedAt: nextInstalled ? (current.installedAt || Date.now()) : 0
+    }
+  }
+})
+const signalFaultActive = computed(() => Boolean(signalFaultSignalId.value))
+const selectedSignalFaultActive = computed(() => signalFaultSignalId.value === selectedSignalId.value)
+const trackFaultActive = ref(false)
+const observedTrackCapacitance = ref(18.6)
+const deviceModal = ref({
+  visible: false,
+  type: 'signal',
+  signalId: '1491'
+})
+const latestVoiceText = ref('')
 
 // 信号灯实时参数
 const signalParams = ref({
@@ -352,9 +529,9 @@ const humidityClass = computed(() => {
 
 // 信号孪生体参数（行业常用：资产/互锁/同步/健康/寿命预测等）
 const signalTwin = ref({
-  twinId: 'TWIN-XX-0001',
-  assetId: 'ASSET-XX-01',
-  deviceType: 'X站101号信号机',
+  twinId: selectedSignal.value.twinId,
+  assetId: selectedSignal.value.assetId,
+  deviceType: `${selectedSignal.value.id}信号机`,
   interlocking: '正常',
   workMode: '自动',
   syncStatus: '已同步',
@@ -378,21 +555,23 @@ let telemetrySimPassTimer = null
 let pedestrianHotFlashTimer = null
 let pedestrianLoopEnabled = false
 
-const telemetryActive = computed(() => telemetrySimEnabled.value)
+const telemetryActive = computed(() => telemetrySimEnabled.value || telemetryConnected.value)
 
 const twinEnvVisible = ref(false)
 
 const telemetryStatusText = computed(() => {
+  if (telemetryConnected.value) return '已接入'
   if (telemetrySimEnabled.value) return '手动模拟'
-  return '待机'
+  return '待接入'
 })
 const telemetryStatusClass = computed(() => {
+  if (telemetryConnected.value) return 'ok'
   if (telemetrySimEnabled.value) return 'ok'
   return 'warn'
 })
 
 const telemetryLastSeenText = computed(() => {
-  const at = telemetrySimLastAt.value
+  const at = getSignalRuntime(selectedSignalId.value).connectedAt || telemetrySimLastAt.value
   if (!telemetryActive.value || !at) return '--'
   const deltaS = Math.max(0, Math.round((uiNowMs.value - at) / 1000))
   return `${deltaS}s`
@@ -411,6 +590,332 @@ const telemetryWaterClass = computed(() => {
   if (telemetryWaterActive.value === 0) return 'ok'
   return ''
 })
+
+const installStatusText = computed(() => (signalHardwareReady.value ? '已安装' : '待安装'))
+const installStatusClass = computed(() => (signalHardwareReady.value ? 'ok' : 'warn'))
+
+const activeSignalState = computed(() => {
+  if (selectedSignalFaultActive.value) return 'fault'
+  if (signalHardwareReady.value) return 'installed'
+  if (telemetryConnected.value) return 'connected'
+  return 'init'
+})
+
+const currentSignalFaultName = computed(() => signalFaultSignalId.value ? `${signalFaultSignalId.value}信号机` : heroDeviceName.value)
+const activeSignalStateText = computed(() => {
+  if (activeSignalState.value === 'fault') return '异常'
+  if (activeSignalState.value === 'installed') return '已安装'
+  if (activeSignalState.value === 'connected') return '已接入'
+  return '初始化'
+})
+const activeSignalStateClass = computed(() => {
+  if (activeSignalState.value === 'fault') return 'danger'
+  if (activeSignalState.value === 'installed' || activeSignalState.value === 'connected') return 'ok'
+  return 'warn'
+})
+
+const getSignalStatusMeta = (signalId) => {
+  const runtime = getSignalRuntime(signalId)
+  if (signalFaultSignalId.value === signalId) {
+    return { text: '异常', token: 'red' }
+  }
+  if (runtime.installed) {
+    return { text: '已安装', token: 'green' }
+  }
+  if (runtime.connected) {
+    return { text: '已接入', token: 'green' }
+  }
+  return { text: '初始化', token: 'yellow' }
+}
+
+const markSignalConnected = (signalId, at = Date.now()) => {
+  const current = getSignalRuntime(signalId)
+  signalRuntimeState.value[signalId] = {
+    ...current,
+    connected: true,
+    connectedAt: at
+  }
+}
+
+const markSignalInstalled = (signalId, at = Date.now()) => {
+  const current = getSignalRuntime(signalId)
+  signalRuntimeState.value[signalId] = {
+    ...current,
+    connected: true,
+    installed: true,
+    connectedAt: current.connectedAt || at,
+    installedAt: at
+  }
+}
+
+const getVoltageAlertItems = () => {
+  const items = []
+  if (signalFaultActive.value) {
+    items.push({
+      id: 'signal',
+      level: 'danger',
+      title: `${currentSignalFaultName.value}异常灭灯`,
+      description: '检测到信号机内部温度异常，漏电严重，电压值已降为 0V。'
+    })
+  }
+  if (trackFaultActive.value) {
+    items.push({
+      id: 'track',
+      level: 'danger',
+      title: '1435调谐单元参数异常告警',
+      description: '告警内容：谐振频率偏离设计值；关联分析：疑似电容被击穿或受潮；建议处置：更换1435调谐单元。'
+    })
+  }
+  if (!items.length) {
+    items.push({
+      id: 'normal',
+      level: 'ok',
+      title: '系统运行正常',
+      description: '当前未检测到信号机或轨道电路异常。'
+    })
+  }
+  return items
+}
+
+const alertFeed = computed(() => getVoltageAlertItems())
+
+const deviceStatusRows = computed(() => ([
+  { label: '主控板', value: '正常', className: 'online' },
+  { label: '通信模块', value: telemetryConnected.value ? '在线' : '离线', className: telemetryConnected.value ? 'online' : 'warning' },
+  { label: '散热系统', value: selectedSignalFaultActive.value ? '异常' : '正常', className: selectedSignalFaultActive.value ? 'warning' : 'online' },
+  { label: '电源模块', value: signalHardwareReady.value ? '已安装' : '待安装', className: signalHardwareReady.value ? 'online' : 'warning' }
+]))
+
+const panelTimeText = computed(() => new Date(uiNowMs.value).toLocaleString('zh-CN'))
+
+const modalSignalId = computed(() => deviceModal.value.signalId || selectedSignalId.value)
+const modalSignalName = computed(() => `${modalSignalId.value}信号机`)
+const modalTypeText = computed(() => {
+  const typeMap = {
+    power: '电源屏',
+    signal: `${modalSignalId.value}信号机监测`,
+    turnout: '道岔监测',
+    track: '1435调谐单元监测'
+  }
+  return typeMap[deviceModal.value.type] || '设备监测'
+})
+
+const modalDataSignalId = computed(() => deviceModal.value.type === 'signal' ? modalSignalId.value : selectedSignalId.value)
+const modalConnectedAt = computed(() => getSignalRuntime(modalDataSignalId.value).connectedAt || 0)
+const modalHasRealtimeData = computed(() => Boolean(modalConnectedAt.value))
+
+const modalCurrentMetric = computed(() => {
+  if (!modalHasRealtimeData.value) return 0
+  switch (deviceModal.value.type) {
+    case 'power':
+      return 380
+    case 'turnout':
+      return 110
+    case 'track':
+      return trackFaultActive.value ? 0 : 72
+    case 'signal':
+    default:
+      return modalSignalId.value === signalFaultSignalId.value
+        ? 0
+        : Math.round((selectedSignal.value.voltageBase - 2 + Math.random() * 4) * 10) / 10
+  }
+})
+
+const modalMetricUnit = computed(() => (deviceModal.value.type === 'track' ? 'V / uF' : 'V'))
+const modalYAxisTitle = computed(() => {
+  if (deviceModal.value.type === 'power') return '纵坐标：电压（V）'
+  if (deviceModal.value.type === 'turnout') return '纵坐标：动作电压（V）'
+  if (deviceModal.value.type === 'track') return '纵坐标：轨道参数（V）'
+  return '纵坐标：信号机电压（V）'
+})
+const modalXAxisTitle = computed(() => '横坐标：时间（近8小时）')
+
+const modalAlertText = computed(() => {
+  if (deviceModal.value.type === 'signal' && modalSignalId.value === signalFaultSignalId.value) {
+    return `${modalSignalId.value}信号机异常灭灯，左侧已同步推送告警。`
+  }
+  if (deviceModal.value.type === 'track' && trackFaultActive.value) {
+    return '1435调谐单元参数异常：谐振频率偏离设计值，疑似电容被击穿或受潮，建议直接更换 1435 调谐单元。'
+  }
+  if (deviceModal.value.type === 'power' && !modalHasRealtimeData.value) {
+    return '当前电源屏尚未接入，可按 K 键切换为已接入状态。'
+  }
+  if (!modalHasRealtimeData.value) {
+    return '当前设备尚未接入，曲线在接入时间点之前保持 0。'
+  }
+  return '当前设备运行正常，曲线按系统时间持续刷新。'
+})
+
+const modalChartColor = computed(() => {
+  if ((deviceModal.value.type === 'signal' && modalSignalId.value === signalFaultSignalId.value) || (deviceModal.value.type === 'track' && trackFaultActive.value)) {
+    return '#ff5c5c'
+  }
+  return '#00d4ff'
+})
+
+const MODAL_HISTORY_POINTS = 33
+const MODAL_HISTORY_INTERVAL_MS = 15 * 60 * 1000
+
+const buildModalSeriesValue = (base, wave, ripple, faulted) => {
+  if (!faulted) return Math.round((base + wave + ripple) * 10) / 10
+  const collapse = Math.max(0.25, base * 0.015)
+  return Math.round((collapse + wave * 0.12 + ripple * 0.08) * 10) / 10
+}
+
+const modalSeriesData = computed(() => {
+  const now = uiNowMs.value
+  const points = []
+  for (let index = 0; index < MODAL_HISTORY_POINTS; index += 1) {
+    const ratio = index / Math.max(1, MODAL_HISTORY_POINTS - 1)
+    const sampleAt = now - (MODAL_HISTORY_POINTS - 1 - index) * MODAL_HISTORY_INTERVAL_MS
+    const tHours = sampleAt / (60 * 60 * 1000)
+    const wave = Math.sin(tHours * 3.2 + index * 0.3)
+    const ripple = Math.cos(tHours * 4.6 + index * 0.22)
+    const hasLiveData = modalHasRealtimeData.value && sampleAt >= modalConnectedAt.value
+    let value = 0
+
+    if (!hasLiveData) {
+      value = 0
+    } else if (deviceModal.value.type === 'power') {
+      value = buildModalSeriesValue(370, wave * 8, ripple * 3, false)
+    } else if (deviceModal.value.type === 'turnout') {
+      value = buildModalSeriesValue(108, wave * 5, ripple * 2, false)
+    } else if (deviceModal.value.type === 'track') {
+      value = buildModalSeriesValue(71, wave * 2.8, ripple, trackFaultActive.value && ratio > 0.55)
+    } else {
+      const modalSignalMeta = signalCatalog.find((item) => item.id === modalSignalId.value) || selectedSignal.value
+      value = buildModalSeriesValue(modalSignalMeta.voltageBase, wave * 4, ripple * 1.5, signalFaultActive.value && modalSignalId.value === signalFaultSignalId.value && ratio > 0.55)
+    }
+
+    points.push({
+      time: new Date(sampleAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
+      value: Math.round(value * 10) / 10,
+      ratio
+    })
+  }
+  return points
+})
+
+const modalChartPoints = computed(() => {
+  const data = modalSeriesData.value
+  if (!data.length) return []
+  const values = data.map((item) => item.value)
+  const max = Math.max(...values, 1)
+  const min = Math.min(...values, 0)
+  const range = Math.max(1, max - min)
+
+  return data.map((item, index) => {
+    const x = 16 + index * ((320 - 32) / Math.max(1, data.length - 1))
+    const normalized = (item.value - min) / range
+    const y = 118 - normalized * 88
+    return { x, y, value: item.value, time: item.time }
+  })
+})
+
+const modalLinePoints = computed(() => modalChartPoints.value.map((point) => `${point.x},${point.y}`).join(' '))
+const modalAreaPoints = computed(() => {
+  const points = modalChartPoints.value
+  if (!points.length) return ''
+  const bottom = 128
+  return `${points[0].x},${bottom} ${points.map((point) => `${point.x},${point.y}`).join(' ')} ${points[points.length - 1].x},${bottom}`
+})
+
+const modalYAxisTicks = computed(() => {
+  const values = modalSeriesData.value.map((item) => item.value)
+  if (!values.length) return []
+  const min = Math.min(...values)
+  const max = Math.max(...values)
+  const mid = (max + min) / 2
+  return [
+    { y: 30, label: `${max.toFixed(1)} V` },
+    { y: 74, label: `${mid.toFixed(1)} V` },
+    { y: 118, label: `${min.toFixed(1)} V` }
+  ]
+})
+const modalPreviewStats = computed(() => {
+  if (deviceModal.value.type === 'track') {
+    return [
+      { label: '电容值', value: modalHasRealtimeData.value ? (trackFaultActive.value ? `${observedTrackCapacitance.value.toFixed(2)} uF` : '55.00 uF') : '--' },
+      { label: '电感值', value: modalHasRealtimeData.value ? (trackFaultActive.value ? '31.20 uH' : '33.00 uH') : '--' },
+      { label: '允许范围', value: '电容 52.25~57.75 uF / 电感 ±3%' }
+    ]
+  }
+  return [
+    { label: '当前电压', value: `${Math.round(modalCurrentMetric.value * 10) / 10}V` },
+    { label: '接入状态', value: modalHasRealtimeData.value ? '已接入' : '未接入' },
+    { label: '系统时间', value: new Date(uiNowMs.value).toLocaleTimeString('zh-CN') }
+  ]
+})
+
+const syncSignalTwin = () => {
+  signalTwin.value.twinId = selectedSignal.value.twinId
+  signalTwin.value.assetId = selectedSignal.value.assetId
+  signalTwin.value.deviceType = `${selectedSignal.value.id}信号机`
+  signalTwin.value.firmware = `FW-${selectedSignal.value.id}`
+  signalTwin.value.lastMaintenance = '2026-04-20'
+}
+
+const openDeviceModal = (type, signalId = selectedSignalId.value) => {
+  if (type === 'signal') {
+    selectedSignalId.value = signalId
+  }
+  deviceModal.value = {
+    visible: true,
+    type,
+    signalId
+  }
+}
+
+const closeDeviceModal = () => {
+  deviceModal.value.visible = false
+}
+
+const speakAlarm = (text) => {
+  latestVoiceText.value = text
+  if (!('speechSynthesis' in window)) return
+  try {
+    window.speechSynthesis.cancel()
+    const utterance = new SpeechSynthesisUtterance(text)
+    utterance.lang = 'zh-CN'
+    utterance.rate = 1
+    utterance.pitch = 1
+    window.speechSynthesis.speak(utterance)
+  } catch (error) {
+    console.warn('语音播报失败:', error)
+  }
+}
+
+const applyLabelBoxTone = (div, token = 'yellow') => {
+  if (!div) return
+  const toneMap = {
+    yellow: {
+      borderColor: 'rgba(255, 210, 90, 0.75)',
+      background: 'linear-gradient(135deg, rgba(120, 88, 20, 0.78), rgba(70, 52, 10, 0.7))',
+      boxShadow: '0 3px 12px rgba(255, 200, 80, 0.2)'
+    },
+    green: {
+      borderColor: 'rgba(90, 255, 170, 0.75)',
+      background: 'linear-gradient(135deg, rgba(12, 110, 70, 0.78), rgba(8, 68, 46, 0.72))',
+      boxShadow: '0 3px 12px rgba(80, 255, 170, 0.18)'
+    },
+    red: {
+      borderColor: 'rgba(255, 100, 100, 0.88)',
+      background: 'linear-gradient(135deg, rgba(150, 24, 24, 0.84), rgba(88, 8, 8, 0.76))',
+      boxShadow: '0 3px 14px rgba(255, 90, 90, 0.24)'
+    }
+  }
+  const tone = toneMap[token] || toneMap.yellow
+  div.style.setProperty('border-color', tone.borderColor, 'important')
+  div.style.setProperty('background', tone.background, 'important')
+  div.style.setProperty('box-shadow', tone.boxShadow, 'important')
+}
+
+const restoreNormalState = () => {
+  signalFaultSignalId.value = null
+  trackFaultActive.value = false
+  observedTrackCapacitance.value = 18.6
+  closeDeviceModal()
+}
 
 const setPedestrianVisible = (visible) => {
   pedestrianDesiredVisible.value = Boolean(visible)
@@ -439,13 +944,53 @@ const applyTwinEnvVisibilityToLabels = () => {
   }
 }
 
+const handleSignalAction = (signalId) => {
+  selectedSignalId.value = signalId
+  openDeviceModal('signal', signalId)
+}
+
 const onGlobalKeydown = (event) => {
   if (!event) return
   if (event.repeat) return
   const key = event.key
   const tag = String(event.target?.tagName || '').toLowerCase()
   if (tag === 'input' || tag === 'textarea' || tag === 'select') return
+  if (key === 'k' || key === 'K') {
+    const now = Date.now()
+    markSignalConnected(selectedSignalId.value, now)
+    telemetrySimLastAt.value = now
+    telemetryWaterActive.value = 0
+    return
+  }
+  if (key === 'm' || key === 'M') {
+    const now = Date.now()
+    markSignalInstalled(selectedSignalId.value, now)
+    telemetrySimLastAt.value = getSignalRuntime(selectedSignalId.value).connectedAt || now
+    signalFaultSignalId.value = null
+    observedTrackCapacitance.value = trackFaultActive.value ? 8.3 : 18.6
+    openDeviceModal('signal', selectedSignalId.value)
+    return
+  }
   if (key === 'p' || key === 'P') {
+    const now = Date.now()
+    markSignalInstalled(selectedSignalId.value, now)
+    telemetrySimLastAt.value = getSignalRuntime(selectedSignalId.value).connectedAt || now
+    signalFaultSignalId.value = selectedSignalId.value
+    openDeviceModal('signal', selectedSignalId.value)
+    speakAlarm(`检测到${selectedSignalId.value}信号机内部温度异常，漏电严重，建议携带工具箱、密封圈及LED信号机点灯单元前往处理。`)
+    return
+  }
+  if (key === 'l' || key === 'L') {
+    const now = Date.now()
+    markSignalInstalled(selectedSignalId.value, now)
+    telemetrySimLastAt.value = getSignalRuntime(selectedSignalId.value).connectedAt || now
+    trackFaultActive.value = true
+    observedTrackCapacitance.value = 8.3
+    openDeviceModal('track', '1495')
+    speakAlarm('监测到1435调谐单元参数异常，谐振频率偏离设计值。关联分析为疑似电容被击穿或受潮，建议立即更换1435调谐单元。')
+    return
+  }
+  if (key === 'i' || key === 'I') {
     twinEnvVisible.value = !twinEnvVisible.value
     applyTwinEnvVisibilityToLabels()
     return
@@ -769,6 +1314,7 @@ let mixer = null
 let gltfLoader = null
 const gltfAssetCache = new Map()
 let modelLabels = []
+const signalLabelEntries = new Map()
 let trainLabelEntry = null
 let signalLabelEntry = null
 let updateUiTimer = null
@@ -985,6 +1531,7 @@ const getColorByState = (state) => {
     case 'red': return 0xff3333
     case 'green': return 0x33ff33
     case 'yellow': return 0xffff33
+    case 'off': return 0x333333
     default: return 0x666666
   }
 }
@@ -1370,16 +1917,15 @@ const createSignalLights = () => {
     return obj
   }
 
-  // 只创建一个信号灯，放在铁轨旁边
-  // 铁轨方向是45度角，信号灯往Z方向挪一点
-  // 铁轨经过 x=-20, z=-28 的位置（45度角），信号灯放在轨道旁边
   const signalPositions = [
-    // 主信号灯：缩小 + 轻微挪位，避免与新增模型重叠
-    { x: -24, z: -42 }
+    { x: -96, z: -114 },
+    { x: -56, z: -74 },
+    { x: -16, z: -34 },
+    { x: 58, z: 34 }
   ]
 
-  const signalStates = ['red']
-  const signalNames = ['X站101号信号机']
+  const signalStates = ['yellow', 'yellow', 'yellow', 'yellow']
+  const signalNames = SIGNAL_IDS.map((id) => `${id}信号机`)
 
   signalPositions.forEach((pos, index) => {
     getCachedModelClone('/assets/models/sign.glb')
@@ -1397,23 +1943,27 @@ const createSignalLights = () => {
         })
 
         scene.add(signGroup)
-        signalObject = signGroup
+        const isHeroSignal = signalNames[index] === '1495信号机'
+        if (isHeroSignal) {
+          signalObject = signGroup
+        }
 
-        // 在主信号灯旁边放置 box / 行人 / 工作者
-        try {
-          // 信号灯由 Z 向 X 轴旋转 120°（绕 Y 轴），并朝 X 轴反方向移动两个身位
-          signGroup.rotation.y = -Math.PI * 2 / 3
+        // 在 1495 主信号灯旁边放置 box / 行人 / 工作者
+        if (isHeroSignal) {
+          try {
+            // 信号灯由 Z 向 X 轴旋转 120°（绕 Y 轴），并朝 X 轴反方向移动两个身位
+            signGroup.rotation.y = -Math.PI * 2 / 3
 
-           const { size: signSize } = getObjectSize(signGroup)
-           const signStepX = Math.max(2.0, signSize.x || 0)
-           signGroup.position.x -= signStepX * 2
-           const signHeight = Math.max(1, signSize.y)
+            const { size: signSize } = getObjectSize(signGroup)
+            const signStepX = Math.max(2.0, signSize.x || 0)
+            signGroup.position.x -= signStepX * 2
+            const signHeight = Math.max(1, signSize.y)
 
-           // 主信号灯整体朝 X/Z 夹角的反方向（-X/-Z）移动（3 + 4）个身位
-           const signDiagStep = Math.max(2.0, signSize.x || 0, signSize.z || 0)
-           const signDiagMove = (signDiagStep * 7) / Math.SQRT2
-           signGroup.position.x -= signDiagMove
-           signGroup.position.z -= signDiagMove
+            // 主信号灯整体朝 X/Z 夹角的反方向（-X/-Z）移动（3 + 4）个身位
+            const signDiagStep = Math.max(2.0, signSize.x || 0, signSize.z || 0)
+            const signDiagMove = (signDiagStep * 7) / Math.SQRT2
+            signGroup.position.x -= signDiagMove
+            signGroup.position.z -= signDiagMove
 
            const base = { x: signGroup.position.x, z: signGroup.position.z }
            const dx = Math.max(2.2, signSize.x * 0.9)
@@ -1544,8 +2094,9 @@ const createSignalLights = () => {
                }
              }
            }).catch((e) => console.warn('工作者模型加载失败:', e))
-        } catch (e) {
-          console.warn('主信号灯旁模型摆放失败:', e)
+          } catch (e) {
+            console.warn('主信号灯旁模型摆放失败:', e)
+          }
         }
 
         const color = getColorByState(signalStates[index])
@@ -1555,6 +2106,7 @@ const createSignalLights = () => {
         signGroup.add(light)
 
         signals.push({
+          id: signalNames[index].replace('信号机', ''),
           mesh: signGroup,
           light: light,
           state: signalStates[index],
@@ -1562,10 +2114,14 @@ const createSignalLights = () => {
         })
 
         // 主信号灯信息栏高度在现有基础上再加一倍（湿度与恶劣天气演练同步）
-        if (!signalLabelEntry) {
-          const t0 = Math.round(Number(signalParams.value.temperature) * 10) / 10
-          const h0 = Math.round(Number(signalParams.value.humidity) * 10) / 10
-          signalLabelEntry = createModelLabel(signGroup, signalNames[index], t0, h0, '109.3887', '24.3076', 2.4)
+        const signalMeta = signalCatalog[index] || selectedSignal.value
+        const t0 = Math.round((signalMeta.tempBase + Math.sin(index) * 0.8) * 10) / 10
+        const h0 = Math.round((23 + index * 0.9) * 10) / 10
+        const [gpsLon, gpsLat] = String(signalMeta.gps || '109.3887, 24.3076').split(',').map((item) => item.trim())
+        const labelEntry = createModelLabel(signGroup, signalNames[index], t0, h0, gpsLon, gpsLat, 2.4)
+        signalLabelEntries.set(signalMeta.id, labelEntry)
+        if (signalMeta.id === '1495') {
+          signalLabelEntry = labelEntry
         }
         updateSignalUI()
         console.log(`信号灯 ${signalNames[index]} 加载成功`)
@@ -1621,12 +2177,16 @@ const createTrain = () => {
 
 const createModelLabel = (model, name, temperature, humidity, gpsLon, gpsLat, labelHeight = 8) => {
   const div = document.createElement('div')
-  div.className = 'model-label'
+  div.className = 'model-label label-box-yellow'
   div.classList.toggle('env-visible', twinEnvVisible.value)
   div.classList.toggle('env-hidden', !twinEnvVisible.value)
 
   div.innerHTML = `
      <div class="label-title">${name}</div>
+     <div class="label-row">
+       <span>🟡 状态:</span>
+       <span class="label-value label-status label-status-yellow" data-field="status">初始化</span>
+     </div>
      <div class="label-row env-row">
        <span>🌡️ 温度:</span>
        <span class="label-value" data-field="temperature">${temperature}°C</span>
@@ -1640,6 +2200,7 @@ const createModelLabel = (model, name, temperature, humidity, gpsLon, gpsLat, la
        <span class="label-value" data-field="gps">${gpsLon}, ${gpsLat}</span>
     </div>
   `
+  applyLabelBoxTone(div, 'yellow')
 
   const label = new CSS2DObject(div)
   // 文本框位置：使用传入的labelHeight参数
@@ -1652,6 +2213,7 @@ const createModelLabel = (model, name, temperature, humidity, gpsLon, gpsLat, la
     div,
     name,
     fields: {
+      status: div.querySelector('[data-field="status"]'),
       temperature: div.querySelector('[data-field="temperature"]'),
       humidity: div.querySelector('[data-field="humidity"]'),
       gps: div.querySelector('[data-field="gps"]')
@@ -1696,6 +2258,21 @@ const createModelLabel = (model, name, temperature, humidity, gpsLon, gpsLat, la
          box-shadow: 0 0 22px rgba(255, 40, 40, 0.55) !important;
          animation: sensorWarningFlash 0.85s ease-in-out infinite;
        }
+       .label-box-yellow {
+         border-color: rgba(255, 210, 90, 0.75) !important;
+         background: linear-gradient(135deg, rgba(120, 88, 20, 0.78), rgba(70, 52, 10, 0.7)) !important;
+         box-shadow: 0 3px 12px rgba(255, 200, 80, 0.2) !important;
+       }
+       .label-box-green {
+         border-color: rgba(90, 255, 170, 0.75) !important;
+         background: linear-gradient(135deg, rgba(12, 110, 70, 0.78), rgba(8, 68, 46, 0.72)) !important;
+         box-shadow: 0 3px 12px rgba(80, 255, 170, 0.18) !important;
+       }
+       .label-box-red {
+         border-color: rgba(255, 100, 100, 0.88) !important;
+         background: linear-gradient(135deg, rgba(150, 24, 24, 0.84), rgba(88, 8, 8, 0.76)) !important;
+         box-shadow: 0 3px 14px rgba(255, 90, 90, 0.24) !important;
+       }
       @keyframes sensorWarningFlash {
         0%, 100% { filter: brightness(1); }
         50% { filter: brightness(1.28); }
@@ -1719,6 +2296,9 @@ const createModelLabel = (model, name, temperature, humidity, gpsLon, gpsLat, la
          color: #00d4ff;
          font-weight: bold;
        }
+       .label-status-yellow { color: #ffd86b !important; }
+       .label-status-green { color: #73ffb2 !important; }
+       .label-status-red { color: #ff7d7d !important; }
     `
     document.head.appendChild(style)
   }
@@ -1728,6 +2308,16 @@ const createModelLabel = (model, name, temperature, humidity, gpsLon, gpsLat, la
 
 const updateLabelFields = (entry, next) => {
   if (!entry?.fields) return
+  if (entry.fields.status && next.status != null) {
+    entry.fields.status.textContent = next.status
+    entry.fields.status.classList.remove('label-status-yellow', 'label-status-green', 'label-status-red')
+    entry.fields.status.classList.add(`label-status-${next.statusToken || 'yellow'}`)
+    if (entry.div) {
+      entry.div.classList.remove('label-box-yellow', 'label-box-green', 'label-box-red')
+      entry.div.classList.add(`label-box-${next.statusToken || 'yellow'}`)
+      applyLabelBoxTone(entry.div, next.statusToken || 'yellow')
+    }
+  }
   if (entry.fields.temperature && next.temperature != null) {
     entry.fields.temperature.textContent = `${next.temperature}°C`
   }
@@ -1931,52 +2521,11 @@ const createTrees = () => {
   }
 }
 
-const updateSignalUI = () => {
-  const signalList = document.getElementById('signalList')
-  if (!signalList) return
-
-  const stateText = {
-    'red': '禁止通行',
-    'green': '允许通行',
-    'yellow': '减速通行'
-  }
-
-  signalList.innerHTML = signals.map(signal => `
-    <div class="signal-item">
-      <div class="signal-light signal-${signal.state}"></div>
-      <div class="signal-info">
-        <div class="signal-line">
-          <span class="signal-name">${signal.name}</span>
-          <span class="signal-status signal-status-${signal.state}">${stateText[signal.state]}</span>
-        </div>
-      </div>
-    </div>
-  `).join('')
-}
+const updateSignalUI = () => {}
 
 const toggleSignals = () => {
-  const states = ['red', 'green', 'yellow']
-  signals.forEach(signal => {
-    const currentStateIndex = states.indexOf(signal.state)
-    signal.state = states[(currentStateIndex + 1) % states.length]
-    const color = getColorByState(signal.state)
-
-    signal.light.color.setHex(color)
-
-    if (signal.mesh) {
-      signal.mesh.traverse((child) => {
-        if (child.isMesh && child.material) {
-          if (child.material.emissive) {
-            child.material.emissive.setHex(color)
-          }
-          if (child.material.color) {
-            child.material.color.setHex(color)
-          }
-        }
-      })
-    }
-  })
-  updateSignalUI()
+  const currentIndex = SIGNAL_IDS.indexOf(selectedSignalId.value)
+  selectedSignalId.value = SIGNAL_IDS[(currentIndex + 1) % SIGNAL_IDS.length]
 }
 
 const trainAnimation = () => {
@@ -2025,11 +2574,16 @@ const updateUI = () => {
 
 // 更新信号灯参数（本地模拟）
 const updateSignalParams = async () => {
-  signalParams.value.temperature = Math.round((31 + Math.random() * 8) * 10) / 10
+  const base = selectedSignal.value
+  signalParams.value.temperature = Math.round((base.tempBase + Math.random() * 4) * 10) / 10
   signalParams.value.humidity = Math.round((21 + Math.random() * 4) * 10) / 10
   signalParams.value.light = Math.round(550 + Math.random() * 950)
-  signalParams.value.voltage = Math.round((216 + Math.random() * 8) * 10) / 10
-  signalParams.value.current = Math.round((1.8 + Math.random() * 0.8) * 100) / 100
+  signalParams.value.voltage = selectedSignalFaultActive.value
+    ? 0
+    : (signalHardwareReady.value ? Math.round((base.voltageBase - 2 + Math.random() * 4) * 10) / 10 : 0)
+  signalParams.value.current = selectedSignalFaultActive.value
+    ? 0
+    : (signalHardwareReady.value ? Math.round((base.currentBase - 0.2 + Math.random() * 0.4) * 100) / 100 : 0)
   signalParams.value.signal = Math.round(-58 + Math.random() * 10)
 
   // 恶劣天气模拟时：湿度与其它界面同步
@@ -2052,11 +2606,15 @@ const updateSignalParams = async () => {
   signalTwin.value.syncLatencyMs = latency
   signalTwin.value.dataFreshnessS = freshness
   signalTwin.value.healthScore = health
-  signalTwin.value.syncStatus = latency > 320 ? '延迟偏高' : '已同步'
-  signalTwin.value.interlocking = health < 70 ? '预警' : '正常'
-  signalTwin.value.workMode = latency > 320 ? '降级' : '自动'
+  signalTwin.value.syncStatus = telemetryConnected.value ? (latency > 320 ? '延迟偏高' : '已同步') : '未接入'
+  signalTwin.value.interlocking = selectedSignalFaultActive.value || trackFaultActive.value ? '预警' : (health < 70 ? '预警' : '正常')
+  signalTwin.value.workMode = selectedSignalFaultActive.value || trackFaultActive.value ? '故障演练' : (latency > 320 ? '降级' : '自动')
   signalTwin.value.predictedRulDays = Math.max(15, Math.round(220 - (99 - health) * 3.2))
 }
+
+watch(selectedSignalId, () => {
+  syncSignalTwin()
+}, { immediate: true })
 
 watch(
   [severeWeatherEnabled, syncedHumidity],
@@ -2120,12 +2678,28 @@ const animate = () => {
     }
   }
 
-  if (signalLabelEntry) {
-    updateLabelFields(signalLabelEntry, {
-      temperature: Math.round(Number(signalParams.value.temperature) * 10) / 10,
-      humidity: Math.round(Number(signalParams.value.humidity) * 10) / 10
+  signalCatalog.forEach((item, index) => {
+    const entry = signalLabelEntries.get(item.id)
+    if (!entry) return
+    const statusMeta = getSignalStatusMeta(item.id)
+    if (item.id === selectedSignal.value.id) {
+      updateLabelFields(entry, {
+        status: statusMeta.text,
+        statusToken: statusMeta.token,
+        temperature: Math.round(Number(signalParams.value.temperature) * 10) / 10,
+        humidity: Math.round(Number(signalParams.value.humidity) * 10) / 10
+      })
+      return
+    }
+    const drift = Math.sin((Date.now() / 1800) + index) * 0.9
+    const moisture = Math.cos((Date.now() / 2300) + index * 0.6) * 1.2
+    updateLabelFields(entry, {
+      status: statusMeta.text,
+      statusToken: statusMeta.token,
+      temperature: Math.round((item.tempBase + drift) * 10) / 10,
+      humidity: Math.round((23 + index * 0.8 + moisture) * 10) / 10
     })
-  }
+  })
 
   updateHumanoidSensorPanel()
   updateBoxSensorLabel()
@@ -2584,6 +3158,80 @@ onBeforeUnmount(() => {
   border: 1px solid rgba(255, 225, 119, 0.45);
 }
 
+.signal-off {
+  background: #585858;
+  color: #585858;
+  box-shadow: none;
+}
+
+.signal-status-off {
+  color: #f8d6d6;
+  background: rgba(120, 120, 120, 0.26);
+  border: 1px solid rgba(180, 180, 180, 0.35);
+}
+
+.signal-item-active {
+  border-left-color: #7ef9ff;
+  background: rgba(0, 160, 210, 0.26);
+  box-shadow: 0 0 18px rgba(0, 212, 255, 0.16);
+}
+
+.signal-meta-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.64);
+}
+
+.signal-select-wrap {
+  margin-bottom: 10px;
+}
+
+.signal-select {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(0, 200, 255, 0.28);
+  background: rgba(0, 70, 120, 0.22);
+  color: #e7fbff;
+  font-size: 14px;
+  outline: none;
+}
+
+.signal-select-meta {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 10px;
+  border-radius: 10px;
+  background: rgba(0, 100, 150, 0.08);
+  border: 1px solid rgba(0, 200, 255, 0.14);
+}
+
+.signal-select-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.signal-select-row strong {
+  font-size: 13px;
+  color: #d9f7ff;
+}
+
+.signal-select-row strong.ok {
+  color: #33ff99;
+}
+
+.signal-select-row strong.warn {
+  color: #ffcc66;
+}
+
 .twin-metrics {
   margin-top: 12px;
   padding: 10px;
@@ -2728,6 +3376,48 @@ onBeforeUnmount(() => {
   50% { box-shadow: 0 0 28px rgba(255, 50, 50, 0.32); }
 }
 
+.alarm-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.alarm-card {
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 200, 255, 0.18);
+  background: rgba(0, 90, 130, 0.12);
+}
+
+.alarm-card-danger {
+  border-color: rgba(255, 92, 92, 0.4);
+  background: rgba(120, 12, 12, 0.28);
+}
+
+.alarm-card-ok {
+  border-color: rgba(51, 255, 153, 0.25);
+  background: rgba(0, 80, 48, 0.18);
+}
+
+.alarm-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #f0fbff;
+}
+
+.alarm-desc {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.76);
+}
+
+.alarm-voice {
+  font-size: 12px;
+  color: #9ceeff;
+  line-height: 1.6;
+}
+
 .stat-item {
   display: flex;
   justify-content: space-between;
@@ -2743,6 +3433,65 @@ onBeforeUnmount(() => {
 .stat-value.highlight {
   color: #33ff33;
   text-shadow: 0 0 5px rgba(51, 255, 51, 0.5);
+}
+
+.shortcut-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.shortcut-card {
+  padding: 12px;
+  text-align: left;
+  border: 1px solid rgba(0, 200, 255, 0.24);
+  border-radius: 10px;
+  background: rgba(0, 70, 120, 0.16);
+  color: #dff9ff;
+  cursor: pointer;
+  transition: 0.25s ease;
+}
+
+.shortcut-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(0, 212, 255, 0.45);
+  box-shadow: 0 8px 18px rgba(0, 140, 200, 0.18);
+}
+
+.shortcut-title {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.shortcut-desc {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.key-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.key-chip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(0, 100, 150, 0.12);
+  border: 1px solid rgba(0, 200, 255, 0.16);
+  font-size: 12px;
+  color: #d7f7ff;
+}
+
+.key-chip b {
+  min-width: 18px;
+  color: #00d4ff;
 }
 
 .progress-bar {
@@ -3265,6 +4014,150 @@ onBeforeUnmount(() => {
   font-size: 13px;
   font-weight: bold;
   color: #00d4ff;
+}
+
+.device-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 10, 20, 0.68);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 240;
+  backdrop-filter: blur(8px);
+}
+
+.device-modal {
+  width: min(760px, calc(100vw - 80px));
+  border-radius: 18px;
+  border: 1px solid rgba(0, 200, 255, 0.3);
+  background: linear-gradient(180deg, rgba(3, 28, 48, 0.96), rgba(2, 18, 32, 0.96));
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+  padding: 22px;
+  color: #fff;
+}
+
+.device-modal-header,
+.device-modal-footer,
+.device-modal-actions,
+.device-modal-time-row,
+.device-modal-stat {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.device-modal-header {
+  gap: 16px;
+}
+
+.device-modal-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: #e8fbff;
+}
+
+.device-modal-subtitle {
+  margin-top: 4px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.device-modal-close {
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 200, 255, 0.25);
+  background: rgba(0, 120, 170, 0.16);
+  color: #dff9ff;
+  cursor: pointer;
+}
+
+.device-modal-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 18px 0;
+}
+
+.device-modal-stat {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(0, 200, 255, 0.14);
+  background: rgba(0, 85, 130, 0.12);
+  font-size: 12px;
+  gap: 8px;
+}
+
+.device-modal-stat strong {
+  color: #7ef9ff;
+  font-size: 14px;
+}
+
+.device-modal-chart {
+  border-radius: 14px;
+  padding: 14px;
+  background: rgba(0, 20, 40, 0.6);
+  border: 1px solid rgba(0, 200, 255, 0.12);
+}
+
+.device-modal-axis-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+  font-size: 11px;
+  color: rgba(220, 242, 255, 0.72);
+}
+
+.device-grid-line {
+  stroke: rgba(255, 255, 255, 0.1);
+  stroke-width: 1;
+}
+
+.device-axis-text {
+  fill: rgba(255, 255, 255, 0.72);
+  font-size: 9px;
+  text-anchor: start;
+}
+
+.device-modal-svg {
+  width: 100%;
+  height: 240px;
+}
+
+.device-modal-polyline {
+  fill: none;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-dasharray: 6 8;
+  animation: modalLineFlow 1.6s linear infinite;
+}
+
+@keyframes modalLineFlow {
+  from { stroke-dashoffset: 0; }
+  to { stroke-dashoffset: -28; }
+}
+
+.device-modal-time-row {
+  margin-top: 8px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.device-modal-footer {
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.device-modal-note {
+  flex: 1;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #d7f7ff;
+}
+
+.device-modal-actions {
+  gap: 10px;
 }
 
 </style>

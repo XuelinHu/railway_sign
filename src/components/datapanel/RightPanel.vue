@@ -35,13 +35,15 @@
       </div>
       <div class="equipment-list">
         <div
-          v-for="eq in equipment"
+          v-for="eq in displayEquipment"
           :key="eq.type"
           class="equipment-item"
+          :class="{ clickable: eq.clickable }"
+          @click="handleEquipmentClick(eq)"
         >
           <div class="eq-header">
             <span class="eq-icon">{{ equipmentIcon(eq.icon) }}</span>
-            <span class="eq-name">{{ eq.type }}</span>
+            <span class="eq-name">{{ eq.displayType }}</span>
             <span class="eq-online">{{ eq.onlineRate }}%</span>
           </div>
           <div class="eq-progress">
@@ -65,6 +67,7 @@
             <span class="warning">⚠ {{ eq.warning }}</span>
             <span class="error">✗ {{ eq.error }}</span>
           </div>
+          <div v-if="eq.clickable" class="eq-hint">点击查看{{ eq.displayType }}实时波动曲线</div>
         </div>
       </div>
     </div>
@@ -266,6 +269,59 @@
         </div>
       </div>
     </div>
+
+    <div v-if="deviceDialog.visible" class="device-dialog-mask" @click.self="closeDeviceDialog">
+      <div class="device-dialog">
+        <div class="device-dialog-header">
+          <div>
+            <div class="device-dialog-title">{{ deviceDialog.title }}</div>
+            <div class="device-dialog-subtitle">秒级刷新监测界面 | {{ currentTimeLabel }}</div>
+          </div>
+          <div class="device-dialog-actions">
+            <button v-if="deviceDialog.type === 'track' && trackFaultActive" class="dialog-btn" @click="restoreTrackFault">异常消除</button>
+            <button class="dialog-btn" @click="closeDeviceDialog">关闭</button>
+          </div>
+        </div>
+        <div class="device-toolbar">
+          <span class="toolbar-chip">{{ deviceDialog.station }}</span>
+          <span class="toolbar-chip">{{ deviceDialog.type === 'track' ? '1435调谐单元' : '1495道岔执行单元' }}</span>
+          <span class="toolbar-chip" :class="trackFaultActive && deviceDialog.type === 'track' ? 'danger' : 'ok'">
+            {{ trackFaultActive && deviceDialog.type === 'track' ? '故障告警' : '运行正常' }}
+          </span>
+        </div>
+        <div class="device-summary-grid">
+          <div v-for="item in deviceDialogStats" :key="item.label" class="device-summary-item">
+            <span>{{ item.label }}</span>
+            <strong>{{ item.value }}</strong>
+          </div>
+        </div>
+        <div class="monitor-chart-panel" v-for="chart in deviceDialogCharts" :key="chart.key">
+          <div class="monitor-chart-title">{{ chart.title }}</div>
+          <div class="monitor-axis-meta">
+            <span>{{ chart.yAxisTitle }}</span>
+            <span>{{ chart.xAxisTitle }}</span>
+          </div>
+          <svg viewBox="0 0 700 180" class="monitor-chart-svg">
+            <text v-for="tick in chart.yTicks" :key="`${chart.key}-${tick.y}`" x="6" :y="tick.y + 4" class="monitor-axis-text">{{ tick.label }}</text>
+            <line x1="48" y1="28" x2="676" y2="28" class="monitor-grid-line" />
+            <line x1="48" y1="82" x2="676" y2="82" class="monitor-grid-line" />
+            <line x1="48" y1="136" x2="676" y2="136" class="monitor-grid-line" />
+            <line x1="48" y1="162" x2="676" y2="162" class="monitor-axis-line" />
+            <polygon :points="chart.areaPoints" :fill="chart.fill" />
+            <polyline :points="chart.linePoints" :stroke="chart.color" class="monitor-polyline" />
+            <circle v-for="point in chart.points" :key="`${chart.key}-${point.x}`" :cx="point.x" :cy="point.y" r="2.2" :fill="chart.color" />
+          </svg>
+          <div class="monitor-time-row">
+            <span>{{ chart.firstLabel }}</span>
+            <span>{{ chart.midLabel }}</span>
+            <span>{{ chart.lastLabel }}</span>
+          </div>
+        </div>
+        <div class="device-dialog-note">
+          {{ deviceDialogNote }}
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -279,15 +335,24 @@ const security = ref(getSecurityData())
 const workOrders = ref(getWorkOrderData())
 const activeAlarmTab = ref('all')
 const updateTimer = ref(null)
+const currentTimeLabel = ref(new Date().toLocaleString('zh-CN'))
+const realtimeTick = ref(Date.now())
+const trackFaultActive = ref(false)
+const latestVoiceText = ref('')
+const deviceDialog = ref({
+  visible: false,
+  type: 'switch',
+  title: '1495道岔监测',
+  station: 'K149+525'
+})
 
 const tickerItems = [
-  '西南山地上行咽喉区间出现轻雾，当前设备标识已脱敏展示。',
-  '北侧桥隧结合段风速维持 3 级以内，轨旁箱体湿度处于正常范围。',
-  '东坡隧道口至谷地缓坡区间采用匿名区段编码，不展示真实站名与真实人员信息。',
-  '坡脚联络线信号机巡检记录为演示数据，检修班组名称已做泛化处理。',
-  '临水弯道区段视频巡检为模拟画面，地理描述保留地貌特征但不对应真实坐标。',
-  '上行 K 区段传感器在线率稳定，面板内设备编号为资产脱敏编码。',
-  '高填方路基边坡监测数据来自本地仿真，不含真实单位名称与真实位置。'
+  '1491、1493、1495、1497 信号机在线率持续稳定，状态数据按秒级刷新。',
+  '1495 信号机湿度、温度与电压监测曲线联动展示，适用于故障演练回放。',
+  '1495 道岔动作电流、动作电压保持秒级采样，检修记录自动进入滚动播报。',
+  '1435 调谐单元监测界面支持秒级波动与 L 键故障注入演示。',
+  '轨道电路、电源屏、信号机弹窗均与当前系统时间同步刷新。',
+  '当前区间演示对象为 1491-1497，所有编号已按最新命名统一。'
 ]
 
 const tickerItemsLoop = computed(() => [...tickerItems, ...tickerItems])
@@ -301,6 +366,26 @@ const alarmTabs = [
   { label: '信息', value: 'info' }
 ]
 
+const displayEquipment = computed(() => {
+  const typeMap = {
+    signal: { displayType: '1491-1497信号机', clickable: false },
+    switch: { displayType: '1495道岔', clickable: true, dialogType: 'switch' },
+    track: { displayType: '1495轨道电路', clickable: true, dialogType: 'track' },
+    battery: { displayType: 'UPS电源', clickable: false },
+    network: { displayType: '通信设备', clickable: false },
+    camera: { displayType: '监控摄像头', clickable: false },
+    train: { displayType: '列车检测器', clickable: false },
+    lightning: { displayType: '防雷设备', clickable: false }
+  }
+
+  return equipment.value.map((eq) => ({
+    ...eq,
+    displayType: typeMap[eq.icon]?.displayType || eq.type,
+    clickable: Boolean(typeMap[eq.icon]?.clickable),
+    dialogType: typeMap[eq.icon]?.dialogType || null
+  }))
+})
+
 // 设备统计
 const totalDevices = computed(() => equipment.value.reduce((sum, eq) => sum + eq.total, 0))
 const normalDevices = computed(() => equipment.value.reduce((sum, eq) => sum + eq.normal, 0))
@@ -308,12 +393,216 @@ const warningDevices = computed(() => equipment.value.reduce((sum, eq) => sum + 
 const errorDevices = computed(() => equipment.value.reduce((sum, eq) => sum + eq.error, 0))
 
 // 告警数量
-const alarmCount = computed(() => alarms.value.filter(a => !a.handled).length)
+const normalizedAlarms = computed(() => {
+  const base = [
+    {
+      id: 'alarm-signal-1495',
+      level: 'info',
+      title: '1495信号机巡检提示',
+      desc: '1495信号机近 24 小时运行平稳，建议继续观察湿度与灯丝寿命趋势。',
+      time: new Date(realtimeTick.value - 8 * 60 * 1000).toLocaleString('zh-CN'),
+      source: '1495信号机',
+      handled: false
+    },
+    {
+      id: 'alarm-switch-1495',
+      level: 'warning',
+      title: '1495道岔动作波动预警',
+      desc: '道岔动作电流产生轻微波动，建议点开实时曲线进一步核查。',
+      time: new Date(realtimeTick.value - 3 * 60 * 1000).toLocaleString('zh-CN'),
+      source: '1495道岔',
+      handled: false
+    }
+  ]
+
+  if (trackFaultActive.value) {
+    base.unshift({
+      id: 'alarm-track-1435',
+      level: 'critical',
+      title: '1435调谐单元参数异常告警',
+      desc: '告警内容：谐振频率偏离设计值。关联分析：疑似电容被击穿或受潮。建议处置：更换1435调谐单元。',
+      time: new Date(realtimeTick.value).toLocaleString('zh-CN'),
+      source: '1435调谐单元',
+      handled: false
+    })
+  }
+
+  return base
+})
+
+const alarmCount = computed(() => normalizedAlarms.value.filter(a => !a.handled).length)
 
 // 过滤告警
 const filteredAlarms = computed(() => {
-  if (activeAlarmTab.value === 'all') return alarms.value.slice(0, 6)
-  return alarms.value.filter(a => a.level === activeAlarmTab.value).slice(0, 6)
+  if (activeAlarmTab.value === 'all') return normalizedAlarms.value.slice(0, 6)
+  return normalizedAlarms.value.filter(a => a.level === activeAlarmTab.value).slice(0, 6)
+})
+
+const handleEquipmentClick = (eq) => {
+  if (!eq.clickable || !eq.dialogType) return
+  openDeviceDialog(eq.dialogType)
+}
+
+const openDeviceDialog = (type) => {
+  deviceDialog.value = {
+    visible: true,
+    type,
+    title: type === 'track' ? '1435调谐单元监测' : '1495道岔监测',
+    station: 'K149+525'
+  }
+}
+
+const closeDeviceDialog = () => {
+  deviceDialog.value.visible = false
+}
+
+const speakAlarm = (text) => {
+  latestVoiceText.value = text
+  if (!('speechSynthesis' in window)) return
+  try {
+    window.speechSynthesis.cancel()
+    const utterance = new SpeechSynthesisUtterance(text)
+    utterance.lang = 'zh-CN'
+    utterance.rate = 1
+    utterance.pitch = 1
+    window.speechSynthesis.speak(utterance)
+  } catch (error) {
+    console.warn('语音播报失败:', error)
+  }
+}
+
+const restoreTrackFault = () => {
+  trackFaultActive.value = false
+}
+
+const handleKeydown = (event) => {
+  if (!event || event.repeat) return
+  const key = String(event.key || '')
+  const tag = String(event.target?.tagName || '').toLowerCase()
+  if (tag === 'input' || tag === 'textarea' || tag === 'select') return
+
+  if (key === 'l' || key === 'L') {
+    trackFaultActive.value = true
+    openDeviceDialog('track')
+    speakAlarm('监测到1435调谐单元参数异常，谐振频率偏离设计值。关联分析为疑似电容被击穿或受潮，建议更换1435调谐单元。')
+  }
+}
+
+const formatChartPoints = (series, minY = 24, maxY = 156, unit = '') => {
+  const values = series.map((item) => item.value)
+  const min = Math.min(...values, 0)
+  const max = Math.max(...values, 1)
+  const range = Math.max(1, max - min)
+  const points = series.map((item, index) => {
+    const x = 48 + index * ((676 - 48) / Math.max(1, series.length - 1))
+    const ratio = (item.value - min) / range
+    const y = maxY - ratio * (maxY - minY)
+    return {
+      x: Math.round(x * 10) / 10,
+      y: Math.round(y * 10) / 10,
+      label: item.label,
+      value: item.value
+    }
+  })
+  const linePoints = points.map((point) => `${point.x},${point.y}`).join(' ')
+  const areaPoints = points.length ? `${points[0].x},162 ${linePoints} ${points[points.length - 1].x},162` : ''
+  return {
+    points,
+    linePoints,
+    areaPoints,
+    firstLabel: points[0]?.label || '--',
+    midLabel: points[Math.floor(points.length / 2)]?.label || '--',
+    lastLabel: points[points.length - 1]?.label || '--',
+    yTicks: [
+      { y: 28, label: `${max.toFixed(2)} ${unit}` },
+      { y: 82, label: `${((max + min) / 2).toFixed(2)} ${unit}` },
+      { y: 136, label: `${min.toFixed(2)} ${unit}` }
+    ]
+  }
+}
+
+const DIALOG_HISTORY_POINTS = 33
+const DIALOG_HISTORY_INTERVAL_MS = 15 * 60 * 1000
+
+const buildSeries = (base, amplitude, phase, faulted = false) => {
+  const now = realtimeTick.value
+  return Array.from({ length: DIALOG_HISTORY_POINTS }, (_, index) => {
+    const offset = (DIALOG_HISTORY_POINTS - 1 - index) * DIALOG_HISTORY_INTERVAL_MS
+    const sampleAt = now - offset
+    const tHours = sampleAt / (60 * 60 * 1000)
+    const ratio = index / Math.max(1, DIALOG_HISTORY_POINTS - 1)
+    const fluctuation = Math.sin((tHours + phase) * 3.1) * amplitude + Math.cos((tHours + phase) * 4.2) * (amplitude * 0.45)
+    let value = base + fluctuation
+    if (faulted && ratio > 0.55) {
+      const tailFluctuation = Math.sin((tHours + phase) * 5.4) * Math.max(0.06, amplitude * 0.08)
+      value = Math.max(0.08, base * 0.015 + tailFluctuation)
+    }
+    return {
+      label: new Date(sampleAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
+      value: Math.round(value * 100) / 100
+    }
+  })
+}
+
+const deviceDialogCharts = computed(() => {
+  const isTrack = deviceDialog.value.type === 'track'
+  const faulted = isTrack && trackFaultActive.value
+
+  const firstSeries = isTrack
+    ? buildSeries(55.0, 1.1, 0.2, faulted)
+    : buildSeries(109.6, 2.4, 0.1, false)
+  const secondSeries = isTrack
+    ? buildSeries(33.0, 0.55, 0.8, faulted)
+    : buildSeries(104.8, 2.8, 0.6, false)
+
+  return [
+    {
+      key: 'top',
+      title: isTrack ? '电容值变化曲线' : '定位动作曲线',
+      yAxisTitle: isTrack ? '纵坐标：电容值（μF）' : '纵坐标：定位电压（V）',
+      xAxisTitle: '横坐标：时间（近8小时）',
+      color: faulted ? '#ff4d4f' : '#2d8cff',
+      fill: faulted ? 'rgba(255,77,79,0.18)' : 'rgba(45,140,255,0.16)',
+      ...formatChartPoints(firstSeries, 24, 156, isTrack ? 'μF' : 'V')
+    },
+    {
+      key: 'bottom',
+      title: isTrack ? '电感值变化曲线' : '反位动作曲线',
+      yAxisTitle: isTrack ? '纵坐标：电感值（μH）' : '纵坐标：反位电压（V）',
+      xAxisTitle: '横坐标：时间（近8小时）',
+      color: faulted ? '#ff7a45' : '#37c978',
+      fill: faulted ? 'rgba(255,122,69,0.14)' : 'rgba(55,201,120,0.14)',
+      ...formatChartPoints(secondSeries, 24, 156, isTrack ? 'μH' : 'V')
+    }
+  ]
+})
+
+const deviceDialogStats = computed(() => {
+  if (deviceDialog.value.type === 'track') {
+    return [
+      { label: '正常电容值', value: '55.00 uF' },
+      { label: '允许范围', value: '52.25 ~ 57.75 uF' },
+      { label: '正常电感值', value: '33.00 uH（允许±3%）' },
+      { label: '当前状态', value: trackFaultActive.value ? '参数异常告警' : '运行正常' }
+    ]
+  }
+
+  return [
+    { label: '定位电压', value: '109.6 V' },
+    { label: '反位电压', value: '104.8 V' },
+    { label: '动作电流', value: '1.64 A' },
+    { label: '状态', value: '运行正常' }
+  ]
+})
+
+const deviceDialogNote = computed(() => {
+  if (deviceDialog.value.type === 'track' && trackFaultActive.value) {
+    return '参数异常告警。1435调谐单元告警内容：谐振频率偏离设计值。关联分析：疑似电容被击穿或受潮。建议处置：更换1435调谐单元。电气参数变化曲线以正常电容值 55 μF（允许±5%，52.25 ~ 57.75 μF）和正常电感值 33 μH（允许±3%）为参考。'
+  }
+  if (deviceDialog.value.type === 'track') {
+    return '电气参数变化曲线按秒级推进，参考正常电容值 55 μF（允许±5%，52.25 ~ 57.75 μF）与正常电感值 33 μH（允许±3%）。按 L 键可触发 1435 调谐单元异常演示。'
+  }
+  return '道岔监测界面按秒级刷新动作曲线，便于观察定位与反位过程中的电压、电流波动。'
 })
 
 // 安全评分颜色
@@ -361,17 +650,23 @@ const formatTime = (timeStr) => {
 
 // 定时更新
 onMounted(() => {
+  window.addEventListener('keydown', handleKeydown)
   updateTimer.value = setInterval(() => {
     equipment.value = getEquipmentData()
-    alarms.value = getAlarmData()
     security.value = getSecurityData()
     workOrders.value = getWorkOrderData()
-  }, 5000)
+    realtimeTick.value = Date.now()
+    currentTimeLabel.value = new Date().toLocaleString('zh-CN')
+  }, 1000)
 })
 
 onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeydown)
   if (updateTimer.value) {
     clearInterval(updateTimer.value)
+  }
+  if ('speechSynthesis' in window) {
+    window.speechSynthesis.cancel()
   }
 })
 </script>
@@ -512,6 +807,18 @@ onUnmounted(() => {
   padding: 10px;
 }
 
+.equipment-item.clickable {
+  cursor: pointer;
+  transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease;
+  border: 1px solid rgba(0, 200, 255, 0.18);
+}
+
+.equipment-item.clickable:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 22px rgba(0, 140, 200, 0.22);
+  border-color: rgba(0, 212, 255, 0.42);
+}
+
 .eq-header {
   display: flex;
   align-items: center;
@@ -564,6 +871,12 @@ onUnmounted(() => {
 .eq-stats .normal { color: #00ff88; }
 .eq-stats .warning { color: #ffaa00; }
 .eq-stats .error { color: #ff6b6b; }
+
+.eq-hint {
+  margin-top: 8px;
+  font-size: 11px;
+  color: rgba(175, 230, 255, 0.76);
+}
 
 /* 告警区域 */
 .alarm-tabs {
@@ -958,5 +1271,192 @@ onUnmounted(() => {
 .order-status.处理中 { background: rgba(0, 200, 255, 0.2); color: #00d4ff; }
 .order-status.已完成 { background: rgba(0, 255, 136, 0.2); color: #00ff88; }
 .order-status.已关闭 { background: rgba(255, 255, 255, 0.1); color: #888; }
+
+.device-dialog-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 8, 20, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 120;
+  backdrop-filter: blur(8px);
+}
+
+.device-dialog {
+  width: min(920px, calc(100vw - 60px));
+  max-height: calc(100vh - 60px);
+  overflow: auto;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #0b2340 0%, #08172a 100%);
+  border: 1px solid rgba(0, 200, 255, 0.26);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.42);
+  padding: 18px 20px 20px;
+}
+
+.device-dialog-header,
+.device-dialog-actions,
+.monitor-time-row,
+.device-toolbar {
+  display: flex;
+  align-items: center;
+}
+
+.device-dialog-header {
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.device-dialog-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: #f4fbff;
+}
+
+.device-dialog-subtitle {
+  margin-top: 4px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.device-dialog-actions {
+  gap: 10px;
+}
+
+.dialog-btn {
+  padding: 7px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 200, 255, 0.25);
+  background: rgba(0, 120, 170, 0.16);
+  color: #dff9ff;
+  cursor: pointer;
+}
+
+.device-toolbar {
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+
+.toolbar-chip {
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  color: #e8fbff;
+  background: rgba(0, 90, 130, 0.22);
+  border: 1px solid rgba(0, 200, 255, 0.18);
+}
+
+.toolbar-chip.ok {
+  color: #73ffb2;
+}
+
+.toolbar-chip.danger {
+  color: #ffd5d5;
+  background: rgba(170, 25, 25, 0.32);
+  border-color: rgba(255, 90, 90, 0.4);
+}
+
+.device-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.device-summary-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(0, 50, 100, 0.24);
+  border: 1px solid rgba(0, 200, 255, 0.14);
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 12px;
+}
+
+.device-summary-item strong {
+  color: #fff;
+  font-size: 16px;
+}
+
+.monitor-chart-panel {
+  margin-top: 14px;
+  padding: 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(120, 180, 255, 0.18);
+}
+
+.monitor-chart-title {
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #e8fbff;
+  text-align: center;
+}
+
+.monitor-axis-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+  font-size: 12px;
+  color: rgba(220, 242, 255, 0.72);
+}
+
+.monitor-chart-svg {
+  width: 100%;
+  height: 180px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.01));
+}
+
+.monitor-grid-line {
+  stroke: rgba(255, 255, 255, 0.1);
+  stroke-width: 1;
+}
+
+.monitor-axis-text {
+  fill: rgba(255, 255, 255, 0.74);
+  font-size: 11px;
+  text-anchor: start;
+}
+
+.monitor-axis-line {
+  stroke: rgba(255, 255, 255, 0.16);
+  stroke-width: 1;
+}
+
+.monitor-polyline {
+  fill: none;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-dasharray: 6 8;
+  animation: dialogLineFlow 1.6s linear infinite;
+}
+
+.monitor-time-row {
+  justify-content: space-between;
+  margin-top: 8px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.device-dialog-note {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: rgba(0, 90, 130, 0.14);
+  border: 1px solid rgba(0, 200, 255, 0.14);
+  color: rgba(235, 248, 255, 0.9);
+  line-height: 1.7;
+  font-size: 13px;
+}
+
+@keyframes dialogLineFlow {
+  from { stroke-dashoffset: 0; }
+  to { stroke-dashoffset: -28; }
+}
 </style>
 
