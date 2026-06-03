@@ -1,9 +1,9 @@
 export const DEMO_SCENARIO = {
-  regionName: '铁路信号设备数字孪生系统',
+  regionName: '铁路信号机数字孪生监测与可视化分析平台V1.0',
   intervalName: '1491-1497 区间演示',
   stationStart: '1491',
   stationEnd: '1497',
-  railwayName: '铁路信号设备数字孪生系统',
+  railwayName: '铁路信号机数字孪生监测与可视化分析平台V1.0',
   weatherLocation: '铁路沿线',
   heroDeviceName: '1495信号机',
   humidityIncident: {

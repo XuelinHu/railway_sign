@@ -18,7 +18,7 @@
       <div class="header-left">
         <div class="logo">
           <span class="logo-icon">🚄</span>
-          <span class="logo-text">铁路信号设备数字孪生系统</span>
+          <span class="logo-text">铁路信号机数字孪生监测与可视化分析平台V1.0</span>
         </div>
       </div>
       <div class="header-center">
@@ -143,7 +143,7 @@
       </div>
       <div class="footer-center">
         <span class="version">v2.0.0</span>
-        <span class="copyright">© 2024 铁路信号设备数字孪生系统</span>
+        <span class="copyright">© 2024 铁路信号机数字孪生监测与可视化分析平台V1.0</span>
       </div>
       <div class="footer-right">
         <span class="update-time">数据更新: {{ lastUpdate }}</span>

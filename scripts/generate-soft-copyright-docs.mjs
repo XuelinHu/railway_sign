@@ -10,7 +10,7 @@ import {
 
 const root = process.cwd()
 const docsDir = path.join(root, 'docs')
-const finalName = '铁路信号设备数字孪生系统'
+const finalName = '铁路信号机数字孪生监测与可视化分析平台V1.0'
 const version = 'V1.0'
 const today = new Date().toLocaleDateString('zh-CN')
 
@@ -400,7 +400,7 @@ const softwareNameDoc = `# 软件名称候选与首选说明
 ## 1. 候选名称
 
 1. 铁路信号数字孪生监测与可视化分析平台
-2. 铁路信号设备数字孪生监测平台
+2. 铁路信号机数字孪生监测平台
 3. 铁路信号运行状态可视化监测分析系统
 4. 轨道交通信号设备数字孪生展示与预警平台
 5. 山区铁路信号智能监测可视化平台
@@ -681,7 +681,7 @@ const designDoc = `# ${finalName}软件设计说明书
 
 ### 2.1 建设目标
 
-- 建立铁路信号设备数字孪生展示能力。
+- 建立铁路信号机数字孪生展示能力。
 - 建立铁路区间地理态势三维展示能力。
 - 建立恶劣天气、湿度异常和人员靠近等演练能力。
 - 建立前端综合可视化分析与告警联动展示能力。
