@@ -6,6 +6,7 @@ import fontkit from '@pdf-lib/fontkit'
 
 const root = process.cwd()
 const docsDir = path.join(root, 'docs')
+const registeredSoftwareName = '铁路信号机数字孪生监测与可视化分析平台V1.0'
 
 const runNodeScript = (script, args = []) => new Promise((resolve, reject) => {
   const child = spawn(process.execPath, [script, ...args], {
@@ -44,8 +45,9 @@ const loadDocMeta = async (markdownPath, fallbackTitle) => {
     .trim()
 
   return {
-    softwareName: softwareName || fallbackTitle,
-    version: packageJson.version || '1.0.0'
+    softwareName: registeredSoftwareName || softwareName || fallbackTitle,
+    version: packageJson.version || '1.0.0',
+    headerText: registeredSoftwareName || `${softwareName || fallbackTitle} V${packageJson.version || '1.0.0'}`
   }
 }
 
@@ -107,7 +109,8 @@ const stampFinalPdf = async (targetPath, meta, fontBytes) => {
   const pageCount = pdf.getPageCount()
   const topBandHeight = mmToPt(18)
   const bottomBandHeight = mmToPt(15)
-  const headerText = `${meta.softwareName} V${meta.version}`
+  const headerText = meta.headerText || `${meta.softwareName} V${meta.version}`
+  const headerVersionMatch = headerText.match(/^(.*?)(V\d+(?:\.\d+)*)$/)
   const headerFontSize = 10.5
   const footerFontSize = 10
   const footerY = mmToPt(6.5)
@@ -123,7 +126,11 @@ const stampFinalPdf = async (targetPath, meta, fontBytes) => {
     const pageNoText = `${index + 1} / ${pageCount}`
     const pageNoTextWidth = pageCountTextWidthCache.get(pageNoText) || latinFont.widthOfTextAtSize(pageNoText, footerFontSize)
     pageCountTextWidthCache.set(pageNoText, pageNoTextWidth)
-    const headerTextWidth = headerTextWidthCache.get(headerText) || chineseFont.widthOfTextAtSize(headerText, headerFontSize)
+    const headerTextWidth = headerTextWidthCache.get(headerText) || (
+      headerVersionMatch
+        ? chineseFont.widthOfTextAtSize(headerVersionMatch[1], headerFontSize) + latinFont.widthOfTextAtSize(headerVersionMatch[2], headerFontSize)
+        : chineseFont.widthOfTextAtSize(headerText, headerFontSize)
+    )
     headerTextWidthCache.set(headerText, headerTextWidth)
 
     page.drawRectangle({
@@ -156,13 +163,34 @@ const stampFinalPdf = async (targetPath, meta, fontBytes) => {
       color: lineColor
     })
 
-    page.drawText(headerText, {
-      x: (width - headerTextWidth) / 2,
-      y: headerY,
-      size: headerFontSize,
-      font: chineseFont,
-      color: textColor
-    })
+    if (headerVersionMatch) {
+      const startX = (width - headerTextWidth) / 2
+      const namePart = headerVersionMatch[1]
+      const versionPart = headerVersionMatch[2]
+      const nameWidth = chineseFont.widthOfTextAtSize(namePart, headerFontSize)
+      page.drawText(namePart, {
+        x: startX,
+        y: headerY,
+        size: headerFontSize,
+        font: chineseFont,
+        color: textColor
+      })
+      page.drawText(versionPart, {
+        x: startX + nameWidth,
+        y: headerY,
+        size: headerFontSize,
+        font: latinFont,
+        color: textColor
+      })
+    } else {
+      page.drawText(headerText, {
+        x: (width - headerTextWidth) / 2,
+        y: headerY,
+        size: headerFontSize,
+        font: chineseFont,
+        color: textColor
+      })
+    }
 
     page.drawText(pageNoText, {
       x: (width - pageNoTextWidth) / 2,

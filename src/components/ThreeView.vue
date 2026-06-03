@@ -218,7 +218,7 @@
       <div class="panel-section">
         <h2 class="panel-title">
           <span class="title-icon">🎮</span>
-          <span class="title-text">铁路信号设备数字孪生系统</span>
+          <span class="title-text">铁路信号机数字孪生监测与可视化分析平台V1.0</span>
           <span class="title-decorator"></span>
         </h2>
         <div class="stat-item">
