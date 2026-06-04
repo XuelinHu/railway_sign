@@ -4,7 +4,7 @@
   <img height="20" src="https://img.shields.io/badge/Vite-7.3.1-%23646FF" />
   <img height="20" src="https://img.shields.io/badge/Cesium-1.137.0-%23ff00ff" />
   <img height="20" src="https://img.shields.io/badge/Three.js-0.182.0-%23ffffff" />
-  <img height="20" src="https://img.shields.io/badge/License-ISC-blue" />
+  <img height="20" src="https://img.shields.io/badge/License-GPL--2.0-blue" />
   <img height="20" src="https://img.shields.io/badge/platform-web-%23ff69b4" />
   <img height="20" src="https://img.shields.io/badge/status-active-success" />
 </p>
@@ -197,7 +197,7 @@ Cesium.Ion.defaultAccessToken = 'YOUR_TOKEN_HERE'
 
 ## 📄 许可证
 
-[ISC](LICENSE)
+本项目使用 GNU General Public License v2.0（GPL-2.0）开源，详见 [LICENSE](LICENSE)。
 
 ## 📮 联系方式
 
