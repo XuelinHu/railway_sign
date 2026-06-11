@@ -1,12 +1,13 @@
 # 🚂 山区铁道信号灯数字孪生系统
 
 <p align="center">
-  <img height="20" src="https://img.shields.io/badge/Vite-7.3.1-%23646FF" />
-  <img height="20" src="https://img.shields.io/badge/Cesium-1.137.0-%23ff00ff" />
-  <img height="20" src="https://img.shields.io/badge/Three.js-0.182.0-%23ffffff" />
-  <img height="20" src="https://img.shields.io/badge/License-GPL--2.0-blue" />
-  <img height="20" src="https://img.shields.io/badge/platform-web-%23ff69b4" />
-  <img height="20" src="https://img.shields.io/badge/status-active-success" />
+  <img height="20" alt="Vue 3.5.28" src="https://img.shields.io/badge/vue-3.5.28-4FC08D" />
+  <img height="20" alt="Vite 7.3.1" src="https://img.shields.io/badge/vite-7.3.1-646CFF" />
+  <img height="20" alt="CesiumJS 1.137.0" src="https://img.shields.io/badge/cesiumjs-1.137.0-6CADDF" />
+  <img height="20" alt="Three.js 0.182.0" src="https://img.shields.io/badge/three.js-0.182.0-000000" />
+  <img height="20" alt="ECharts 6.0.0" src="https://img.shields.io/badge/echarts-6.0.0-AA344D" />
+  <img height="20" alt="MQTT 5.14.1" src="https://img.shields.io/badge/mqtt-5.14.1-660066" />
+  <img height="20" alt="License GPL-2.0" src="https://img.shields.io/badge/license-GPL--2.0-3DA639" />
 </p>
 
 基于 Vite + Cesium + Three.js 的山区铁道信号灯数字孪生可视化系统，提供真实地理信息和精细3D模型展示。
