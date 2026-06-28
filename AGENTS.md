@@ -6,3 +6,7 @@
 - 修改前先阅读 `AGENT.md`。
 - 编辑内容需与其中描述的技术栈与代码模式保持一致。
 - 若项目结构、命令或环境变量发生变化，请同步更新 `AGENT.md`。
+
+## GitHub Commit Language
+
+- Use English for all GitHub commit messages and pull/push related commit notes.
