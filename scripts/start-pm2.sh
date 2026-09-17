@@ -9,9 +9,13 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 WEB_NAME="${PM2_WEB_NAME:-railway-sign-web}"
 TELEMETRY_NAME="${PM2_TELEMETRY_NAME:-railway-sign-telemetry}"
+API_NAME="${PM2_API_NAME:-railway-sign-api}"
+VOICE_NAME="${PM2_VOICE_NAME:-railway-sign-voice}"
 WEB_HOST="${WEB_HOST:-0.0.0.0}"
 WEB_PORT="${WEB_PORT:-4028}"
 TELEMETRY_PORT="${TELEMETRY_PORT:-8036}"
+API_PORT="${API_PORT:-8037}"
+VOICE_PORT="${VOICE_PORT:-8039}"
 
 cd "${PROJECT_ROOT}"
 
@@ -21,22 +25,30 @@ command_exists() {
 
 usage() {
   cat <<'EOF'
-Usage: ./scripts/start-pm2.sh [all|web|telemetry]
+Usage: ./scripts/start-pm2.sh [all|web|api|voice|telemetry]
 
 Default mode:
   web         Build and start only the web preview service.
 
 Modes:
-  all         Build and start both the web preview service and telemetry bridge.
+  all         Build and start web preview, unified API, voice sidecar and telemetry bridge.
   web         Build and start only the web preview service.
+  api         Start only the unified API (auth + admin + AI + telemetry ingest).
+  voice       Start only the local voice sidecar (ASR + TTS, Python).
   telemetry   Start only the telemetry bridge.
 
 Environment variables:
   PM2_WEB_NAME        PM2 process name for the web service. Default: railway-sign-web
   PM2_TELEMETRY_NAME  PM2 process name for the telemetry service. Default: railway-sign-telemetry
+  PM2_API_NAME        PM2 process name for the unified API. Default: railway-sign-api
+  PM2_VOICE_NAME      PM2 process name for the voice sidecar. Default: railway-sign-voice
   WEB_HOST            Host used by vite preview. Default: 0.0.0.0
   WEB_PORT            Port used by vite preview. Default: 4028
   TELEMETRY_PORT      Port used by telemetry bridge. Default: 8036
+  API_PORT            Port used by the unified API. Default: 8037
+  VOICE_PORT          Port used by the voice sidecar. Default: 8039
+  API_JWT_SECRET      JWT signing key. Default: auto-generated into .data/secret
+  API_INGEST_TOKEN    Shared secret for telemetry ingest. Default: railway-sign-ingest
 EOF
 }
 
@@ -133,16 +145,47 @@ start_telemetry() {
     -- run telemetry
 }
 
+start_api() {
+  delete_pm2_process_if_exists "${API_NAME}"
+  ensure_port_free "${API_PORT}" "${API_NAME}"
+
+  echo "Starting unified API: ${API_NAME} (port=${API_PORT})"
+  NODE_ENV=production API_PORT="${API_PORT}" API_INGEST_TOKEN="${API_INGEST_TOKEN:-railway-sign-ingest}" \
+    pm2 start npm \
+      --name "${API_NAME}" \
+      --cwd "${PROJECT_ROOT}" \
+      -- run api
+}
+
+start_voice() {
+  delete_pm2_process_if_exists "${VOICE_NAME}"
+  ensure_port_free "${VOICE_PORT}" "${VOICE_NAME}"
+
+  echo "Starting voice sidecar: ${VOICE_NAME} (port=${VOICE_PORT})"
+  NODE_ENV=production VOICE_PORT="${VOICE_PORT}" pm2 start npm \
+    --name "${VOICE_NAME}" \
+    --cwd "${PROJECT_ROOT}" \
+    -- run voice
+}
+
 require_command npm
 require_command pm2
 
 case "${MODE}" in
   all)
+    start_voice
     start_telemetry
+    start_api
     start_web
     ;;
   web)
     start_web
+    ;;
+  api)
+    start_api
+    ;;
+  voice)
+    start_voice
     ;;
   telemetry)
     start_telemetry

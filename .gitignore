@@ -80,3 +80,11 @@ Cesium/
 .lock-wscript
 .eslintcache
 .turbo/
+
+# 运行时数据（SQLite 库、JWT 密钥，首次启动自动生成）
+.data/
+
+# 语音服务：模型与 Python 缓存
+voice_service/models/
+__pycache__/
+*.pyc

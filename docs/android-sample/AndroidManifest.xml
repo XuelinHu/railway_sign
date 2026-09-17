@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  AndroidManifest.xml 片段：语音对话所需的最小权限与声明。
+  直接合并进你现有工程的 <manifest> 节点即可。
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- 原生 SpeechRecognizer 需要联网（部分机型走云端识别） -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- 麦克风：系统语音识别 + WebView 里的 getUserMedia 录音都依赖它 -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- 安卓 11+ 需要声明可见性，否则查不到系统语音识别服务 -->
+    <queries>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+    </queries>
+
+    <application>
+        <!--
+          如果 WebView 走明文 HTTP 访问内网调试地址，需要开启 usesCleartextTraffic；
+          生产环境请使用 HTTPS（FRP 已提供 14028 端口映射）。
+        -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

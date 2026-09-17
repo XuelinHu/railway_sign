@@ -6,6 +6,12 @@ const WS_PATH = process.env.TELEMETRY_WS_PATH || '/ws'
 const UPLOAD_PATH = process.env.TELEMETRY_UPLOAD_PATH || '/upload'
 const MAX_BODY_BYTES = Number(process.env.TELEMETRY_MAX_BODY_BYTES || 32 * 1024)
 
+// 统一后台（8037）遥测入库接口：转发一份归一化后的数据，管理台「遥测记录」菜单才有历史可分页。
+// 置空 API_INGEST_URL 可关闭转发；转发失败只记日志，不影响对设备与 WebSocket 的原有响应。
+const API_INGEST_URL = process.env.API_INGEST_URL ?? 'http://127.0.0.1:8037/api/telemetry/ingest'
+const API_INGEST_TOKEN = process.env.API_INGEST_TOKEN || 'railway-sign-ingest'
+const API_INGEST_TIMEOUT_MS = Number(process.env.API_INGEST_TIMEOUT_MS || 5000)
+
 const now = () => new Date().toISOString()
 const log = (msg) => console.log(`${now()} [telemetry] ${msg}`)
 
@@ -47,6 +53,39 @@ const normalizeTelemetry = (payload) => {
 }
 
 let lastTelemetry = null
+let lastForward = null
+
+// 异步转发到统一后台；不 await、不抛出，避免拖慢设备侧上报。
+const forwardToApi = (msg) => {
+  if (!API_INGEST_URL) return
+  const payload = {
+    device: msg.device,
+    device_id: msg.device_id,
+    type: msg.type,
+    ts_ms: msg.ts_ms,
+    uptime_ms: msg.uptime_ms,
+    wifi_ip: msg.wifi_ip,
+    distance_cm: msg.distance_cm,
+    distance_m: msg.distance_m,
+    water_active: msg.water_active,
+    raw: msg.raw
+  }
+  fetch(API_INGEST_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-ingest-token': API_INGEST_TOKEN },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(API_INGEST_TIMEOUT_MS)
+  })
+    .then(async (res) => {
+      if (!res.ok) throw new Error(`HTTP ${res.status} ${(await res.text()).slice(0, 120)}`)
+      lastForward = { ok: true, at: now() }
+      log(`ingest ok: device=${msg.device} id=${msg.device_id}`)
+    })
+    .catch((err) => {
+      lastForward = { ok: false, at: now(), error: err?.message || String(err) }
+      log(`ingest failed: ${lastForward.error}`)
+    })
+}
 
 const broadcastTelemetry = (msg, meta = {}) => {
   const encoded = JSON.stringify({ topic: 'telemetry', data: msg })
@@ -88,6 +127,8 @@ const server = http.createServer((req, res) => {
         port: PORT,
         ws_path: WS_PATH,
         upload_path: UPLOAD_PATH,
+        ingest_url: API_INGEST_URL || null,
+        last_forward: lastForward,
         clients: wss.clients.size,
         last: lastTelemetry
           ? { ts_ms: lastTelemetry.ts_ms, device: lastTelemetry.device, type: lastTelemetry.type }
@@ -135,6 +176,7 @@ const server = http.createServer((req, res) => {
       lastTelemetry = msg
 
       const { sent, skipped } = broadcastTelemetry(msg, { from: remote })
+      forwardToApi(msg)
 
       log(
         `upload ok: device=${msg.device} id=${msg.device_id} type=${msg.type} distance_cm=${msg.distance_cm ?? 'null'} water=${msg.water_active ?? 'null'} bytes=${bodyBytes} ws_sent=${sent} ws_skipped=${skipped} clients=${wss.clients.size} from=${remote}`
@@ -185,4 +227,5 @@ server.listen(PORT, () => {
   log(`listening: http://localhost:${PORT}`)
   log(`upload: POST ${UPLOAD_PATH}`)
   log(`ws: ${WS_PATH}`)
+  log(`ingest forward: ${API_INGEST_URL || 'disabled'}`)
 })

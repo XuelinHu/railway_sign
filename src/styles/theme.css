@@ -1,0 +1,318 @@
+/* 全局主题：复刻既有演示界面的深色科技风（主色 #00d4ff、面板 rgba(0,20,40,.85)）。 */
+
+:root {
+  --rs-primary: #00d4ff;
+  --rs-primary-deep: #0066cc;
+  --rs-gradient: linear-gradient(135deg, #0066cc, #00d4ff);
+  --rs-panel-bg: rgba(0, 20, 40, 0.85);
+  --rs-panel-bg-solid: rgba(6, 26, 46, 0.96);
+  --rs-panel-border: rgba(0, 200, 255, 0.3);
+  --rs-panel-border-strong: rgba(0, 200, 255, 0.55);
+  --rs-text: #cfe9f7;
+  --rs-text-dim: #7fa3b8;
+  --rs-text-strong: #ffffff;
+  --rs-success: #22c55e;
+  --rs-warning: #f5a623;
+  --rs-danger: #ff4d5e;
+  --rs-info: #38bdf8;
+  --rs-radius: 8px;
+  --rs-shadow: 0 8px 30px rgba(0, 120, 200, 0.25);
+}
+
+/* 全局重置（原 App.vue 中的全局样式，迁移到此处供所有路由共用）。 */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: 'Microsoft YaHei', Arial, sans-serif;
+  background: #000;
+}
+
+/* —— 表单与按钮：登录/管理台/智能体弹框共用 —— */
+.rs-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.rs-field > label {
+  font-size: 13px;
+  color: var(--rs-text-dim);
+}
+
+.rs-field > label .req {
+  color: var(--rs-danger);
+  margin-left: 2px;
+}
+
+.rs-input,
+.rs-select,
+.rs-textarea {
+  width: 100%;
+  padding: 10px 12px;
+  background: rgba(0, 40, 70, 0.6);
+  border: 1px solid var(--rs-panel-border);
+  border-radius: var(--rs-radius);
+  color: var(--rs-text);
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  transition: all 0.2s;
+}
+
+.rs-input:focus,
+.rs-select:focus,
+.rs-textarea:focus {
+  border-color: var(--rs-primary);
+  box-shadow: 0 0 12px rgba(0, 200, 255, 0.35);
+}
+
+.rs-input::placeholder,
+.rs-textarea::placeholder {
+  color: rgba(127, 163, 184, 0.6);
+}
+
+.rs-select option {
+  background: #062033;
+  color: var(--rs-text);
+}
+
+.rs-textarea {
+  resize: vertical;
+  min-height: 76px;
+}
+
+.rs-btn {
+  padding: 9px 18px;
+  background: rgba(0, 100, 150, 0.3);
+  border: 1px solid var(--rs-panel-border);
+  border-radius: var(--rs-radius);
+  color: var(--rs-text);
+  font-size: 14px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.25s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.rs-btn:hover:not(:disabled) {
+  background: rgba(0, 100, 150, 0.55);
+  color: var(--rs-primary);
+  border-color: var(--rs-primary);
+}
+
+.rs-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.rs-btn.primary {
+  background: var(--rs-gradient);
+  border-color: var(--rs-primary);
+  color: #fff;
+  font-weight: bold;
+}
+
+.rs-btn.primary:hover:not(:disabled) {
+  box-shadow: 0 0 18px rgba(0, 200, 255, 0.5);
+  color: #fff;
+}
+
+.rs-btn.danger {
+  border-color: rgba(255, 77, 94, 0.55);
+  color: #ff8b96;
+}
+
+.rs-btn.danger:hover:not(:disabled) {
+  background: rgba(255, 77, 94, 0.18);
+  border-color: var(--rs-danger);
+  color: #ffb3ba;
+}
+
+.rs-btn.small {
+  padding: 5px 10px;
+  font-size: 12px;
+}
+
+.rs-btn.block {
+  width: 100%;
+}
+
+/* —— 通用面板 —— */
+.rs-panel {
+  background: var(--rs-panel-bg);
+  border: 1px solid var(--rs-panel-border);
+  border-radius: var(--rs-radius);
+  backdrop-filter: blur(10px);
+  box-shadow: var(--rs-shadow);
+}
+
+.rs-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 12px;
+  line-height: 18px;
+  border: 1px solid transparent;
+}
+
+.rs-tag.gray {
+  color: var(--rs-text-dim);
+  border-color: rgba(127, 163, 184, 0.4);
+  background: rgba(127, 163, 184, 0.12);
+}
+
+.rs-tag.green {
+  color: #7ff0a8;
+  border-color: rgba(34, 197, 94, 0.5);
+  background: rgba(34, 197, 94, 0.14);
+}
+
+.rs-tag.blue {
+  color: #8bd8ff;
+  border-color: rgba(56, 189, 248, 0.5);
+  background: rgba(56, 189, 248, 0.14);
+}
+
+.rs-tag.orange {
+  color: #ffce7a;
+  border-color: rgba(245, 166, 35, 0.5);
+  background: rgba(245, 166, 35, 0.14);
+}
+
+.rs-tag.red {
+  color: #ff9aa4;
+  border-color: rgba(255, 77, 94, 0.5);
+  background: rgba(255, 77, 94, 0.14);
+}
+
+/* —— 管理台页面骨架：page / page-head / filter-bar / 统计卡片 —— */
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.page-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.page-head h2 {
+  font-size: 18px;
+  color: var(--rs-text-strong);
+  font-weight: bold;
+}
+
+.page-head .sub {
+  font-size: 13px;
+  color: var(--rs-text-dim);
+  margin-top: 4px;
+}
+
+.page-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  background: var(--rs-panel-bg);
+  border: 1px solid var(--rs-panel-border);
+  border-radius: var(--rs-radius);
+}
+
+.filter-bar .rs-input,
+.filter-bar .rs-select {
+  width: auto;
+  min-width: 150px;
+  padding: 7px 10px;
+  font-size: 13px;
+}
+
+.filter-bar .spacer {
+  flex: 1;
+}
+
+/* 概览页统计卡片 */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 12px;
+}
+
+.stat-card {
+  padding: 16px;
+  background: var(--rs-panel-bg);
+  border: 1px solid var(--rs-panel-border);
+  border-radius: var(--rs-radius);
+  backdrop-filter: blur(10px);
+}
+
+.stat-card .label {
+  font-size: 13px;
+  color: var(--rs-text-dim);
+}
+
+.stat-card .value {
+  font-size: 26px;
+  font-weight: bold;
+  color: var(--rs-primary);
+  margin-top: 8px;
+  text-shadow: 0 0 16px rgba(0, 200, 255, 0.4);
+}
+
+.stat-card .unit {
+  font-size: 13px;
+  color: var(--rs-text-dim);
+  margin-left: 4px;
+}
+
+/* 操作按钮组 */
+.row-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* 滚动条统一为深色细条 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(0, 30, 50, 0.4);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 200, 255, 0.35);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 200, 255, 0.6);
+}
