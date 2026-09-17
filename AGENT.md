@@ -15,6 +15,7 @@
 - Build: `npm run build`.
 - Preview: `npm run preview` (serves `dist/`, also proxies `/api`).
 - Dev all-in-one: `npm run dev:all` (api + telemetry + web via `concurrently`).
+- API self-test: `npm run test:api`. Browser end-to-end: `npm run test:e2e` (see Codex Notes).
 - PM2 helper: `scripts/start-pm2.sh`, default `WEB_PORT=4028`; modes `web` / `api` / `voice` / `telemetry` / `all`.
 
 ## Services and Ports
@@ -140,8 +141,17 @@ is documented in `docs/安卓端语音集成.md` with copy-ready Kotlin under `d
   and the `.rs-*` utility classes instead of hardcoding colours.
 - Code style: Vue 3 `<script setup>`, no TypeScript, no Pinia, no UI library; 2-space indent,
   single quotes, no trailing semicolons.
-- `scripts/test-api.mjs` is the API self-test (`node scripts/test-api.mjs`, needs the API running);
-  it covers auth flows, RBAC isolation and pagination for all 12 admin menus.
+- Self-tests, both runnable against an already-started stack:
+  - `npm run test:api` (`scripts/test-api.mjs`, needs the API on 8037) — auth flows, RBAC
+    isolation and pagination for all 12 admin menus.
+  - `npm run test:e2e` (`scripts/e2e-browser.mjs`, needs the frontend on 4028 **and** the API) —
+    drives a real headless Chrome over CDP through login (captcha read from the DOM), the three
+    original visualization tabs, every admin menu, and the agent dialog. Screenshots land in
+    `.e2e-output/` (git-ignored). Pass a base URL as `argv[2]` to point it elsewhere.
+  - `scripts/e2e-browser.mjs` deliberately launches Chrome with `--remote-debugging-port=0` and
+    reads the port from `DevToolsActivePort`: other sessions on this machine also run headless
+    Chrome, and with a fixed port ours can fail to bind while the script silently attaches to
+    *their* browser, making every assertion meaningless. Keep it on port 0.
 - If project structure, commands or env vars change, update this file together with `README.md`.
 
 ## GitHub Commit Language

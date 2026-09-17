@@ -6,10 +6,12 @@
   "scripts": {
     "telemetry": "node server/telemetry-bridge.js",
     "api": "node --disable-warning=ExperimentalWarning server/api-server.js",
+    "test:api": "node scripts/test-api.mjs",
     "voice": "node scripts/start-voice.mjs",
     "dev": "vite",
     "dev:all": "concurrently -n api,telemetry,web -c green,magenta,cyan \"npm:api\" \"npm:telemetry\" \"npm:dev\"",
     "build": "vite build",
+    "test:e2e": "node scripts/e2e-browser.mjs",
     "preview": "vite preview",
     "softdocs": "node scripts/build-soft-copyright-pdfs.mjs"
   },

@@ -1,5 +1,5 @@
-# 依赖
-node_modules/
+# 依赖（不带斜杠：worktree 里 node_modules 可能是指向主检出的符号链接，带斜杠只匹配真实目录）
+node_modules
 # package-lock.json  # 已移除，应提交到仓库以确保依赖版本一致
 yarn.lock
 pnpm-lock.yaml
@@ -88,3 +88,6 @@ Cesium/
 voice_service/models/
 __pycache__/
 *.pyc
+
+# 端到端自测产物（浏览器 profile 与截图）
+.e2e-output/

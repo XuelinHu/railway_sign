@@ -84,7 +84,9 @@ const run = async () => {
   check('GET /api/auth/me 返回当前用户', me.json?.data?.user?.username === 'admin')
 
   section('注册 / 修改密码 / 找回密码 全流程')
-  const newUser = `autotest${Date.now().toString().slice(-6)}`
+  // 手机号在库里是唯一的，必须每次运行都换一个，否则第二次自测会卡在「该手机号已被注册」
+  const runTag = Date.now().toString().slice(-6)
+  const newUser = `autotest${runTag}`
   const captcha2 = await fetchCaptcha()
   const register2 = await request('POST', '/api/auth/register', {
     body: {
@@ -92,7 +94,7 @@ const run = async () => {
       password: 'Test@1234',
       confirmPassword: 'Test@1234',
       name: '自测用户',
-      phone: '13712345678',
+      phone: `137${runTag.padStart(8, '0')}`,
       email: `${newUser}@test.local`,
       captchaId: captcha2.id,
       captchaCode: captcha2.code,
@@ -141,7 +143,7 @@ const run = async () => {
 
   const forgotCaptcha = await fetchCaptcha()
   const forgot = await request('POST', '/api/auth/forgot-password', {
-    body: { username: newUser, phone: '13712345678', captchaId: forgotCaptcha.id, captchaCode: forgotCaptcha.code },
+    body: { username: newUser, phone: `137${runTag.padStart(8, '0')}`, captchaId: forgotCaptcha.id, captchaCode: forgotCaptcha.code },
   })
   check('找回密码签发重置令牌', Boolean(forgot.json?.data?.token), forgot.text.slice(0, 160))
   const resetToken = forgot.json?.data?.token || ''
@@ -247,16 +249,17 @@ const run = async () => {
   })
   check('处理告警成功', handle.json?.ok === true, handle.text.slice(0, 120))
 
+  // 新增接口只回 {id}，用户名要用本地变量，不能从响应里取
+  const createdUsername = `mgr${Date.now().toString().slice(-6)}`
   const created = await request('POST', '/api/admin/users', {
     token: adminToken,
-    body: { username: `mgr${Date.now().toString().slice(-6)}`, name: '后台创建', role: 'operator', password: 'Mgr@12345' },
+    body: { username: createdUsername, name: '后台创建', role: 'operator', password: 'Mgr@12345' },
   })
   check('后台新增用户成功', created.json?.ok === true, created.text.slice(0, 120))
   const createdId = created.json?.data?.id
 
   const disable = await request('PUT', `/api/admin/users/${createdId}/status`, { token: adminToken, body: { status: 'disabled' } })
   check('禁用用户成功', disable.json?.ok === true)
-  const createdUsername = created.json?.data?.username
   const loginDisabled = await login(createdUsername, 'Mgr@12345')
   check('被禁用账号无法登录（403）', loginDisabled.status === 403, `status=${loginDisabled.status}`)
 
