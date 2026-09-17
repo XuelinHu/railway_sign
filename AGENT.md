@@ -8,18 +8,18 @@
 
 ## Runtime
 
-- Web port: `4002`.
-- Local URL: `http://127.0.0.1:4002/`.
+- Web port: `4028`.
+- Local URL: `http://127.0.0.1:4028/`.
 - FRP URL: `http://47.120.48.245:14002/`.
 - Dev: `npm run dev`.
 - Build: `npm run build`.
 - Preview: `npm run preview`.
-- PM2 helper: `scripts/start-pm2.sh`, default `WEB_PORT=4002`.
+- PM2 helper: `scripts/start-pm2.sh`, default `WEB_PORT=4028`.
 
 ## Auxiliary Services
 
 - Telemetry command: `npm run telemetry`.
-- Telemetry port: `8080`.
+- Telemetry port: `8036`.
 - Telemetry endpoints: `POST /upload`, `WS /ws`, `GET /telemetry/health`.
 
 ## Data Storage

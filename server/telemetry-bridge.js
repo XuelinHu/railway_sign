@@ -1,7 +1,7 @@
 import http from 'node:http'
 import { WebSocketServer } from 'ws'
 
-const PORT = Number(process.env.TELEMETRY_PORT || 8080)
+const PORT = Number(process.env.TELEMETRY_PORT || 8036)
 const WS_PATH = process.env.TELEMETRY_WS_PATH || '/ws'
 const UPLOAD_PATH = process.env.TELEMETRY_UPLOAD_PATH || '/upload'
 const MAX_BODY_BYTES = Number(process.env.TELEMETRY_MAX_BODY_BYTES || 32 * 1024)

@@ -3,7 +3,7 @@ import { ref } from 'vue'
 const defaultUrl = () => {
   const envUrl = import.meta?.env?.VITE_TELEMETRY_WS_URL
   if (typeof envUrl === 'string' && envUrl.trim()) return envUrl.trim()
-  return 'ws://localhost:8080/ws'
+  return 'ws://localhost:8036/ws'
 }
 
 export const telemetryConnected = ref(false)
