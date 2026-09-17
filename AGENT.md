@@ -10,7 +10,7 @@
 
 - Web port: `4028`.
 - Local URL: `http://127.0.0.1:4028/`.
-- FRP URL: `http://47.120.48.245:14002/`.
+- FRP URL: `http://47.120.48.245:14028/`.
 - Dev: `npm run dev`.
 - Build: `npm run build`.
 - Preview: `npm run preview`.
