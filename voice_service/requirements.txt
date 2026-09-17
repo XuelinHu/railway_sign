@@ -1,0 +1,5 @@
+# 本地语音服务依赖（Python 3.9+）
+# 安装：pip install -r voice_service/requirements.txt
+sherpa-onnx>=1.10.0   # 离线语音识别（SenseVoice 模型）
+edge-tts>=6.1.0       # 神经网络语音合成（微软 Edge 在线音色）
+numpy>=1.24.0         # WAV 解码与重采样
