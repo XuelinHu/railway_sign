@@ -157,3 +157,7 @@ is documented in `docs/安卓端语音集成.md` with copy-ready Kotlin under `d
 ## GitHub Commit Language
 
 - Use English for all GitHub commit messages and pull/push related commit notes.
+
+## Port allocation
+
+Web: 4028. API/services: 8037、8036、8039. See `PORTS.md`; keep dev/preview ports fixed and fail on conflicts.

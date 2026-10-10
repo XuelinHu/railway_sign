@@ -275,3 +275,7 @@ Cesium.Ion.defaultAccessToken = 'YOUR_TOKEN_HERE'
 ---
 
 ⭐ 如果这个项目对你有帮助，请给个 Star！
+
+## 启动端口
+
+网页入口：4028；后台服务：8037、8036、8039。完整启动约定见 [PORTS.md](./PORTS.md)。
