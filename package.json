@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "telemetry": "node server/telemetry-bridge.js",
-    "api": "node --env-file-if-exists=server/.env --disable-warning=ExperimentalWarning server/api-server.js",
+    "api": "node --env-file-if-exists=server/.env scripts/start-api.mjs",
     "db:migrate": "node --env-file-if-exists=server/.env scripts/migrate-postgres.mjs",
     "db:migrate:oidc": "node --env-file-if-exists=server/.env scripts/migrate-oidc-postgres.mjs",
     "db:import:sqlite": "node --env-file-if-exists=server/.env scripts/migrate-sqlite-to-postgres.mjs",
