@@ -52,6 +52,19 @@ try {
   assert.deepEqual(readValues(backup), ['committed-in-wal'])
   console.log('ok   backup is immutable and refuses to overwrite an existing file')
 
+  const danglingLink = path.join(tempDir, 'dangling-backup-link.sqlite')
+  const linkTarget = path.join(tempDir, 'link-target.sqlite')
+  try {
+    fs.symlinkSync(linkTarget, danglingLink, 'file')
+    const symlinkResult = run('backup', '--destination', danglingLink)
+    assert.notEqual(symlinkResult.status, 0, 'backup must refuse a dangling destination symlink')
+    assert.equal(fs.existsSync(linkTarget), false, 'backup must not write through the dangling symlink')
+    console.log('ok   backup refuses dangling destination symlinks')
+  } catch (error) {
+    if (error.code !== 'EPERM' && error.code !== 'EACCES' && error.code !== 'ENOSYS') throw error
+    console.log('skip backup dangling-symlink assertion (symlink creation unavailable)')
+  }
+
   const targetDb = createDatabase(target, ['old-target-data'])
   targetDb.close()
   const deniedRestore = run('restore', '--source', backup, '--target', target)

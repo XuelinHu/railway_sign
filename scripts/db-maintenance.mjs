@@ -13,6 +13,16 @@ function getOption(args, name) {
   return path.resolve(value)
 }
 
+function pathEntryExists(file) {
+  try {
+    fs.lstatSync(file)
+    return true
+  } catch (error) {
+    if (error.code === 'ENOENT') return false
+    throw error
+  }
+}
+
 function assertDatabaseFile(file, label) {
   let stat
   try {
@@ -38,20 +48,22 @@ function assertIntegrity(file) {
 function snapshot(source, destination) {
   assertDatabaseFile(source, 'Source database')
   if (source === destination) throw new Error('Source and destination must be different files')
-  if (fs.existsSync(destination)) throw new Error(`Refusing to overwrite existing file: ${destination}`)
+  if (pathEntryExists(destination)) throw new Error(`Refusing to overwrite existing file: ${destination}`)
   fs.mkdirSync(path.dirname(destination), { recursive: true, mode: 0o700 })
 
+  let snapshotCreated = false
   try {
     const database = new DatabaseSync(source, { readOnly: true, timeout: 5000 })
     try {
       database.prepare('VACUUM INTO ?').run(destination)
+      snapshotCreated = true
     } finally {
       database.close()
     }
     if (process.platform !== 'win32') fs.chmodSync(destination, 0o600)
     assertIntegrity(destination)
   } catch (error) {
-    fs.rmSync(destination, { force: true })
+    if (snapshotCreated) fs.rmSync(destination, { force: true })
     throw error
   }
 }
@@ -81,7 +93,7 @@ function restore(args) {
   assertDatabaseFile(source, 'Backup database')
   if (source === target) throw new Error('Backup and target must be different files')
 
-  const targetExists = fs.existsSync(target)
+  const targetExists = pathEntryExists(target)
   if (targetExists && !replace) throw new Error(`Target exists; pass --replace to replace it: ${target}`)
   if (targetExists) assertDatabaseFile(target, 'Target database')
 
@@ -96,13 +108,13 @@ function restore(args) {
     fs.mkdirSync(path.dirname(target), { recursive: true, mode: 0o700 })
     if (targetExists) {
       previous = `${target}.pre-restore-${timestamp()}`
-      if (fs.existsSync(previous)) throw new Error(`Refusing to overwrite rollback file: ${previous}`)
+      if (pathEntryExists(previous)) throw new Error(`Refusing to overwrite rollback file: ${previous}`)
       checkpoint(target)
       fs.renameSync(target, previous)
       targetMoved = true
       for (const suffix of ['-wal', '-shm']) {
         const sidecar = `${target}${suffix}`
-        if (!fs.existsSync(sidecar)) continue
+        if (!pathEntryExists(sidecar)) continue
         const previousSidecar = `${previous}${suffix}`
         fs.renameSync(sidecar, previousSidecar)
         sidecars.push([sidecar, previousSidecar])
@@ -114,9 +126,9 @@ function restore(args) {
     assertIntegrity(target)
   } catch (error) {
     if (installed) fs.rmSync(target, { force: true })
-    if (targetMoved && previous && fs.existsSync(previous)) fs.renameSync(previous, target)
+    if (targetMoved && previous && pathEntryExists(previous)) fs.renameSync(previous, target)
     for (const [sidecar, savedSidecar] of sidecars.reverse()) {
-      if (fs.existsSync(savedSidecar)) fs.renameSync(savedSidecar, sidecar)
+      if (pathEntryExists(savedSidecar)) fs.renameSync(savedSidecar, sidecar)
     }
     throw error
   } finally {
