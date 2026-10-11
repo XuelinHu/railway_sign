@@ -20,6 +20,7 @@
     "test:postgres-integration": "node --env-file-if-exists=server/.env --test test/postgres.integration.test.mjs",
     "voice": "node scripts/start-voice.mjs",
     "dev": "vite",
+    "dev:https": "node scripts/start-web-https.mjs",
     "dev:all": "concurrently -n api,telemetry,web -c green,magenta,cyan \"npm:api\" \"npm:telemetry\" \"npm:dev\"",
     "build": "vite build",
     "test:e2e": "node scripts/e2e-browser.mjs",
