@@ -10,6 +10,7 @@ import { DATA_DIR } from '../lib/paths.js'
 
 const VOICE_HOST = (process.env.VOICE_HOST || 'http://127.0.0.1:8039').replace(/\/$/, '')
 const MAX_AUDIO_BYTES = Number(process.env.VOICE_MAX_AUDIO_BYTES || 12 * 1024 * 1024)
+const MAX_TTS_AUDIO_BYTES = positiveInteger(process.env.VOICE_MAX_TTS_AUDIO_BYTES, 12 * 1024 * 1024)
 const TTS_CACHE_DIR = path.join(DATA_DIR, 'tts-cache')
 const TTS_CACHE_TTL_MS = positiveInteger(process.env.TTS_CACHE_TTL_MS, 7 * 24 * 60 * 60 * 1000)
 const TTS_CACHE_MAX_BYTES = positiveInteger(process.env.TTS_CACHE_MAX_BYTES, 256 * 1024 * 1024)
@@ -59,6 +60,30 @@ function pruneTtsCache(now = Date.now()) {
 
 const voiceUnavailable = (detail) =>
   new HttpError(503, `本地语音服务不可用（${VOICE_HOST}）`, detail || '未启动或未安装依赖')
+
+async function readTtsAudio(response) {
+  const declaredLength = Number(response.headers.get('content-length'))
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_TTS_AUDIO_BYTES) {
+    await response.body?.cancel().catch(() => {})
+    throw new HttpError(502, '语音合成响应超过大小限制')
+  }
+
+  if (!response.body) return Buffer.alloc(0)
+  const reader = response.body.getReader()
+  const chunks = []
+  let totalBytes = 0
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    totalBytes += value.byteLength
+    if (totalBytes > MAX_TTS_AUDIO_BYTES) {
+      await reader.cancel().catch(() => {})
+      throw new HttpError(502, '语音合成响应超过大小限制')
+    }
+    chunks.push(Buffer.from(value))
+  }
+  return Buffer.concat(chunks, totalBytes)
+}
 
 // —— 语音识别：接收 16k 单声道 WAV 原始字节 ——
 const asr = async (ctx) => {
@@ -134,7 +159,7 @@ const tts = async (ctx) => {
     throw new Error(`语音合成失败：${response.status}`)
   }
 
-  const buffer = Buffer.from(await response.arrayBuffer())
+  const buffer = await readTtsAudio(response)
   try {
     fs.mkdirSync(TTS_CACHE_DIR, { recursive: true })
     fs.writeFileSync(cacheFile, buffer)

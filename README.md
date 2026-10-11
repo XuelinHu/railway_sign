@@ -128,6 +128,7 @@ npm run test:voice-proxy
 ```
 
 该测试会创建临时 SQLite 数据库和本地语音服务 stub，验证登录鉴权、WAV 转发、TTS 音频响应及缓存；不会读取项目 `.data` 或调用 Ollama。
+语音 API 默认将 TTS 边车响应限制为 12 MiB（`VOICE_MAX_TTS_AUDIO_BYTES`），并在流式读取期间执行限制，超限响应不会写入缓存。
 
 数据库备份/恢复隔离测试：
 

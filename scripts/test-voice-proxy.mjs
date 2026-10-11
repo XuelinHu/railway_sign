@@ -34,6 +34,11 @@ const sidecar = http.createServer(async (req, res) => {
   }
   if (req.method === 'POST' && req.url === '/tts') {
     ttsCalls += 1
+    if (JSON.parse(Buffer.concat(chunks).toString('utf8')).text === '超大音频测试') {
+      const oversizedAudio = Buffer.alloc(33, 0x41)
+      res.writeHead(200, { 'Content-Type': 'audio/mpeg', 'Content-Length': oversizedAudio.length })
+      return res.end(oversizedAudio)
+    }
     res.writeHead(200, { 'Content-Type': 'audio/mpeg', 'Content-Length': ttsAudio.length })
     return res.end(ttsAudio)
   }
@@ -82,6 +87,7 @@ try {
       VOICE_HOST: 'http://127.0.0.1:' + sidecarPort,
       TTS_CACHE_TTL_MS: String(60 * 60 * 1000),
       TTS_CACHE_MAX_BYTES: String(ttsAudio.length),
+      VOICE_MAX_TTS_AUDIO_BYTES: '32',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
@@ -177,6 +183,13 @@ try {
     headers: { ...auth, 'Content-Type': 'application/json' },
     body: JSON.stringify({ text, voice: 'fixture' }),
   })
+  const oversizedTts = await requestTts('超大音频测试')
+  assert.equal(oversizedTts.status, 502)
+  assert.match((await oversizedTts.json()).error, /超过大小限制/)
+  assert.equal(ttsCalls, 1, 'oversized audio must be rejected before it is cached')
+  pass('超出配置上限的 TTS 音频返回 502 且不进入缓存')
+  const ttsCallsAfterOversized = ttsCalls
+
   const firstTts = await requestTts()
   const firstAudio = Buffer.from(await firstTts.arrayBuffer())
   assert.equal(firstTts.status, 200)
@@ -188,27 +201,27 @@ try {
   assert.equal(secondTts.status, 200)
   assert.equal(secondTts.headers.get('x-tts-cache'), 'hit')
   assert.deepEqual(secondAudio, ttsAudio)
-  assert.equal(ttsCalls, 1, 'identical TTS request should be served from cache')
+  assert.equal(ttsCalls, ttsCallsAfterOversized + 1, 'identical TTS request should be served from cache')
   pass('TTS 返回 MP3，重复请求命中磁盘缓存')
 
   const originalCacheFile = (await fs.readdir(path.join(tempDir, 'tts-cache')))[0]
   const otherTts = await requestTts('另一条用于容量检查的测试语音')
   assert.equal(otherTts.headers.get('x-tts-cache'), 'miss')
-  assert.equal(ttsCalls, 2)
+  assert.equal(ttsCalls, ttsCallsAfterOversized + 2)
   assert.equal((await fs.readdir(path.join(tempDir, 'tts-cache'))).length, 1, 'cache size cap should evict the least-recently-used entry')
   assert.equal(await fs.stat(path.join(tempDir, 'tts-cache', originalCacheFile)).then(() => true, () => false), false)
   pass('TTS 缓存达到容量上限时淘汰最久未使用的音频')
 
   const originalTts = await requestTts()
   assert.equal(originalTts.headers.get('x-tts-cache'), 'miss', 'evicted audio should be synthesized again')
-  assert.equal(ttsCalls, 3)
+  assert.equal(ttsCalls, ttsCallsAfterOversized + 3)
   const currentCacheFiles = await fs.readdir(path.join(tempDir, 'tts-cache'))
   const currentCacheFile = path.join(tempDir, 'tts-cache', currentCacheFiles[0])
   const expiredAt = new Date(Date.now() - 2 * 60 * 60 * 1000)
   await fs.utimes(currentCacheFile, expiredAt, expiredAt)
   const refreshedTts = await requestTts()
   assert.equal(refreshedTts.headers.get('x-tts-cache'), 'miss', 'expired audio should be synthesized again')
-  assert.equal(ttsCalls, 4)
+  assert.equal(ttsCalls, ttsCallsAfterOversized + 4)
   pass('TTS 缓存超过空闲 TTL 后过期并重新合成')
 
   const ttsCallsBeforeInvalid = ttsCalls

@@ -90,6 +90,7 @@ List responses are always `{list, total, page, pageSize, totalPages}`; query par
 | `VOICE_ASR_THREADS` | `4` | ASR decode threads |
 | `VOICE_TTS_VOICE` | `zh-CN-XiaoxiaoNeural` | default edge-tts voice |
 | `VOICE_MAX_AUDIO_BYTES` | `12582912` | API-side ASR upload limit |
+| `VOICE_MAX_TTS_AUDIO_BYTES` | `12582912` | API-side TTS response limit (12 MiB, checked while streaming) |
 | `TTS_CACHE_TTL_MS` | `604800000` | TTS cache idle expiry (7 days, based on last access) |
 | `TTS_CACHE_MAX_BYTES` | `268435456` | TTS disk-cache size cap (256 MiB; least-recently-used entries are evicted first) |
 | `VOICE_PYTHON` / `PYTHON` | `python3` | interpreter used by `npm run voice` |
@@ -140,6 +141,7 @@ never talks to it directly.
 - ASR: **sherpa-onnx SenseVoice** (zh/en/ja/ko/yue, int8 ONNX, CPU only, offline, punctuated).
 - TTS: **edge-tts** neural Chinese voices, returns MP3; the frontend falls back to
   `speechSynthesis` when the sidecar is unreachable.
+- API rejects sidecar TTS responses above `VOICE_MAX_TTS_AUDIO_BYTES` (default 12 MiB) before caching.
 - Setup: `pip install -r voice_service/requirements.txt` then `bash voice_service/download_model.sh`
   (downloads ~250 MB into `voice_service/models/`, git-ignored). Start with `npm run voice`.
 - The service degrades instead of crashing: with no model it still serves TTS and reports
@@ -167,7 +169,7 @@ is documented in `docs/安卓端语音集成.md` with copy-ready Kotlin under `d
   - `npm run test:api` (`scripts/test-api.mjs`, needs an isolated API on 8037 and `API_DEMO_PASSWORD`) — auth flows, RBAC isolation and pagination for all 12 admin menus.
   - `npm run test:production-bootstrap` — verifies production first-admin setup, legacy demo-account rotation, login and refusal to start without an active admin using only temporary SQLite databases.
   - `npm run test:voice-proxy` — starts an isolated API and local voice-sidecar stub to verify
-    authentication, WAV forwarding, TTS audio responses and cache hits without changing `.data`.
+    authentication, WAV forwarding, bounded TTS responses and cache hits without changing `.data`.
   - `npm run test:ingest-auth` — verifies loopback-only fallback and remote shared-token authorization.
   - `npm run test:e2e` (`scripts/e2e-browser.mjs`, needs the frontend on 4028 **and** the API) —
     drives a real headless Chrome over CDP through login (captcha read from the DOM), the three
