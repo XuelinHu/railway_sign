@@ -26,4 +26,11 @@ SELECT format('REVOKE ALL ON DATABASE %I FROM PUBLIC', :'database_name')\gexec
 SELECT format('GRANT CONNECT, TEMPORARY ON DATABASE %I TO %I', :'database_name', :'app_role')\gexec
 SELECT format('ALTER ROLE %I LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS NOINHERIT', :'app_role')\gexec
 
+\connect :database_name
+SELECT format('GRANT USAGE, CREATE ON SCHEMA public TO %I', :'app_role')\gexec
+SELECT format('GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON ALL TABLES IN SCHEMA public TO %I', :'app_role')\gexec
+SELECT format('GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO %I', :'app_role')\gexec
+SELECT format('ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON TABLES TO %I', :'app_role')\gexec
+SELECT format('ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO %I', :'app_role')\gexec
+
 \echo 'Created/reused a project-scoped PostgreSQL role and database. Runtime role has no cluster administration privileges.'
