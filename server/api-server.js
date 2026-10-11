@@ -1,10 +1,10 @@
 // 统一后台服务：用户体系 + 管理台接口 + 智能体（Ollama 代理）+ 遥测入库 + 语音转发。
 //
-// 端口 8037（FRP 公网 18037），零第三方依赖：node:http + node:sqlite + node:crypto。
+// 端口 8037（FRP 公网 18037），依赖 node:http + PostgreSQL(pg) + node:crypto。
 // 启动：npm run api
 
 import http from 'node:http'
-import { initDatabase, DB_FILE, get, getConfig } from './api/lib/db.js'
+import { initDatabase, DATABASE_NAME, get, getConfig } from './api/lib/postgres.js'
 import {
   writeCommonHeaders,
   sendJson,
@@ -78,8 +78,8 @@ const server = http.createServer(async (req, res) => {
     return ok(res, {
       service: 'railway-sign-api',
       port: PORT,
-      dbFile: DB_FILE,
-      siteName: getConfig('system.site_name', ''),
+      database: DATABASE_NAME,
+      siteName: await getConfig('system.site_name', ''),
       time: new Date().toISOString(),
     })
   }
@@ -91,7 +91,7 @@ const server = http.createServer(async (req, res) => {
 
   try {
     const { route, params } = matched
-    const user = resolveUser(req)
+    const user = await resolveUser(req)
     const ctx = {
       req,
       res,
@@ -100,14 +100,14 @@ const server = http.createServer(async (req, res) => {
       pathname,
       params,
       query: url.searchParams,
-      pagination: parsePagination(url, Number(getConfig('system.page_size', '10')) || 10),
+      pagination: parsePagination(url, Number(await getConfig('system.page_size', '10')) || 10),
       user,
       ip: clientIp(req),
       body: null,
     }
 
     if (!route.public && !user) throw new HttpError(401, '未登录或登录已过期')
-    if (route.permission && !hasPermission(user, route.permission)) {
+    if (route.permission && !await hasPermission(user, route.permission)) {
       throw new HttpError(403, `缺少权限：${route.permission}`)
     }
 
@@ -129,25 +129,28 @@ const server = http.createServer(async (req, res) => {
       return fail(res, error.statusCode, error.message, error.detail)
     }
     log('api', `error ${method} ${pathname}: ${error?.message}`)
-    if (error?.code === 'ERR_SQLITE_ERROR') {
-      return fail(res, 500, '数据库操作失败', error.message)
+    if (error?.code === '23505') {
+      return fail(res, 409, '记录已存在或违反唯一约束')
+    }
+    if (typeof error?.code === 'string' && error.code.startsWith('23')) {
+      return fail(res, 409, '数据约束冲突')
     }
     return fail(res, 500, '服务器内部错误', error?.message)
   }
 })
 
 const bootstrap = async () => {
-  const { dbFile } = await initDatabase()
+  const { database } = await initDatabase()
   if (process.env.NODE_ENV === 'production') {
-    const admin = get("SELECT id FROM users WHERE role = 'admin' AND status = 'active' LIMIT 1")
+    const admin = await get("SELECT id FROM users WHERE role = 'admin' AND status = 'active' LIMIT 1")
     if (!admin) throw new Error('生产环境尚无可用管理员；请先运行 npm run admin:bootstrap')
   }
   server.listen(PORT, HOST, () => {
-    log('api', `listening: http://${HOST}:${PORT}  (db: ${dbFile})`)
+    log('api', `listening: http://${HOST}:${PORT}  (db: ${database})`)
   })
 }
 
-bootstrap().catch((error) => {
+await bootstrap().catch((error) => {
   console.error('后台启动失败:', error)
   process.exit(1)
 })

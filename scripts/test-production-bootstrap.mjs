@@ -1,167 +1,143 @@
 import assert from 'node:assert/strict'
 import { spawn, spawnSync } from 'node:child_process'
 import { once } from 'node:events'
-import fs from 'node:fs/promises'
 import net from 'node:net'
-import os from 'node:os'
-import path from 'node:path'
+import pg from 'pg'
 import { fileURLToPath } from 'node:url'
-import { DatabaseSync } from 'node:sqlite'
+import path from 'node:path'
 import { verifyPassword } from '../server/api/lib/secure.js'
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
-const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'railway-sign-admin-bootstrap-'))
-const demoPassword = 'LegacyDemoSeed@Pass2026'
-const adminPassword = 'ProdAdminBootstrap@2026'
-let child
-let childOutput = ''
+const database = process.env.PGDATABASE || ''
+const demoPassword = 'DemoSmoke@2026Strong'
+const adminPassword = 'BootstrapSmoke@2026Strong'
+if (!/_test$/i.test(database)) throw new Error('Bootstrap integration test requires a dedicated PGDATABASE ending in _test.')
+if (!process.env.PGPASSWORD) throw new Error('Set PGPASSWORD for the isolated PostgreSQL test role.')
+
+const pool = new pg.Pool({
+  host: process.env.PGHOST || '127.0.0.1',
+  port: Number(process.env.PGPORT || 5432),
+  database,
+  user: process.env.PGUSER || 'railway_sign_app',
+  password: process.env.PGPASSWORD,
+  ssl: process.env.PGSSL === '1' ? { rejectUnauthorized: true } : undefined,
+})
+let api
+let apiOutput = ''
 
 const freePort = async () => {
-  const server = net.createServer()
-  server.listen(0, '127.0.0.1')
-  await once(server, 'listening')
-  const port = server.address().port
-  await new Promise((resolve) => server.close(resolve))
+  const listener = net.createServer()
+  listener.listen(0, '127.0.0.1')
+  await once(listener, 'listening')
+  const port = listener.address().port
+  await new Promise((resolve) => listener.close(resolve))
   return port
 }
 
-const startApi = async (env) => {
-  const port = await freePort()
-  const api = spawn(process.execPath, ['server/api-server.js'], {
-    cwd: root,
-    env: { ...process.env, ...env, API_HOST: '127.0.0.1', API_PORT: String(port) },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  childOutput = ''
-  api.stdout.setEncoding('utf8').on('data', (chunk) => { childOutput = (childOutput + chunk).slice(-6000) })
-  api.stderr.setEncoding('utf8').on('data', (chunk) => { childOutput = (childOutput + chunk).slice(-6000) })
-  const base = `http://127.0.0.1:${port}`
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    if (api.exitCode !== null) throw new Error(`API exited during startup:\n${childOutput}`)
-    try {
-      if ((await fetch(`${base}/api/health`, { signal: AbortSignal.timeout(400) })).ok) return { api, base }
-    } catch {}
-    await new Promise((resolve) => setTimeout(resolve, 75))
-  }
-  api.kill()
-  throw new Error(`API did not become ready:\n${childOutput}`)
-}
-
-const stopApi = async (api) => {
-  if (!api || api.exitCode !== null) return
-  const exited = once(api, 'exit')
-  api.kill()
-  await exited
-}
-
-const runBootstrap = (env) => spawnSync(process.execPath, ['scripts/bootstrap-admin.mjs'], {
+const runNode = (script, env) => spawnSync(process.execPath, [script], {
   cwd: root,
   env: { ...process.env, ...env },
   encoding: 'utf8',
   timeout: 30000,
 })
 
-const baseEnv = {
-  API_DATA_DIR: tempDir,
-  API_DB_FILE: path.join(tempDir, 'bootstrap-test.sqlite'),
-  API_JWT_SECRET: 'test-only-admin-bootstrap-jwt-secret',
-  API_INGEST_URL: '',
+const stopApi = async () => {
+  if (!api || api.exitCode !== null) return
+  const exited = once(api, 'exit')
+  api.kill()
+  await exited
+  api = null
+}
+
+const captchaCode = async (base) => {
+  const result = await fetch(`${base}/api/auth/captcha`).then((response) => response.json())
+  return {
+    id: result.data.id,
+    code: [...result.data.svg.matchAll(/>([A-Z0-9])<\/text>/g)].map((match) => match[1]).join(''),
+  }
 }
 
 try {
-  const legacy = await startApi({
-    ...baseEnv,
+  await pool.query('SELECT 1')
+  const before = await pool.query('SELECT COUNT(*)::int AS total FROM users').catch((error) => {
+    if (error.code === '42P01') throw new Error('Initialize this empty test database with npm run db:migrate first.')
+    throw error
+  })
+  assert.equal(before.rows[0].total, 0, 'refusing to seed a test database that already has users')
+
+  const seeded = runNode('scripts/seed-test-data.mjs', {
     NODE_ENV: 'test',
     API_ENABLE_DEMO_SEED: '1',
     API_DEMO_PASSWORD: demoPassword,
   })
-  await stopApi(legacy.api)
+  assert.equal(seeded.status, 0, seeded.stderr || seeded.stdout)
 
-  const database = new DatabaseSync(baseEnv.API_DB_FILE)
-  assert.equal(database.prepare('SELECT COUNT(*) AS total FROM users').get().total, 51)
-  database.close()
-
-  const bootstrap = runBootstrap({
-    ...baseEnv,
+  const bootstrap = runNode('scripts/bootstrap-admin.mjs', {
     NODE_ENV: 'production',
     API_BOOTSTRAP_ADMIN_PASSWORD: adminPassword,
   })
   assert.equal(bootstrap.status, 0, bootstrap.stderr || bootstrap.stdout)
   assert.ok(!bootstrap.stdout.includes(adminPassword), 'bootstrap must not print the password')
 
-  const verified = new DatabaseSync(baseEnv.API_DB_FILE)
-  const accounts = verified.prepare('SELECT username, password_hash, salt, role, status, remark FROM users').all()
+  const accounts = (await pool.query('SELECT username, password_hash, salt, role, status, remark FROM users')).rows
   const admin = accounts.find((user) => user.username === 'admin')
   assert.equal(admin.role, 'admin')
   assert.equal(admin.status, 'active')
   assert.equal(admin.remark, '生产管理员（安全引导）')
   assert.equal(await verifyPassword(adminPassword, admin.password_hash, admin.salt), true)
   assert.equal(accounts.filter((user) => user.username !== 'admin' && user.status === 'active').length, 0)
-  verified.close()
 
-  const production = await startApi({
-    ...baseEnv,
-    NODE_ENV: 'production',
-    API_ENABLE_DEMO_SEED: '1',
-    API_DEMO_PASSWORD: demoPassword,
-  })
-  child = production.api
-
-  const captcha = await fetch(`${production.base}/api/auth/captcha`).then((response) => response.json())
-  const code = [...captcha.data.svg.matchAll(/>([A-Z0-9])<\/text>/g)].map((match) => match[1]).join('')
-  const login = await fetch(`${production.base}/api/auth/login`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ username: 'admin', password: adminPassword, captchaId: captcha.data.id, captchaCode: code }),
-  })
-  assert.equal(login.status, 200)
-
-  const secondCaptcha = await fetch(`${production.base}/api/auth/captcha`).then((response) => response.json())
-  const secondCode = [...secondCaptcha.data.svg.matchAll(/>([A-Z0-9])<\/text>/g)].map((match) => match[1]).join('')
-  const demoLogin = await fetch(`${production.base}/api/auth/login`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ username: 'operator', password: demoPassword, captchaId: secondCaptcha.data.id, captchaCode: secondCode }),
-  })
-  assert.equal(demoLogin.status, 401)
-  await stopApi(child)
-  child = null
-
-  const freshDir = await fs.mkdtemp(path.join(os.tmpdir(), 'railway-sign-admin-required-'))
-  const freshPort = await freePort()
-  const fresh = spawn(process.execPath, ['server/api-server.js'], {
+  const port = await freePort()
+  const base = `http://127.0.0.1:${port}`
+  api = spawn(process.execPath, ['server/api-server.js'], {
     cwd: root,
     env: {
       ...process.env,
       NODE_ENV: 'production',
-      API_DATA_DIR: freshDir,
-      API_JWT_SECRET: 'test-only-empty-admin-jwt-secret',
       API_HOST: '127.0.0.1',
-      API_PORT: String(freshPort),
+      API_PORT: String(port),
+      API_JWT_SECRET: 'test-only-admin-bootstrap-jwt-secret',
       API_INGEST_URL: '',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
-  let freshOutput = ''
-  fresh.stdout.setEncoding('utf8').on('data', (chunk) => { freshOutput += chunk })
-  fresh.stderr.setEncoding('utf8').on('data', (chunk) => { freshOutput += chunk })
-  const [exitCode] = await once(fresh, 'exit')
-  assert.equal(exitCode, 1)
-  assert.match(freshOutput, /npm run admin:bootstrap/)
-  const freshDatabase = new DatabaseSync(path.join(freshDir, 'railway_sign.db'))
-  assert.equal(freshDatabase.prepare('SELECT COUNT(*) AS total FROM users').get().total, 0)
-  freshDatabase.close()
+  api.stdout.setEncoding('utf8').on('data', (chunk) => { apiOutput = (apiOutput + chunk).slice(-6000) })
+  api.stderr.setEncoding('utf8').on('data', (chunk) => { apiOutput = (apiOutput + chunk).slice(-6000) })
+  let ready = false
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (api.exitCode !== null) throw new Error(`API exited during startup:\n${apiOutput}`)
+    try {
+      if ((await fetch(`${base}/api/health`, { signal: AbortSignal.timeout(400) })).ok) { ready = true; break }
+    } catch {}
+    await new Promise((resolve) => setTimeout(resolve, 75))
+  }
+  assert.equal(ready, true, `production API did not become ready:\n${apiOutput}`)
 
-  const weakDir = await fs.mkdtemp(path.join(os.tmpdir(), 'railway-sign-admin-weak-password-'))
-  const weakBootstrap = runBootstrap({
+  const captcha = await captchaCode(base)
+  const login = await fetch(`${base}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ username: 'admin', password: adminPassword, captchaId: captcha.id, captchaCode: captcha.code }),
+  })
+  assert.equal(login.status, 200)
+
+  const blockedCaptcha = await captchaCode(base)
+  const demoLogin = await fetch(`${base}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ username: 'operator', password: demoPassword, captchaId: blockedCaptcha.id, captchaCode: blockedCaptcha.code }),
+  })
+  assert.equal(demoLogin.status, 401)
+  await stopApi()
+
+  const weak = runNode('scripts/bootstrap-admin.mjs', {
     NODE_ENV: 'production',
-    API_DATA_DIR: weakDir,
     API_BOOTSTRAP_ADMIN_PASSWORD: 'weak-password',
   })
-  assert.notEqual(weakBootstrap.status, 0)
-  await assert.rejects(fs.access(path.join(weakDir, 'railway_sign.db')))
-
-  console.log('Production admin bootstrap tests passed: no default users, seeded-account rotation, and login checks.')
+  assert.notEqual(weak.status, 0)
+  assert.match(weak.stderr || weak.stdout, /16-128 characters/)
+  console.log('Production admin bootstrap tests passed on isolated PostgreSQL: password rotation, test-account disablement, login, and weak-password rejection.')
 } finally {
-  await stopApi(child)
+  await stopApi()
+  await pool.end()
 }

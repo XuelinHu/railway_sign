@@ -7,6 +7,7 @@
   <img height="20" alt="Three.js 0.182.0" src="https://img.shields.io/badge/three.js-0.182.0-000000" />
   <img height="20" alt="ECharts 6.0.0" src="https://img.shields.io/badge/echarts-6.0.0-AA344D" />
   <img height="20" alt="MQTT 5.14.1" src="https://img.shields.io/badge/mqtt-5.14.1-660066" />
+  <img height="20" alt="PostgreSQL 18" src="https://img.shields.io/badge/PostgreSQL-18-4169E1?logo=postgresql&logoColor=white" />
   <img height="20" alt="License GPL-2.0" src="https://img.shields.io/badge/license-GPL--2.0-3DA639" />
 </p>
 
@@ -36,7 +37,7 @@
 - **GIS引擎**: Cesium 1.137.0
 - **3D引擎**: Three.js 0.182.0
 - **视频**: Bilibili 嵌入播放器
-- **后端**: Node.js 原生 `node:http` + `node:sqlite` + `node:crypto`（**零第三方依赖**）
+- **后端**: Node.js `node:http` + PostgreSQL 18（`pg`）+ `node:crypto`
 - **模型服务**: Ollama（qwen3 / deepseek-r1 等）
 - **语音服务**: Python + sherpa-onnx SenseVoice（离线识别）+ edge-tts（神经网络合成）
 - **语言**: JavaScript ES6+ / Python 3.9+
@@ -45,7 +46,8 @@
 
 ### 环境要求
 
-- Node.js >= 22（后端使用内置 `node:sqlite`，建议 Node 24）
+- Node.js >= 22（建议 Node 24）
+- PostgreSQL >= 16（建议 PostgreSQL 18）
 - npm >= 8.0.0
 - Python >= 3.9（仅语音服务需要）
 
@@ -54,6 +56,14 @@
 ```bash
 npm install
 ```
+
+首次部署前由数据库管理员为本项目创建独立数据库和运行角色。可在可信管理终端运行 `psql -d postgres -f server/api/postgres/provision-role.psql`；脚本会交互提示项目库名、角色名及口令，不要把管理账号写入应用 `.env`。然后复制 `server/.env.example` 为 `server/.env`，填入本项目角色口令和连接地址，再执行：
+
+```bash
+npm run db:migrate
+```
+
+`npm run api` 只连接 `PGDATABASE` 指定的项目数据库；结构基线和后续不可变 SQL 位于 `server/api/postgres/`，使用 advisory lock 与 SHA-256 ledger。`npm run db:seed:test` 仅允许 `_test` 数据库、显式开关和随机强口令。SQLite 原始库不会被启动流程读取或改写。
 
 ### 启动全部服务
 
@@ -69,8 +79,10 @@ npm run dev:all
 全新开发环境不会自动创建账号。仅在隔离的开发/测试数据库需要演示用户时，先显式配置随机强口令：
 
 ```powershell
+$env:PGDATABASE = 'railway_sign_test'
 $env:API_ENABLE_DEMO_SEED = '1'
 $env:API_DEMO_PASSWORD = '<16 位以上随机强口令>'
+npm run db:seed:test
 npm run dev:all
 ```
 
@@ -83,25 +95,36 @@ npm run dev:all
 - **数据可视化平台** - ECharts 统计面板
 - 右上角进入**管理台**，右下角 🤖 打开**智能体**
 
-### SQLite 备份与恢复
+### PostgreSQL 加密备份与隔离恢复
 
 ```bash
 npm run db:backup
-npm run db:restore -- --source ".data/backups/备份文件.sqlite" --replace
+npm run db:restore -- --source ".data/backups/railway_sign-railway_sign-2026-01-01T00-00-00-000Z.pgbak" --target railway_sign_restore_test --replace
 ```
 
-备份使用 SQLite 一致性快照并执行完整性检查，不覆盖已存在文件。恢复前必须停止 API；已有数据库会保留为
-`.pre-restore-*` 回滚文件。请先确认备份路径，再显式使用 `--replace`。
+备份由 `pg_dump --format=custom` 生成并用 AES-256-GCM 加密；必须在 `server/.env` 或进程环境设置独立的 `DB_BACKUP_ENCRYPTION_KEY`（64 位十六进制随机密钥）。备份目标不会覆盖已有文件。恢复只允许写入与源库不同、名称以 `_test` 结尾的数据库，并要求显式 `--replace`；它会在单事务中替换目标库对象。生产恢复需先恢复到隔离库验收，再按单独的运维变更流程执行。
+
+### SQLite 历史数据导入
+
+导入工具只读 SQLite 源文件，并仅允许目标 `PGDATABASE` 以 `_test` 结尾；它会在事务中拒绝非空业务表、导入并逐表核对。先复制历史库到单独临时路径，再显式运行：
+
+```powershell
+$env:PGDATABASE = 'railway_sign_import_test'
+$env:API_SQLITE_SOURCE = 'D:\path\to\copied-railway-sign.sqlite'
+npm run db:import:sqlite
+```
+
+该工具不会自动访问 `.data/railway_sign.db`，也不会把 SQLite 业务数据导入开发或生产数据库。
 
 ### 生产管理员引导
 
-生产环境首次启动前，使用与 API 相同的数据库路径设置 `NODE_ENV=production` 和一次性强口令
+生产环境首次启动前，使用与 API 相同的 PostgreSQL 连接设置 `NODE_ENV=production` 和一次性强口令
 `API_BOOTSTRAP_ADMIN_PASSWORD`，再运行 `npm run admin:bootstrap`。该命令创建管理员，或轮换旧版
-内置演示管理员口令，并停用其他内置演示账号；口令不会打印。不要在现有业务库上改 `API_DATA_DIR`
-或 `API_DB_FILE`。引导后移除一次性密码环境变量，再启动 API。
+内置演示管理员口令，并停用其他内置演示账号；口令不会打印。不要在现有业务库上改 PostgreSQL
+连接目标。引导后移除一次性密码环境变量，再启动 API。
 
 旧版已运行数据库不会自动改变账号或密码。生产登录会拒绝仍标记为内置演示账号的账号；管理员须先
-使用上述命令完成轮换，业务表和用户资料不会被重建。
+使用上述命令完成轮换，业务表和用户资料不会被重建。应用角色只应拥有本项目数据库的运行权限；引导操作需由该库授权的部署身份执行。
 
 ### 语音服务（可选）
 
@@ -127,7 +150,7 @@ npm run build
 npm run test:voice-proxy
 ```
 
-该测试会创建临时 SQLite 数据库和本地语音服务 stub，验证登录鉴权、WAV 转发、TTS 音频响应及缓存；不会读取项目 `.data` 或调用 Ollama。
+该测试使用本地语音服务 stub，验证登录鉴权、WAV 转发、TTS 音频响应及缓存；不会读取项目 `.data` 或调用 Ollama。
 语音 API 默认将 TTS 边车响应限制为 12 MiB（`VOICE_MAX_TTS_AUDIO_BYTES`），并在流式读取期间执行限制，超限响应不会写入缓存。
 
 数据库备份/恢复隔离测试：
@@ -142,11 +165,19 @@ npm run test:db-maintenance
 npm run test:ingest-auth
 ```
 
-生产管理员引导集成测试（只使用临时 SQLite 数据库）：
+PostgreSQL 事务、约束、分页和迁移重复执行验证（仅限隔离且已播种的 `_test` 数据库）：
+
+```bash
+npm run test:postgres-integration
+```
+
+生产管理员引导验证会在指定的空 PostgreSQL `_test` 数据库内创建测试账号并更新管理员口令，测试数据会保留；不得指向 LAN 或生产库。先初始化一个专用空测试库并设置 `PGDATABASE`、`PGPASSWORD`，再运行：
 
 ```bash
 npm run test:production-bootstrap
 ```
+
+该测试只接受 `PGDATABASE` 以 `_test` 结尾且 `users` 表为空的数据库。测试验证生产管理员安全引导、演示账号停用、管理员验证码登录及弱口令拒绝。
 
 ### 预览生产版本
 

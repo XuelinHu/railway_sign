@@ -1,7 +1,7 @@
 // 管理台接口：每个菜单一个分页列表接口（统一 page/pageSize/keyword/筛选 + 统一返回结构）。
 // 权限点与 roles 表里的 permissions 对应，超级管理员（permissions = ["*"]）自动放行。
 
-import { all, get, run, tx, pageQuery, getConfig, setConfig } from '../lib/db.js'
+import { all, get, run, tx, pageQuery, getConfig, setConfig } from '../lib/postgres.js'
 import { badRequest, notFound, forbidden, str, likeParam, parseJsonColumn } from '../lib/http.js'
 import { hashPassword } from '../lib/secure.js'
 import { requirePermission, writeOpLog, getRolePermissions } from '../lib/auth.js'
@@ -17,7 +17,7 @@ const buildList = ({ from, select = '*', searchFields = [], filters = [], dateCo
 
     const keyword = str(ctx.query.get('keyword'))
     if (keyword && searchFields.length) {
-      conditions.push(`(${searchFields.map((field) => `${field} LIKE :kw ESCAPE '\\'`).join(' OR ')})`)
+      conditions.push(`(${searchFields.map((field) => `${field} ILIKE :kw ESCAPE '\\'`).join(' OR ')})`)
       params.kw = likeParam(keyword)
     }
 
@@ -44,7 +44,7 @@ const buildList = ({ from, select = '*', searchFields = [], filters = [], dateCo
     }
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
-    return pageQuery({
+    return await pageQuery({
       select,
       from,
       where,
@@ -62,52 +62,53 @@ const parseId = (ctx) => {
   return id
 }
 
-const requireRecord = (table, id, label) => {
-  const row = get(`SELECT * FROM ${table} WHERE id = :id`, { id })
+const requireRecord = async (table, id, label) => {
+  const row = await get(`SELECT * FROM ${table} WHERE id = :id`, { id })
   if (!row) throw notFound(`${label}不存在`)
   return row
 }
 
-const listOf = (rows, column) => all(`SELECT DISTINCT ${column} AS value FROM ${rows} WHERE ${column} <> '' ORDER BY ${column}`).map((row) => row.value)
+const listOf = async (rows, column) => (await all(`SELECT DISTINCT ${column} AS value FROM ${rows} WHERE ${column} <> '' ORDER BY ${column}`)).map((row) => row.value)
 
 // —— 概览 ——
 const overview = async (ctx) => {
-  requirePermission(ctx, 'dashboard:view')
-  const count = (sql, params) => Number(get(sql, params)?.total || 0)
+  await requirePermission(ctx, 'dashboard:view')
+  const count = async (sql, params) => Number((await get(sql, params))?.total || 0)
   const today = new Date().toISOString().slice(0, 10)
+  const tomorrow = new Date(Date.now() + 864e5).toISOString().slice(0, 10)
 
   const stats = {
-    userTotal: count('SELECT COUNT(*) AS total FROM users'),
-    userActive: count("SELECT COUNT(*) AS total FROM users WHERE status = 'active'"),
-    userToday: count('SELECT COUNT(*) AS total FROM users WHERE substr(created_at, 1, 10) = :d', { d: today }),
-    signalTotal: count('SELECT COUNT(*) AS total FROM signals'),
-    signalOnline: count('SELECT COUNT(*) AS total FROM signals WHERE online = 1'),
-    signalOffline: count('SELECT COUNT(*) AS total FROM signals WHERE online = 0'),
-    alarmTotal: count('SELECT COUNT(*) AS total FROM alarms'),
-    alarmPending: count("SELECT COUNT(*) AS total FROM alarms WHERE status = 'pending'"),
-    alarmToday: count('SELECT COUNT(*) AS total FROM alarms WHERE substr(occurred_at, 1, 10) = :d', { d: today }),
-    orderTotal: count('SELECT COUNT(*) AS total FROM work_orders'),
-    orderPending: count("SELECT COUNT(*) AS total FROM work_orders WHERE status = 'pending'"),
-    telemetryTotal: count('SELECT COUNT(*) AS total FROM telemetry_records'),
-    aiSessionTotal: count('SELECT COUNT(*) AS total FROM ai_sessions'),
-    aiMessageTotal: count('SELECT COUNT(*) AS total FROM ai_messages'),
-    loginToday: count('SELECT COUNT(*) AS total FROM login_logs WHERE substr(created_at, 1, 10) = :d AND success = 1', { d: today }),
-    loginFailedToday: count('SELECT COUNT(*) AS total FROM login_logs WHERE substr(created_at, 1, 10) = :d AND success = 0', { d: today }),
+    userTotal: await count('SELECT COUNT(*) AS total FROM users'),
+    userActive: await count("SELECT COUNT(*) AS total FROM users WHERE status = 'active'"),
+    userToday: await count('SELECT COUNT(*) AS total FROM users WHERE created_at >= :day_start AND created_at < :day_end', { day_start: `${today}T00:00:00.000Z`, day_end: `${tomorrow}T00:00:00.000Z` }),
+    signalTotal: await count('SELECT COUNT(*) AS total FROM signals'),
+    signalOnline: await count('SELECT COUNT(*) AS total FROM signals WHERE online = 1'),
+    signalOffline: await count('SELECT COUNT(*) AS total FROM signals WHERE online = 0'),
+    alarmTotal: await count('SELECT COUNT(*) AS total FROM alarms'),
+    alarmPending: await count("SELECT COUNT(*) AS total FROM alarms WHERE status = 'pending'"),
+    alarmToday: await count('SELECT COUNT(*) AS total FROM alarms WHERE occurred_at >= :day_start AND occurred_at < :day_end', { day_start: `${today}T00:00:00.000Z`, day_end: `${tomorrow}T00:00:00.000Z` }),
+    orderTotal: await count('SELECT COUNT(*) AS total FROM work_orders'),
+    orderPending: await count("SELECT COUNT(*) AS total FROM work_orders WHERE status = 'pending'"),
+    telemetryTotal: await count('SELECT COUNT(*) AS total FROM telemetry_records'),
+    aiSessionTotal: await count('SELECT COUNT(*) AS total FROM ai_sessions'),
+    aiMessageTotal: await count('SELECT COUNT(*) AS total FROM ai_messages'),
+    loginToday: await count('SELECT COUNT(*) AS total FROM login_logs WHERE created_at >= :day_start AND created_at < :day_end AND success = 1', { day_start: `${today}T00:00:00.000Z`, day_end: `${tomorrow}T00:00:00.000Z` }),
+    loginFailedToday: await count('SELECT COUNT(*) AS total FROM login_logs WHERE created_at >= :day_start AND created_at < :day_end AND success = 0', { day_start: `${today}T00:00:00.000Z`, day_end: `${tomorrow}T00:00:00.000Z` }),
   }
 
-  const alarmLevels = all('SELECT level, COUNT(*) AS total FROM alarms GROUP BY level')
-  const alarmStatus = all('SELECT status, COUNT(*) AS total FROM alarms GROUP BY status')
-  const deviceTypes = all('SELECT device_type, COUNT(*) AS total FROM alarms GROUP BY device_type')
+  const alarmLevels = await all('SELECT level, COUNT(*) AS total FROM alarms GROUP BY level')
+  const alarmStatus = await all('SELECT status, COUNT(*) AS total FROM alarms GROUP BY status')
+  const deviceTypes = await all('SELECT device_type, COUNT(*) AS total FROM alarms GROUP BY device_type')
 
-  const alarmTrend = all(
-    `SELECT substr(occurred_at, 1, 10) AS day, COUNT(*) AS total
-     FROM alarms WHERE occurred_at >= :since GROUP BY day ORDER BY day`,
+  const alarmTrend = await all(
+    `SELECT to_char(occurred_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS day, COUNT(*) AS total
+     FROM alarms WHERE occurred_at >= :since GROUP BY 1 ORDER BY 1`,
     { since: new Date(Date.now() - 13 * 864e5).toISOString() }
   )
 
-  const loginTrend = all(
-    `SELECT substr(created_at, 1, 10) AS day, SUM(success) AS success, COUNT(*) - SUM(success) AS failed
-     FROM login_logs WHERE created_at >= :since GROUP BY day ORDER BY day`,
+  const loginTrend = await all(
+    `SELECT to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS day, SUM(success) AS success, COUNT(*) - SUM(success) AS failed
+     FROM login_logs WHERE created_at >= :since GROUP BY 1 ORDER BY 1`,
     { since: new Date(Date.now() - 13 * 864e5).toISOString() }
   )
 
@@ -118,10 +119,10 @@ const overview = async (ctx) => {
     deviceTypes,
     alarmTrend,
     loginTrend,
-    recentAlarms: all('SELECT * FROM alarms ORDER BY occurred_at DESC LIMIT 6'),
-    recentLogins: all('SELECT * FROM login_logs ORDER BY id DESC LIMIT 6'),
-    recentSessions: all('SELECT * FROM ai_sessions ORDER BY id DESC LIMIT 5'),
-    roleSummary: all('SELECT role, COUNT(*) AS total FROM users GROUP BY role'),
+    recentAlarms: await all('SELECT * FROM alarms ORDER BY occurred_at DESC LIMIT 6'),
+    recentLogins: await all('SELECT * FROM login_logs ORDER BY id DESC LIMIT 6'),
+    recentSessions: await all('SELECT * FROM ai_sessions ORDER BY id DESC LIMIT 5'),
+    roleSummary: await all('SELECT role, COUNT(*) AS total FROM users GROUP BY role'),
   }
 }
 
@@ -135,7 +136,7 @@ const userList = buildList({
 })
 
 const createUser = async (ctx) => {
-  const admin = requirePermission(ctx, 'users:edit')
+  const admin = await requirePermission(ctx, 'users:edit')
   const body = ctx.body || {}
   const username = str(body.username).toLowerCase()
   const name = str(body.name)
@@ -143,12 +144,12 @@ const createUser = async (ctx) => {
   if (!/^[A-Za-z][A-Za-z0-9_]{3,19}$/.test(username)) throw badRequest('用户名需以字母开头，4-20 位字母数字下划线')
   if (name.length < 2) throw badRequest('姓名至少 2 个字符')
   if (!ROLES.includes(role)) throw badRequest('角色不合法')
-  if (get('SELECT id FROM users WHERE username = :u', { u: username })) throw badRequest('用户名已存在')
+  if (await get('SELECT id FROM users WHERE username = :u', { u: username })) throw badRequest('用户名已存在')
   const password = String(body.password || 'Init@1234')
   if (password.length < 8) throw badRequest('密码至少 8 位')
   const { hash, salt } = await hashPassword(password)
   const now = new Date().toISOString()
-  const inserted = run(
+  const inserted = await run(
     `INSERT INTO users (username, password_hash, salt, name, phone, email, role, status, remark, created_at, updated_at)
      VALUES (:username, :hash, :salt, :name, :phone, :email, :role, 'active', :remark, :now, :now)`,
     {
@@ -163,23 +164,23 @@ const createUser = async (ctx) => {
       now,
     }
   )
-  writeOpLog({ user: admin, req: ctx.req, action: '新增用户', targetType: 'user', targetId: inserted.lastInsertRowid, detail: `新增用户 ${username}` })
+  await writeOpLog({ user: admin, req: ctx.req, action: '新增用户', targetType: 'user', targetId: inserted.lastInsertRowid, detail: `新增用户 ${username}` })
   return { id: Number(inserted.lastInsertRowid) }
 }
 
 const updateUser = async (ctx) => {
-  const admin = requirePermission(ctx, 'users:edit')
+  const admin = await requirePermission(ctx, 'users:edit')
   const id = parseId(ctx)
-  const target = requireRecord('users', id, '用户')
+  const target = await requireRecord('users', id, '用户')
   const body = ctx.body || {}
   const role = str(body.role, target.role)
   const status = str(body.status, target.status)
   if (!ROLES.includes(role)) throw badRequest('角色不合法')
   if (!USER_STATUS.includes(status)) throw badRequest('状态不合法')
-  if (target.role === 'admin' && role !== 'admin' && Number(get("SELECT COUNT(*) AS total FROM users WHERE role = 'admin'")?.total) <= 1) {
+  if (target.role === 'admin' && role !== 'admin' && Number((await get("SELECT COUNT(*) AS total FROM users WHERE role = 'admin'"))?.total) <= 1) {
     throw badRequest('系统至少保留一个管理员')
   }
-  run(
+  await run(
     `UPDATE users SET name = :name, phone = :phone, email = :email, role = :role, status = :status,
        remark = :remark, updated_at = :now WHERE id = :id`,
     {
@@ -193,71 +194,71 @@ const updateUser = async (ctx) => {
       id,
     }
   )
-  writeOpLog({ user: admin, req: ctx.req, action: '修改用户', targetType: 'user', targetId: id, detail: `角色=${role} 状态=${status}` })
+  await writeOpLog({ user: admin, req: ctx.req, action: '修改用户', targetType: 'user', targetId: id, detail: `角色=${role} 状态=${status}` })
   return { updated: true }
 }
 
 const updateUserStatus = async (ctx) => {
-  const admin = requirePermission(ctx, 'users:edit')
+  const admin = await requirePermission(ctx, 'users:edit')
   const id = parseId(ctx)
-  const target = requireRecord('users', id, '用户')
+  const target = await requireRecord('users', id, '用户')
   const status = str(ctx.body?.status)
   if (!USER_STATUS.includes(status)) throw badRequest('状态不合法')
   if (target.id === admin.id && status === 'disabled') throw badRequest('不能禁用当前登录账号')
-  run('UPDATE users SET status = :status, updated_at = :now WHERE id = :id', {
+  await run('UPDATE users SET status = :status, updated_at = :now WHERE id = :id', {
     status,
     now: new Date().toISOString(),
     id,
   })
-  writeOpLog({ user: admin, req: ctx.req, action: status === 'active' ? '启用用户' : '禁用用户', targetType: 'user', targetId: id, detail: target.username })
+  await writeOpLog({ user: admin, req: ctx.req, action: status === 'active' ? '启用用户' : '禁用用户', targetType: 'user', targetId: id, detail: target.username })
   return { updated: true }
 }
 
 const updateUserRole = async (ctx) => {
-  const admin = requirePermission(ctx, 'users:edit')
+  const admin = await requirePermission(ctx, 'users:edit')
   const id = parseId(ctx)
-  const target = requireRecord('users', id, '用户')
+  const target = await requireRecord('users', id, '用户')
   const role = str(ctx.body?.role)
   if (!ROLES.includes(role)) throw badRequest('角色不合法')
-  if (target.role === 'admin' && role !== 'admin' && Number(get("SELECT COUNT(*) AS total FROM users WHERE role = 'admin'")?.total) <= 1) {
+  if (target.role === 'admin' && role !== 'admin' && Number((await get("SELECT COUNT(*) AS total FROM users WHERE role = 'admin'"))?.total) <= 1) {
     throw badRequest('系统至少保留一个管理员')
   }
-  run('UPDATE users SET role = :role, updated_at = :now WHERE id = :id', { role, now: new Date().toISOString(), id })
-  writeOpLog({ user: admin, req: ctx.req, action: '调整角色', targetType: 'user', targetId: id, detail: `${target.username} → ${role}` })
+  await run('UPDATE users SET role = :role, updated_at = :now WHERE id = :id', { role, now: new Date().toISOString(), id })
+  await writeOpLog({ user: admin, req: ctx.req, action: '调整角色', targetType: 'user', targetId: id, detail: `${target.username} → ${role}` })
   return { updated: true }
 }
 
 const resetUserPassword = async (ctx) => {
-  const admin = requirePermission(ctx, 'users:edit')
+  const admin = await requirePermission(ctx, 'users:edit')
   const id = parseId(ctx)
-  const target = requireRecord('users', id, '用户')
+  const target = await requireRecord('users', id, '用户')
   const password = str(ctx.body?.password, 'Reset@1234')
   if (password.length < 8) throw badRequest('密码至少 8 位')
   const { hash, salt } = await hashPassword(password)
-  run('UPDATE users SET password_hash = :hash, salt = :salt, updated_at = :now WHERE id = :id', {
+  await run('UPDATE users SET password_hash = :hash, salt = :salt, updated_at = :now WHERE id = :id', {
     hash,
     salt,
     now: new Date().toISOString(),
     id,
   })
-  writeOpLog({ user: admin, req: ctx.req, action: '重置密码', targetType: 'user', targetId: id, detail: target.username })
+  await writeOpLog({ user: admin, req: ctx.req, action: '重置密码', targetType: 'user', targetId: id, detail: target.username })
   return { updated: true, password }
 }
 
 const deleteUser = async (ctx) => {
-  const admin = requirePermission(ctx, 'users:edit')
+  const admin = await requirePermission(ctx, 'users:edit')
   const id = parseId(ctx)
-  const target = requireRecord('users', id, '用户')
+  const target = await requireRecord('users', id, '用户')
   if (target.id === admin.id) throw badRequest('不能删除当前登录账号')
   if (target.username === 'admin') throw badRequest('内置管理员账号不可删除')
-  run('DELETE FROM users WHERE id = :id', { id })
-  writeOpLog({ user: admin, req: ctx.req, action: '删除用户', targetType: 'user', targetId: id, detail: target.username })
+  await run('DELETE FROM users WHERE id = :id', { id })
+  await writeOpLog({ user: admin, req: ctx.req, action: '删除用户', targetType: 'user', targetId: id, detail: target.username })
   return { deleted: true }
 }
 
 // —— 角色权限 ——
 const roleList = async (ctx) => {
-  requirePermission(ctx, 'roles:view')
+  await requirePermission(ctx, 'roles:view')
   const result = await buildList({
     from: 'FROM roles',
     searchFields: ['code', 'name', 'description'],
@@ -268,7 +269,7 @@ const roleList = async (ctx) => {
 }
 
 const saveRole = async (ctx) => {
-  const admin = requirePermission(ctx, 'roles:edit')
+  const admin = await requirePermission(ctx, 'roles:edit')
   const body = ctx.body || {}
   const code = str(body.code).toLowerCase()
   const name = str(body.name)
@@ -276,41 +277,41 @@ const saveRole = async (ctx) => {
   if (!/^[a-z][a-z0-9_-]{1,19}$/.test(code)) throw badRequest('角色标识需为 2-20 位小写字母数字')
   if (!name) throw badRequest('请填写角色名称')
   const now = new Date().toISOString()
-  const existing = get('SELECT * FROM roles WHERE code = :code', { code })
+  const existing = await get('SELECT * FROM roles WHERE code = :code', { code })
   if (existing) {
     if (Number(existing.built_in) === 1 && code === 'admin') throw badRequest('内置管理员角色不可修改权限')
-    run(
+    await run(
       `UPDATE roles SET name = :name, description = :description, permissions = :permissions, sort = :sort, updated_at = :now
        WHERE code = :code`,
       { name, description: str(body.description), permissions: JSON.stringify(permissions), sort: Number(body.sort) || 99, now, code }
     )
-    writeOpLog({ user: admin, req: ctx.req, action: '修改角色', targetType: 'role', targetId: code, detail: name })
+    await writeOpLog({ user: admin, req: ctx.req, action: '修改角色', targetType: 'role', targetId: code, detail: name })
     return { updated: true, code }
   }
-  run(
+  await run(
     `INSERT INTO roles (code, name, description, permissions, built_in, sort, created_at, updated_at)
      VALUES (:code, :name, :description, :permissions, 0, :sort, :now, :now)`,
     { code, name, description: str(body.description), permissions: JSON.stringify(permissions), sort: Number(body.sort) || 99, now }
   )
-  writeOpLog({ user: admin, req: ctx.req, action: '新增角色', targetType: 'role', targetId: code, detail: name })
+  await writeOpLog({ user: admin, req: ctx.req, action: '新增角色', targetType: 'role', targetId: code, detail: name })
   return { created: true, code }
 }
 
 const deleteRole = async (ctx) => {
-  const admin = requirePermission(ctx, 'roles:edit')
+  const admin = await requirePermission(ctx, 'roles:edit')
   const code = str(ctx.params.code)
-  const role = get('SELECT * FROM roles WHERE code = :code', { code })
+  const role = await get('SELECT * FROM roles WHERE code = :code', { code })
   if (!role) throw notFound('角色不存在')
   if (Number(role.built_in) === 1) throw badRequest('内置角色不可删除')
-  const used = Number(get('SELECT COUNT(*) AS total FROM users WHERE role = :code', { code })?.total || 0)
+  const used = Number((await get('SELECT COUNT(*) AS total FROM users WHERE role = :code', { code }))?.total || 0)
   if (used > 0) throw badRequest(`仍有 ${used} 个用户使用该角色，无法删除`)
-  run('DELETE FROM roles WHERE code = :code', { code })
-  writeOpLog({ user: admin, req: ctx.req, action: '删除角色', targetType: 'role', targetId: code })
+  await run('DELETE FROM roles WHERE code = :code', { code })
+  await writeOpLog({ user: admin, req: ctx.req, action: '删除角色', targetType: 'role', targetId: code })
   return { deleted: true }
 }
 
 const permissionCatalog = async (ctx) => {
-  requirePermission(ctx, 'roles:view')
+  await requirePermission(ctx, 'roles:view')
   return {
     permissions: [
       { code: 'dashboard:view', name: '查看概览' },
@@ -343,13 +344,13 @@ const signalList = buildList({
 })
 
 const saveSignal = async (ctx) => {
-  const admin = requirePermission(ctx, 'signals:edit')
+  const admin = await requirePermission(ctx, 'signals:edit')
   const body = ctx.body || {}
   const now = new Date().toISOString()
   if (ctx.params.id) {
     const id = parseId(ctx)
-    const target = requireRecord('signals', id, '信号机')
-    run(
+    const target = await requireRecord('signals', id, '信号机')
+    await run(
       `UPDATE signals SET name = :name, station = :station, kilometer = :kilometer, direction = :direction,
          type = :type, status = :status, online = :online, remark = :remark, updated_at = :now WHERE id = :id`,
       {
@@ -365,13 +366,13 @@ const saveSignal = async (ctx) => {
         id,
       }
     )
-    writeOpLog({ user: admin, req: ctx.req, action: '修改信号机', targetType: 'signal', targetId: id, detail: `${target.code}` })
+    await writeOpLog({ user: admin, req: ctx.req, action: '修改信号机', targetType: 'signal', targetId: id, detail: `${target.code}` })
     return { updated: true }
   }
   const code = str(body.code)
   if (!code) throw badRequest('请填写信号机编号')
-  if (get('SELECT id FROM signals WHERE code = :code', { code })) throw badRequest('信号机编号已存在')
-  const inserted = run(
+  if (await get('SELECT id FROM signals WHERE code = :code', { code })) throw badRequest('信号机编号已存在')
+  const inserted = await run(
     `INSERT INTO signals (code, name, station, kilometer, direction, type, status, online, remark, created_at, updated_at)
      VALUES (:code, :name, :station, :kilometer, :direction, :type, :status, :online, :remark, :now, :now)`,
     {
@@ -387,16 +388,16 @@ const saveSignal = async (ctx) => {
       now,
     }
   )
-  writeOpLog({ user: admin, req: ctx.req, action: '新增信号机', targetType: 'signal', targetId: inserted.lastInsertRowid, detail: code })
+  await writeOpLog({ user: admin, req: ctx.req, action: '新增信号机', targetType: 'signal', targetId: inserted.lastInsertRowid, detail: code })
   return { id: Number(inserted.lastInsertRowid) }
 }
 
 const deleteSignal = async (ctx) => {
-  const admin = requirePermission(ctx, 'signals:edit')
+  const admin = await requirePermission(ctx, 'signals:edit')
   const id = parseId(ctx)
-  const target = requireRecord('signals', id, '信号机')
-  run('DELETE FROM signals WHERE id = :id', { id })
-  writeOpLog({ user: admin, req: ctx.req, action: '删除信号机', targetType: 'signal', targetId: id, detail: target.code })
+  const target = await requireRecord('signals', id, '信号机')
+  await run('DELETE FROM signals WHERE id = :id', { id })
+  await writeOpLog({ user: admin, req: ctx.req, action: '删除信号机', targetType: 'signal', targetId: id, detail: target.code })
   return { deleted: true }
 }
 
@@ -410,13 +411,13 @@ const alarmList = buildList({
 })
 
 const handleAlarm = async (ctx) => {
-  const admin = requirePermission(ctx, 'alarms:handle')
+  const admin = await requirePermission(ctx, 'alarms:handle')
   const id = parseId(ctx)
-  const target = requireRecord('alarms', id, '告警')
+  const target = await requireRecord('alarms', id, '告警')
   const status = str(ctx.body?.status, 'handling')
   if (!['pending', 'handling', 'resolved', 'closed'].includes(status)) throw badRequest('状态不合法')
   const now = new Date().toISOString()
-  run(
+  await run(
     `UPDATE alarms SET status = :status, handled_by = :handled_by,
        handled_at = :handled_at, remark = :remark, updated_at = :now WHERE id = :id`,
     {
@@ -428,7 +429,7 @@ const handleAlarm = async (ctx) => {
       id,
     }
   )
-  writeOpLog({ user: admin, req: ctx.req, action: '处理告警', targetType: 'alarm', targetId: id, detail: `${target.code} → ${status}` })
+  await writeOpLog({ user: admin, req: ctx.req, action: '处理告警', targetType: 'alarm', targetId: id, detail: `${target.code} → ${status}` })
   return { updated: true }
 }
 
@@ -442,14 +443,14 @@ const orderList = buildList({
 })
 
 const saveOrder = async (ctx) => {
-  const admin = requirePermission(ctx, 'work-orders:edit')
+  const admin = await requirePermission(ctx, 'work-orders:edit')
   const body = ctx.body || {}
   const now = new Date().toISOString()
   if (ctx.params.id) {
     const id = parseId(ctx)
-    const target = requireRecord('work_orders', id, '工单')
+    const target = await requireRecord('work_orders', id, '工单')
     const status = str(body.status, target.status)
-    run(
+    await run(
       `UPDATE work_orders SET title = :title, type = :type, priority = :priority, status = :status,
          assignee = :assignee, station = :station, description = :description, remark = :remark,
          finished_at = :finished_at, updated_at = :now WHERE id = :id`,
@@ -467,13 +468,13 @@ const saveOrder = async (ctx) => {
         id,
       }
     )
-    writeOpLog({ user: admin, req: ctx.req, action: '修改工单', targetType: 'work_order', targetId: id, detail: target.code })
+    await writeOpLog({ user: admin, req: ctx.req, action: '修改工单', targetType: 'work_order', targetId: id, detail: target.code })
     return { updated: true }
   }
   const title = str(body.title)
   if (!title) throw badRequest('请填写工单标题')
   const code = str(body.code) || `WO${Date.now()}`
-  const inserted = run(
+  const inserted = await run(
     `INSERT INTO work_orders (code, title, type, priority, status, assignee, station, alarm_code,
        description, remark, created_at, updated_at, finished_at)
      VALUES (:code, :title, :type, :priority, :status, :assignee, :station, :alarm_code,
@@ -492,16 +493,16 @@ const saveOrder = async (ctx) => {
       now,
     }
   )
-  writeOpLog({ user: admin, req: ctx.req, action: '新增工单', targetType: 'work_order', targetId: inserted.lastInsertRowid, detail: code })
+  await writeOpLog({ user: admin, req: ctx.req, action: '新增工单', targetType: 'work_order', targetId: inserted.lastInsertRowid, detail: code })
   return { id: Number(inserted.lastInsertRowid) }
 }
 
 const deleteOrder = async (ctx) => {
-  const admin = requirePermission(ctx, 'work-orders:edit')
+  const admin = await requirePermission(ctx, 'work-orders:edit')
   const id = parseId(ctx)
-  const target = requireRecord('work_orders', id, '工单')
-  run('DELETE FROM work_orders WHERE id = :id', { id })
-  writeOpLog({ user: admin, req: ctx.req, action: '删除工单', targetType: 'work_order', targetId: id, detail: target.code })
+  const target = await requireRecord('work_orders', id, '工单')
+  await run('DELETE FROM work_orders WHERE id = :id', { id })
+  await writeOpLog({ user: admin, req: ctx.req, action: '删除工单', targetType: 'work_order', targetId: id, detail: target.code })
   return { deleted: true }
 }
 
@@ -515,13 +516,13 @@ const telemetryList = buildList({
 })
 
 const telemetryStats = async (ctx) => {
-  requirePermission(ctx, 'telemetry:view')
+  await requirePermission(ctx, 'telemetry:view')
   const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString()
   return {
-    total: Number(get('SELECT COUNT(*) AS total FROM telemetry_records')?.total || 0),
-    last24h: Number(get('SELECT COUNT(*) AS total FROM telemetry_records WHERE created_at >= :since', { since })?.total || 0),
-    waterAlerts: Number(get('SELECT COUNT(*) AS total FROM telemetry_records WHERE water_active = 1')?.total || 0),
-    devices: all(
+    total: Number((await get('SELECT COUNT(*) AS total FROM telemetry_records'))?.total || 0),
+    last24h: Number((await get('SELECT COUNT(*) AS total FROM telemetry_records WHERE created_at >= :since', { since }))?.total || 0),
+    waterAlerts: Number((await get('SELECT COUNT(*) AS total FROM telemetry_records WHERE water_active = 1'))?.total || 0),
+    devices: await all(
       `SELECT device_id, device, COUNT(*) AS total, MAX(created_at) AS last_at, MIN(distance_cm) AS min_distance
        FROM telemetry_records GROUP BY device_id ORDER BY device_id`
     ),
@@ -546,10 +547,10 @@ const opLogList = buildList({
 })
 
 const logOptions = async (ctx) => {
-  requirePermission(ctx, 'logs:view')
+  await requirePermission(ctx, 'logs:view')
   return {
-    actions: listOf('op_logs', 'action'),
-    targetTypes: listOf('op_logs', 'target_type'),
+    actions: await listOf('op_logs', 'action'),
+    targetTypes: await listOf('op_logs', 'target_type'),
   }
 }
 
@@ -563,9 +564,9 @@ const aiSessionList = buildList({
 })
 
 const aiSessionMessages = async (ctx) => {
-  requirePermission(ctx, 'ai:view')
+  await requirePermission(ctx, 'ai:view')
   const id = parseId(ctx)
-  const session = requireRecord('ai_sessions', id, '会话')
+  const session = await requireRecord('ai_sessions', id, '会话')
   const result = await pageQuery({
     from: 'FROM ai_messages',
     where: 'WHERE session_id = :id',
@@ -578,14 +579,14 @@ const aiSessionMessages = async (ctx) => {
 }
 
 const deleteAiSession = async (ctx) => {
-  const admin = requirePermission(ctx, 'ai:view')
+  const admin = await requirePermission(ctx, 'ai:view')
   const id = parseId(ctx)
-  const session = requireRecord('ai_sessions', id, '会话')
-  tx(() => {
-    run('DELETE FROM ai_messages WHERE session_id = :id', { id })
-    run('DELETE FROM ai_sessions WHERE id = :id', { id })
+  const session = await requireRecord('ai_sessions', id, '会话')
+  await tx(async () => {
+    await run('DELETE FROM ai_messages WHERE session_id = :id', { id })
+    await run('DELETE FROM ai_sessions WHERE id = :id', { id })
   })
-  writeOpLog({ user: admin, req: ctx.req, action: '删除会话', targetType: 'ai_session', targetId: id, detail: session.title })
+  await writeOpLog({ user: admin, req: ctx.req, action: '删除会话', targetType: 'ai_session', targetId: id, detail: session.title })
   return { deleted: true }
 }
 
@@ -598,14 +599,14 @@ const modelList = buildList({
 })
 
 const saveModel = async (ctx) => {
-  const admin = requirePermission(ctx, 'ai:manage')
+  const admin = await requirePermission(ctx, 'ai:manage')
   const body = ctx.body || {}
   const name = str(body.name)
   if (!name) throw badRequest('请填写模型名称')
   const now = new Date().toISOString()
-  const existing = get('SELECT * FROM ai_models WHERE name = :name', { name })
+  const existing = await get('SELECT * FROM ai_models WHERE name = :name', { name })
   if (existing) {
-    run(
+    await run(
       `UPDATE ai_models SET display_name = :display_name, description = :description, tags = :tags,
          size_bytes = :size_bytes, sort = :sort, updated_at = :now WHERE name = :name`,
       {
@@ -618,10 +619,10 @@ const saveModel = async (ctx) => {
         name,
       }
     )
-    writeOpLog({ user: admin, req: ctx.req, action: '修改模型', targetType: 'ai_model', targetId: name })
+    await writeOpLog({ user: admin, req: ctx.req, action: '修改模型', targetType: 'ai_model', targetId: name })
     return { updated: true }
   }
-  run(
+  await run(
     `INSERT INTO ai_models (name, display_name, provider, family, parameter_size, quantization, size_bytes,
        description, tags, source, is_default, sort, created_at, updated_at)
      VALUES (:name, :display_name, 'ollama', :family, :parameter_size, :quantization, :size_bytes,
@@ -639,31 +640,31 @@ const saveModel = async (ctx) => {
       now,
     }
   )
-  writeOpLog({ user: admin, req: ctx.req, action: '新增模型', targetType: 'ai_model', targetId: name })
+  await writeOpLog({ user: admin, req: ctx.req, action: '新增模型', targetType: 'ai_model', targetId: name })
   return { created: true }
 }
 
 const setDefaultModel = async (ctx) => {
-  const admin = requirePermission(ctx, 'ai:manage')
+  const admin = await requirePermission(ctx, 'ai:manage')
   const name = str(ctx.params.name)
-  if (!get('SELECT id FROM ai_models WHERE name = :name', { name })) throw notFound('模型不存在')
-  tx(() => {
-    run('UPDATE ai_models SET is_default = 0')
-    run('UPDATE ai_models SET is_default = 1, updated_at = :now WHERE name = :name', { now: new Date().toISOString(), name })
-    setConfig('ai.default_model', name, '智能体默认模型')
+  if (!await get('SELECT id FROM ai_models WHERE name = :name', { name })) throw notFound('模型不存在')
+  await tx(async () => {
+    await run('UPDATE ai_models SET is_default = 0')
+    await run('UPDATE ai_models SET is_default = 1, updated_at = :now WHERE name = :name', { now: new Date().toISOString(), name })
+    await setConfig('ai.default_model', name, '智能体默认模型')
   })
-  writeOpLog({ user: admin, req: ctx.req, action: '设置默认模型', targetType: 'ai_model', targetId: name })
+  await writeOpLog({ user: admin, req: ctx.req, action: '设置默认模型', targetType: 'ai_model', targetId: name })
   return { updated: true, defaultModel: name }
 }
 
 const deleteModel = async (ctx) => {
-  const admin = requirePermission(ctx, 'ai:manage')
+  const admin = await requirePermission(ctx, 'ai:manage')
   const name = str(ctx.params.name)
-  const model = get('SELECT * FROM ai_models WHERE name = :name', { name })
+  const model = await get('SELECT * FROM ai_models WHERE name = :name', { name })
   if (!model) throw notFound('模型不存在')
   if (Number(model.is_default) === 1) throw badRequest('默认模型不可删除，请先切换默认模型')
-  run('DELETE FROM ai_models WHERE name = :name', { name })
-  writeOpLog({ user: admin, req: ctx.req, action: '删除模型', targetType: 'ai_model', targetId: name })
+  await run('DELETE FROM ai_models WHERE name = :name', { name })
+  await writeOpLog({ user: admin, req: ctx.req, action: '删除模型', targetType: 'ai_model', targetId: name })
   return { deleted: true }
 }
 
@@ -675,21 +676,21 @@ const configList = buildList({
 })
 
 const updateConfig = async (ctx) => {
-  const admin = requirePermission(ctx, 'system:config')
+  const admin = await requirePermission(ctx, 'system:config')
   const key = str(ctx.params.key)
   if (!key) throw badRequest('缺少配置项')
   const value = str(ctx.body?.value)
-  const existing = get('SELECT * FROM system_configs WHERE key = :key', { key })
+  const existing = await get('SELECT * FROM system_configs WHERE key = :key', { key })
   if (!existing) throw notFound('配置项不存在')
-  setConfig(key, value, str(ctx.body?.description, existing.description))
-  writeOpLog({ user: admin, req: ctx.req, action: '修改系统配置', targetType: 'config', targetId: key, detail: value })
+  await setConfig(key, value, str(ctx.body?.description, existing.description))
+  await writeOpLog({ user: admin, req: ctx.req, action: '修改系统配置', targetType: 'config', targetId: key, detail: value })
   return { updated: true }
 }
 
 // —— 当前账号可访问的菜单（前端按权限渲染） ——
 const myMenus = async (ctx) => {
   const user = ctx.user
-  const permissions = getRolePermissions(user.role)
+  const permissions = await getRolePermissions(user.role)
   return {
     role: user.role,
     permissions,

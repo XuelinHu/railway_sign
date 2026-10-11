@@ -34,16 +34,16 @@ and FRP only needs the single `14028` entry.
 
 ## Unified API (`server/api-server.js`)
 
-Zero third-party dependencies: plain `node:http`, a segment-matching router, response envelope
-`{ok:true,data}` / `{ok:false,error,detail}`, JWT auth via hand-rolled HS256 (`node:crypto`), and
-`node:sqlite` (`DatabaseSync`) for persistence.
+The API uses `node:http`, a segment-matching router, PostgreSQL through `pg`, response envelope
+`{ok:true,data}` / `{ok:false,error,detail}`, and JWT auth via hand-rolled HS256 (`node:crypto`).
 
 ```
 server/api-server.js        entry: http server, router table, CORS / JSON body / auth / logging
-server/api/lib/db.js        sqlite open + schema + seed data (runs on first start)
+server/api/lib/postgres.js  async PostgreSQL pool, transaction context, pagination, migrations and reference seed
+server/api/postgres/        PostgreSQL schema, immutable SQL migrations and role provisioning
 server/api/lib/secure.js    scrypt password hashing, HS256 JWT, captcha, RBAC helpers
 server/api/lib/http.js      json / pagination parsing / SSE / errors / CORS
-server/api/lib/paths.js     .data dir and db file resolution
+server/api/lib/paths.js     .data cache/backup directory and validated database name
 server/api/routes/          auth.js, admin.js, ai.js, telemetry.js, voice.js
 ```
 
@@ -69,8 +69,12 @@ List responses are always `{list, total, page, pageSize, totalPages}`; query par
 | `API_PORT` | `8037` | API listen port |
 | `API_HOST` | `0.0.0.0` | API bind address |
 | `API_JWT_SECRET` | auto-generated, persisted to `.data/secret` | JWT signing key |
-| `API_DATA_DIR` | `<repo>/.data` | runtime data directory |
-| `API_DB_FILE` | `<repo>/.data/railway_sign.db` | SQLite file |
+| `API_DATA_DIR` | `<repo>/.data` | TTS cache and encrypted backup directory |
+| `PGHOST` / `PGPORT` | `127.0.0.1` / `5432` | PostgreSQL host and port |
+| `PGDATABASE` | `railway_sign` | this project's database |
+| `PGUSER` / `PGPASSWORD` | `railway_sign_app` / unset | this project's role and secret |
+| `PGSSL` | `0` | require verified TLS when set to `1` |
+| `DB_BACKUP_ENCRYPTION_KEY` | unset | project-specific 32-byte AES-GCM key, hex encoded |
 | `API_MAX_BODY_BYTES` | `8388608` | JSON body limit |
 | `API_INGEST_TOKEN` | empty | optional shared secret for remote telemetry bridge → API forwarding; loopback forwarding is allowed without it |
 | `API_ENABLE_DEMO_SEED` | `0` | explicit opt-in for development/test demo-account seeding; ignored in production |
@@ -97,41 +101,37 @@ List responses are always `{list, total, page, pageSize, totalPages}`; query par
 
 ## Data Storage
 
-- Database: **SQLite via `node:sqlite`**, single file `.data/railway_sign.db` (git-ignored; schema
-  and reference data are initialized on API start; demo accounts require explicit development/test opt-in).
+- Database: **PostgreSQL**. `schema.sql` and immutable numbered migrations live under
+  `server/api/postgres/`; API startup applies them under an advisory lock and seeds reference rows only.
 - Tables: `users`, `roles`, `signals`, `alarms`, `work_orders`, `telemetry_records`, `ai_sessions`,
   `ai_messages`, `ai_models`, `login_logs`, `op_logs`, `system_configs`, `password_resets`.
-- Reference seed data includes ~40 signal devices, alarms, work orders, telemetry history,
-  login/op logs and AI sessions, so every admin menu has multiple pages to page through. Demo accounts
-  are never created in production and use a locally supplied password in isolated development/test databases.
-- To start over: stop the API and delete `.data/railway_sign.db` (schema + seed are recreated on
-  the next start). `.data/secret` holds the generated JWT key.
+- API startup seeds reference rows only. Demo users and business fixtures are available only through `npm run db:seed:test` on an isolated `_test` database.
+  Demo accounts are never created in production.
+- Use a fresh isolated PostgreSQL database for repeatable tests; there is no file-database reset shortcut.
 - Do not commit `.data/`, `voice_service/models/`, or any real credentials.
 - Telemetry ingestion trusts the socket peer address for its loopback exception. Requests from other hosts require the same explicitly configured random `API_INGEST_TOKEN` in both bridge and API processes; never rely on forwarded client-IP headers for authorization.
 
 ### Database backup and restore
 
-- `npm run db:backup` creates a consistent `VACUUM INTO` snapshot under `.data/backups/` and checks
-  it with `PRAGMA integrity_check`. Pass `-- --destination PATH` to select a new output path; existing
-  files are never overwritten. On POSIX systems, backup files are restricted to owner read/write.
-- Stop the API before restoring. `npm run db:restore -- --source PATH` targets the configured DB file
-  and refuses to replace it unless `--replace` is explicit. The existing database and SQLite sidecars
-  are retained as `.pre-restore-*` rollback files; the restored target is integrity-checked.
-- `npm run test:db-maintenance` verifies WAL-consistent backup, immutable snapshots, overwrite
-  refusal, explicit restore and rollback retention using only a temporary directory.
+- `npm run db:backup` creates a PostgreSQL custom archive encrypted with this project's backup key;
+  existing backup files are never overwritten.
+- `npm run db:restore -- --source PATH --target <other_test_db> --replace` only restores to a different
+  database whose name ends in `_test`.
+- `npm run db:import:sqlite -- --source PATH` imports a read-only SQLite copy into an empty PG `_test`
+  database and compares imported rows. It cannot target a normal database.
+- `npm run test:db-maintenance` covers encryption, tamper detection, overwrite refusal and restore gates.
 
 ### Production administrator bootstrap
 
 Set `NODE_ENV=production`, `API_BOOTSTRAP_ADMIN_PASSWORD` to a unique 16+ character password with
-uppercase, lowercase, a digit and a symbol, and the same `API_DATA_DIR`/`API_DB_FILE` that the API
-will use; then run `npm run admin:bootstrap` once before starting the API. A legacy seeded admin is
+uppercase, lowercase, a digit and a symbol, and the same PostgreSQL connection as the API; then run
+`npm run admin:bootstrap` once before starting the API. A legacy seeded admin is
 rotated, other built-in demo accounts are disabled, and the password is never printed. Existing
 non-demo admin accounts are not overwritten. Production API startup refuses to serve a database with
 no active admin, and login rejects legacy built-in demo accounts until the bootstrap is completed.
 
-For an isolated development/test database only, set `API_ENABLE_DEMO_SEED=1` and a strong
-`API_DEMO_PASSWORD` before the first API start. All generated demo accounts use that process-local
-password; production ignores the seed opt-in.
+For an isolated development/test database only, run `npm run db:seed:test` with `PGDATABASE` ending
+in `_test`, `API_ENABLE_DEMO_SEED=1` and a strong `API_DEMO_PASSWORD`. Production rejects this command.
 
 ## Voice Sidecar (`voice_service/`)
 
@@ -167,9 +167,10 @@ is documented in `docs/安卓端语音集成.md` with copy-ready Kotlin under `d
   single quotes, no trailing semicolons.
 - Self-tests, both runnable against an already-started stack:
   - `npm run test:api` (`scripts/test-api.mjs`, needs an isolated API on 8037 and `API_DEMO_PASSWORD`) — auth flows, RBAC isolation and pagination for all 12 admin menus.
-  - `npm run test:production-bootstrap` — verifies production first-admin setup, legacy demo-account rotation, login and refusal to start without an active admin using only temporary SQLite databases.
-  - `npm run test:voice-proxy` — starts an isolated API and local voice-sidecar stub to verify
-    authentication, WAV forwarding, bounded TTS responses and cache hits without changing `.data`.
+  - `npm run test:production-bootstrap` — requires an empty dedicated PostgreSQL `_test` database and verifies admin rotation, demo-account disablement, login and weak-password rejection. Test rows remain there.
+  - `npm run test:postgres-integration` — requires a seeded PostgreSQL `_test` database and verifies migrations, transaction rollback, constraints, cascade behavior and pagination.
+  - `npm run test:voice-proxy` — starts an API and local voice-sidecar stub to verify authentication,
+    WAV forwarding, bounded TTS responses and cache hits; it requires a seeded isolated PG `_test` DB.
   - `npm run test:ingest-auth` — verifies loopback-only fallback and remote shared-token authorization.
   - `npm run test:e2e` (`scripts/e2e-browser.mjs`, needs the frontend on 4028 **and** the API) —
     drives a real headless Chrome over CDP through login (captcha read from the DOM), the three

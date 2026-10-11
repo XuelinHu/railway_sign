@@ -1,7 +1,7 @@
 // 鉴权中间件与审计：JWT 解析、角色/权限判定、登录日志与操作日志。
 
 import crypto from 'node:crypto'
-import { get, run, pageQuery } from './db.js'
+import { get, run, pageQuery } from './postgres.js'
 import { unauthorized, forbidden, clientIp, parseJsonColumn } from './http.js'
 import { verifyToken, createCaptchaSvg, randomCaptchaText } from './secure.js'
 
@@ -55,20 +55,20 @@ export const publicUser = (row) => {
   }
 }
 
-export const getUserByUsername = (username) =>
-  get('SELECT * FROM users WHERE username = :username', { username: String(username || '') })
+export const getUserByUsername = async (username) =>
+  await get('SELECT * FROM users WHERE username = :username', { username: String(username || '') })
 
-export const getUserById = (id) => get('SELECT * FROM users WHERE id = :id', { id: Number(id) || 0 })
+export const getUserById = async (id) => await get('SELECT * FROM users WHERE id = :id', { id: Number(id) || 0 })
 
-export const getRolePermissions = (roleCode) => {
-  const role = get('SELECT * FROM roles WHERE code = :code', { code: roleCode || 'user' })
+export const getRolePermissions = async (roleCode) => {
+  const role = await get('SELECT * FROM roles WHERE code = :code', { code: roleCode || 'user' })
   if (!role) return []
   return parseJsonColumn(role.permissions, [])
 }
 
-export const hasPermission = (user, permission) => {
+export const hasPermission = async (user, permission) => {
   if (!user) return false
-  const permissions = getRolePermissions(user.role)
+  const permissions = await getRolePermissions(user.role)
   if (permissions.includes('*')) return true
   return permissions.includes(permission)
 }
@@ -79,12 +79,12 @@ export const extractToken = (req) => {
   return ''
 }
 
-export const resolveUser = (req) => {
+export const resolveUser = async (req) => {
   const token = extractToken(req)
   if (!token) return null
   try {
     const payload = verifyToken(token)
-    const user = getUserById(payload.uid)
+    const user = await getUserById(payload.uid)
     if (!user) return null
     if (user.status !== 'active') return null
     return user
@@ -98,9 +98,9 @@ export const requireAuth = (ctx) => {
   return ctx.user
 }
 
-export const requirePermission = (ctx, permission) => {
+export const requirePermission = async (ctx, permission) => {
   const user = requireAuth(ctx)
-  if (!hasPermission(user, permission)) throw forbidden(`缺少权限：${permission}`)
+  if (!await hasPermission(user, permission)) throw forbidden(`缺少权限：${permission}`)
   return user
 }
 
@@ -111,8 +111,8 @@ export const requireAdmin = (ctx) => {
 }
 
 // —— 审计日志 ——
-export const writeLoginLog = ({ user, username, req, success, message }) => {
-  run(
+export const writeLoginLog = async ({ user, username, req, success, message }) => {
+  await run(
     `INSERT INTO login_logs (user_id, username, ip, user_agent, success, message, created_at)
      VALUES (:user_id, :username, :ip, :ua, :success, :message, :created_at)`,
     {
@@ -127,8 +127,8 @@ export const writeLoginLog = ({ user, username, req, success, message }) => {
   )
 }
 
-export const writeOpLog = ({ user, req, action, targetType = '', targetId = '', detail = '' }) => {
-  run(
+export const writeOpLog = async ({ user, req, action, targetType = '', targetId = '', detail = '' }) => {
+  await run(
     `INSERT INTO op_logs (user_id, username, action, target_type, target_id, detail, ip, created_at)
      VALUES (:user_id, :username, :action, :target_type, :target_id, :detail, :ip, :created_at)`,
     {

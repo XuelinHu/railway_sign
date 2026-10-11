@@ -10,11 +10,14 @@ import { fileURLToPath } from 'node:url'
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'railway-sign-voice-proxy-'))
-const demoPassword = 'VoiceProxyTest@Password2026'
+const demoPassword = process.env.API_DEMO_PASSWORD || ''
 const ttsAudio = Buffer.from('ID3\x04\x00\x00\x00\x00\x00\x00')
 let ttsCalls = 0
 let asrBytes = 0
 let api
+if (!/_test$/i.test(process.env.PGDATABASE || '')) throw new Error('Voice proxy integration test requires a PGDATABASE ending in _test.')
+if (!process.env.PGPASSWORD) throw new Error('Set PGPASSWORD for the isolated PostgreSQL test role.')
+if (!demoPassword) throw new Error('Set API_DEMO_PASSWORD to the password used by the seeded test admin.')
 
 const sidecar = http.createServer(async (req, res) => {
   if (req.method === 'GET' && req.url === '/health') {
@@ -78,11 +81,8 @@ try {
       API_HOST: '127.0.0.1',
       API_PORT: String(apiPort),
       API_DATA_DIR: tempDir,
-      API_DB_FILE: path.join(tempDir, 'voice-proxy-test.sqlite'),
       API_JWT_SECRET: 'test-only-railway-sign-voice-proxy-secret',
       NODE_ENV: 'test',
-      API_ENABLE_DEMO_SEED: '1',
-      API_DEMO_PASSWORD: demoPassword,
       API_INGEST_URL: '',
       VOICE_HOST: 'http://127.0.0.1:' + sidecarPort,
       TTS_CACHE_TTL_MS: String(60 * 60 * 1000),
@@ -105,7 +105,7 @@ try {
     await new Promise((resolve) => setTimeout(resolve, 100))
   }
   assert.equal(ready, true, 'API did not become ready:\n' + apiOutput)
-  pass('临时 SQLite API 已启动')
+  pass('隔离 PostgreSQL API 已启动')
 
   const captchaResponse = await fetch(base + '/api/auth/captcha')
   const captchaBody = await captchaResponse.json()
@@ -125,7 +125,7 @@ try {
   assert.equal(loginResponse.status, 200, 'test admin login failed: ' + JSON.stringify(loginBody))
   const token = loginBody.data.token
   const auth = { Authorization: 'Bearer ' + token }
-  pass('演示管理员通过验证码登录')
+  pass('隔离测试管理员通过验证码登录')
 
   const health = await fetch(base + '/api/voice/health').then((response) => response.json())
   assert.equal(health.data.asr, true)

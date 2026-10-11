@@ -2,7 +2,7 @@
 //
 // 前端只与本服务（8037）通信，不直连 11434；流式问答走 SSE，逐字回传。
 
-import { all, get, run, tx, pageQuery, getConfig, setConfig } from '../lib/db.js'
+import { all, get, run, tx, pageQuery, getConfig, setConfig } from '../lib/postgres.js'
 import {
   badRequest,
   notFound,
@@ -49,7 +49,7 @@ const safeOllamaJson = async (path) => {
 // —— 健康检查：同时反映 Ollama 与语音服务的可用性 ——
 const health = async () => {
   const [tags, voice] = await Promise.all([
-    safeOllamaJson('/api/tags'),
+    await safeOllamaJson('/api/tags'),
     (async () => {
       try {
         const response = await fetch(`${VOICE_HOST}/health`, { signal: AbortSignal.timeout(2500) })
@@ -69,14 +69,14 @@ const health = async () => {
 
 // —— 模型列表：Ollama 本地实际安装 + 目录元数据合并 ——
 const modelList = async (ctx) => {
-  requirePermission(ctx, 'ai:use')
+  await requirePermission(ctx, 'ai:use')
   const tags = await safeOllamaJson('/api/tags')
   const installed = new Map()
   for (const model of tags?.models || []) {
     installed.set(model.name, model)
   }
 
-  const catalog = all('SELECT * FROM ai_models ORDER BY is_default DESC, sort ASC, id ASC')
+  const catalog = await all('SELECT * FROM ai_models ORDER BY is_default DESC, sort ASC, id ASC')
   const list = catalog.map((row) => {
     const local = installed.get(row.name)
     if (local) installed.delete(row.name)
@@ -114,36 +114,36 @@ const modelList = async (ctx) => {
     })
   }
 
-  const defaultModel = getConfig('ai.default_model', '') || list.find((item) => item.is_default)?.name || list[0]?.name || ''
+  const defaultModel = await getConfig('ai.default_model', '') || list.find((item) => item.is_default)?.name || list[0]?.name || ''
   return { list, total: list.length, defaultModel, ollamaOnline: Boolean(tags) }
 }
 
 // —— 实时上下文：注入给模型的监测数据摘要 ——
-const collectContext = () => {
-  const signals = all(
+const collectContext = async () => {
+  const signals = await all(
     `SELECT code, name, status, temperature, humidity, voltage, current, online, kilometer
      FROM signals ORDER BY id LIMIT 12`
   )
-  const alarms = all(
+  const alarms = await all(
     `SELECT code, signal_code, level, title, status, occurred_at FROM alarms
      WHERE status IN ('pending', 'handling') ORDER BY occurred_at DESC LIMIT 8`
   )
-  const telemetry = all(
+  const telemetry = await all(
     `SELECT device, device_id, distance_m, water_active, created_at FROM telemetry_records
      ORDER BY id DESC LIMIT 5`
   )
   const stats = {
-    signalTotal: Number(get('SELECT COUNT(*) AS total FROM signals')?.total || 0),
-    signalOffline: Number(get("SELECT COUNT(*) AS total FROM signals WHERE online = 0")?.total || 0),
-    alarmPending: Number(get("SELECT COUNT(*) AS total FROM alarms WHERE status = 'pending'")?.total || 0),
-    orderPending: Number(get("SELECT COUNT(*) AS total FROM work_orders WHERE status = 'pending'")?.total || 0),
+    signalTotal: Number((await get('SELECT COUNT(*) AS total FROM signals'))?.total || 0),
+    signalOffline: Number((await get("SELECT COUNT(*) AS total FROM signals WHERE online = 0"))?.total || 0),
+    alarmPending: Number((await get("SELECT COUNT(*) AS total FROM alarms WHERE status = 'pending'"))?.total || 0),
+    orderPending: Number((await get("SELECT COUNT(*) AS total FROM work_orders WHERE status = 'pending'"))?.total || 0),
   }
   return { signals, alarms, telemetry, stats, generatedAt: new Date().toISOString() }
 }
 
 const contextEndpoint = async (ctx) => {
-  requirePermission(ctx, 'ai:use')
-  return collectContext()
+  await requirePermission(ctx, 'ai:use')
+  return await collectContext()
 }
 
 const formatContext = (context) => {
@@ -181,8 +181,8 @@ const formatContext = (context) => {
   return lines.join('\n')
 }
 
-const buildSystemPrompt = (contextEnabled) => {
-  const base = getConfig(
+const buildSystemPrompt = async (contextEnabled) => {
+  const base = await getConfig(
     'ai.system_prompt',
     '你是铁路信号设备运维智能助手，回答要专业、简洁、面向现场作业。'
   )
@@ -193,13 +193,13 @@ const buildSystemPrompt = (contextEnabled) => {
     '如果问题超出铁路信号与本站监测范围，请直接说明并给出可行的排查方向，不要编造数据。',
   ].join('\n')
   if (!contextEnabled) return `${base}\n${rules}`
-  return `${base}\n${rules}\n\n【实时监测上下文】\n${formatContext(collectContext())}`
+  return `${base}\n${rules}\n\n【实时监测上下文】\n${formatContext(await collectContext())}`
 }
 
 // —— 会话 ——
 const sessionList = async (ctx) => {
   const user = requireAuth(ctx)
-  return pageQuery({
+  return await pageQuery({
     from: 'FROM ai_sessions',
     where: 'WHERE user_id = :uid',
     params: { uid: user.id },
@@ -212,9 +212,9 @@ const sessionList = async (ctx) => {
 const sessionMessages = async (ctx) => {
   const user = requireAuth(ctx)
   const id = Number(ctx.params.id)
-  const session = get('SELECT * FROM ai_sessions WHERE id = :id AND user_id = :uid', { id, uid: user.id })
+  const session = await get('SELECT * FROM ai_sessions WHERE id = :id AND user_id = :uid', { id, uid: user.id })
   if (!session) throw notFound('会话不存在')
-  return pageQuery({
+  return await pageQuery({
     from: 'FROM ai_messages',
     where: 'WHERE session_id = :id',
     params: { id },
@@ -227,9 +227,9 @@ const sessionMessages = async (ctx) => {
 const createSession = async (ctx) => {
   const user = requireAuth(ctx)
   const title = str(ctx.body?.title, '新会话').slice(0, 40)
-  const model = str(ctx.body?.model, getConfig('ai.default_model', ''))
+  const model = str(ctx.body?.model, await getConfig('ai.default_model', ''))
   const now = new Date().toISOString()
-  const inserted = run(
+  const inserted = await run(
     `INSERT INTO ai_sessions (user_id, username, title, model, message_count, source, created_at, updated_at)
      VALUES (:user_id, :username, :title, :model, 0, 'agent', :now, :now)`,
     { user_id: user.id, username: user.username, title, model, now }
@@ -240,23 +240,23 @@ const createSession = async (ctx) => {
 const deleteSession = async (ctx) => {
   const user = requireAuth(ctx)
   const id = Number(ctx.params.id)
-  const session = get('SELECT * FROM ai_sessions WHERE id = :id AND user_id = :uid', { id, uid: user.id })
+  const session = await get('SELECT * FROM ai_sessions WHERE id = :id AND user_id = :uid', { id, uid: user.id })
   if (!session) throw notFound('会话不存在')
-  tx(() => {
-    run('DELETE FROM ai_messages WHERE session_id = :id', { id })
-    run('DELETE FROM ai_sessions WHERE id = :id', { id })
+  await tx(async () => {
+    await run('DELETE FROM ai_messages WHERE session_id = :id', { id })
+    await run('DELETE FROM ai_sessions WHERE id = :id', { id })
   })
   return { deleted: true }
 }
 
 // —— 流式问答（SSE） ——
 const chat = async (ctx) => {
-  const user = requirePermission(ctx, 'ai:use')
+  const user = await requirePermission(ctx, 'ai:use')
   const body = ctx.body || {}
   const message = str(body.message)
   if (!message) throw badRequest('请输入要提问的内容')
 
-  const model = str(body.model) || getConfig('ai.default_model', '')
+  const model = str(body.model) || await getConfig('ai.default_model', '')
   if (!model) throw badRequest('未指定模型，请先在模型管理中选择')
 
   const res = ctx.res
@@ -270,33 +270,33 @@ const chat = async (ctx) => {
 
   const now = new Date().toISOString()
   let sessionId = Number(body.sessionId) || 0
-  let session = sessionId ? get('SELECT * FROM ai_sessions WHERE id = :id AND user_id = :uid', { id: sessionId, uid: user.id }) : null
+  let session = sessionId ? await get('SELECT * FROM ai_sessions WHERE id = :id AND user_id = :uid', { id: sessionId, uid: user.id }) : null
   if (!session) {
-    const inserted = run(
+    const inserted = await run(
       `INSERT INTO ai_sessions (user_id, username, title, model, message_count, source, created_at, updated_at)
        VALUES (:user_id, :username, :title, :model, 0, 'agent', :now, :now)`,
       { user_id: user.id, username: user.username, title: message.slice(0, 30), model, now }
     )
     sessionId = Number(inserted.lastInsertRowid)
-    session = get('SELECT * FROM ai_sessions WHERE id = :id', { id: sessionId })
+    session = await get('SELECT * FROM ai_sessions WHERE id = :id', { id: sessionId })
   }
 
-  const historyLimit = Number(getConfig('ai.max_history', '10')) || 10
-  const history = all(
+  const historyLimit = Number(await getConfig('ai.max_history', '10')) || 10
+  const history = (await all(
     'SELECT role, content FROM ai_messages WHERE session_id = :id ORDER BY id DESC LIMIT :limit',
     { id: sessionId, limit: historyLimit }
-  ).reverse()
+  )).reverse()
 
-  const contextEnabled = getConfig('ai.context_enabled', '1') === '1'
+  const contextEnabled = await getConfig('ai.context_enabled', '1') === '1'
   const messages = [
-    { role: 'system', content: buildSystemPrompt(contextEnabled) },
+    { role: 'system', content: await buildSystemPrompt(contextEnabled) },
     ...history
       .filter((item) => item.role === 'user' || item.role === 'assistant')
       .map((item) => ({ role: item.role, content: item.content })),
     { role: 'user', content: message },
   ]
 
-  run(
+  await run(
     `INSERT INTO ai_messages (session_id, role, content, model, tokens, latency_ms, created_at)
      VALUES (:session_id, 'user', :content, :model, 0, 0, :now)`,
     { session_id: sessionId, content: message, model, now }
@@ -373,12 +373,12 @@ const chat = async (ctx) => {
     const aborted = abort.signal.aborted
     const latencyMs = Date.now() - startedAt
     if (answer) {
-      run(
+      await run(
         `INSERT INTO ai_messages (session_id, role, content, model, tokens, latency_ms, created_at)
          VALUES (:session_id, 'assistant', :content, :model, :tokens, :latency, :now)`,
         { session_id: sessionId, content: answer, model, tokens, latency: latencyMs, now: new Date().toISOString() }
       )
-      run('UPDATE ai_sessions SET message_count = message_count + 2, updated_at = :now WHERE id = :id', {
+      await run('UPDATE ai_sessions SET message_count = message_count + 2, updated_at = :now WHERE id = :id', {
         now: new Date().toISOString(),
         id: sessionId,
       })
@@ -396,12 +396,12 @@ const chat = async (ctx) => {
 
   const latencyMs = Date.now() - startedAt
   const finishedAt = new Date().toISOString()
-  const inserted = run(
+  const inserted = await run(
     `INSERT INTO ai_messages (session_id, role, content, model, tokens, latency_ms, created_at)
      VALUES (:session_id, 'assistant', :content, :model, :tokens, :latency, :now)`,
     { session_id: sessionId, content: answer, model, tokens, latency: latencyMs, now: finishedAt }
   )
-  run('UPDATE ai_sessions SET message_count = message_count + 2, model = :model, updated_at = :now WHERE id = :id', {
+  await run('UPDATE ai_sessions SET message_count = message_count + 2, model = :model, updated_at = :now WHERE id = :id', {
     model,
     now: finishedAt,
     id: sessionId,
@@ -420,7 +420,7 @@ const chat = async (ctx) => {
 
 // —— 模型下载（转发 Ollama /api/pull，进度走 SSE） ——
 const pullModel = async (ctx) => {
-  const user = requirePermission(ctx, 'ai:manage')
+  const user = await requirePermission(ctx, 'ai:manage')
   const name = str(ctx.body?.name || ctx.params.name)
   if (!name) throw badRequest('请指定要下载的模型')
 
@@ -467,7 +467,7 @@ const pullModel = async (ctx) => {
         }
       }
     }
-    writeOpLog({ user, req: ctx.req, action: '下载模型', targetType: 'ai_model', targetId: name })
+    await writeOpLog({ user, req: ctx.req, action: '下载模型', targetType: 'ai_model', targetId: name })
     sseSend(res, 'done', { name })
   } catch (error) {
     if (!abort.signal.aborted) {
@@ -482,7 +482,7 @@ const pullModel = async (ctx) => {
 
 // —— 删除本机模型（同时清掉目录登记） ——
 const deleteLocalModel = async (ctx) => {
-  const user = requirePermission(ctx, 'ai:manage')
+  const user = await requirePermission(ctx, 'ai:manage')
   const name = str(ctx.params.name)
   const response = await ollamaFetch('/api/delete', {
     method: 'DELETE',
@@ -492,33 +492,33 @@ const deleteLocalModel = async (ctx) => {
   if (!response.ok) {
     throw badRequest(`删除失败：Ollama 返回 ${response.status}`)
   }
-  run('DELETE FROM ai_models WHERE name = :name AND source <> \'catalog\'', { name })
-  writeOpLog({ user, req: ctx.req, action: '删除本机模型', targetType: 'ai_model', targetId: name })
+  await run('DELETE FROM ai_models WHERE name = :name AND source <> \'catalog\'', { name })
+  await writeOpLog({ user, req: ctx.req, action: '删除本机模型', targetType: 'ai_model', targetId: name })
   return { deleted: true }
 }
 
 // —— 运行中的模型 ——
 const runningModels = async (ctx) => {
-  requirePermission(ctx, 'ai:use')
+  await requirePermission(ctx, 'ai:use')
   const data = await safeOllamaJson('/api/ps')
   return { list: data?.models || [] }
 }
 
 const updatePreferences = async (ctx) => {
-  const user = requirePermission(ctx, 'ai:manage')
+  const user = await requirePermission(ctx, 'ai:manage')
   const body = ctx.body || {}
   if (body.defaultModel) {
     const name = str(body.defaultModel)
-    tx(() => {
-      run('UPDATE ai_models SET is_default = 0')
-      run('UPDATE ai_models SET is_default = 1, updated_at = :now WHERE name = :name', { now: new Date().toISOString(), name })
-      setConfig('ai.default_model', name, '智能体默认模型')
+    await tx(async () => {
+      await run('UPDATE ai_models SET is_default = 0')
+      await run('UPDATE ai_models SET is_default = 1, updated_at = :now WHERE name = :name', { now: new Date().toISOString(), name })
+      await setConfig('ai.default_model', name, '智能体默认模型')
     })
   }
-  if (body.systemPrompt !== undefined) setConfig('ai.system_prompt', str(body.systemPrompt), '智能体系统提示词')
-  if (body.contextEnabled !== undefined) setConfig('ai.context_enabled', body.contextEnabled ? '1' : '0', '是否向模型注入实时监测上下文')
-  if (body.maxHistory !== undefined) setConfig('ai.max_history', String(Number(body.maxHistory) || 10), '发送给模型的历史消息条数')
-  writeOpLog({ user, req: ctx.req, action: '更新智能体配置', targetType: 'ai', targetId: 'preferences' })
+  if (body.systemPrompt !== undefined) await setConfig('ai.system_prompt', str(body.systemPrompt), '智能体系统提示词')
+  if (body.contextEnabled !== undefined) await setConfig('ai.context_enabled', body.contextEnabled ? '1' : '0', '是否向模型注入实时监测上下文')
+  if (body.maxHistory !== undefined) await setConfig('ai.max_history', String(Number(body.maxHistory) || 10), '发送给模型的历史消息条数')
+  await writeOpLog({ user, req: ctx.req, action: '更新智能体配置', targetType: 'ai', targetId: 'preferences' })
   return { updated: true }
 }
 

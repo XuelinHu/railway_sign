@@ -1,7 +1,7 @@
 // 公共服务：图形验证码、注册、登录、退出、当前用户、修改密码、找回/重置密码、个人资料。
 // 这是面向所有用户的"用户全流程"接口，除 captcha/register/login/forgot/reset 外都需要登录。
 
-import { get, run, pageQuery, getConfig, setConfig } from '../lib/db.js'
+import { get, run, tx, pageQuery, getConfig, setConfig } from '../lib/postgres.js'
 import {
   badRequest,
   unauthorized,
@@ -83,33 +83,36 @@ const register = async (ctx) => {
   if (name.length < 2 || name.length > 20) throw badRequest('姓名长度需为 2-20 位')
   if (phone && !PHONE_RE.test(phone)) throw badRequest('手机号格式不正确')
   if (email && !EMAIL_RE.test(email)) throw badRequest('邮箱格式不正确')
-  if (getUserByUsername(username)) throw badRequest('该用户名已被注册')
-  if (phone && get('SELECT id FROM users WHERE phone = :phone', { phone })) {
+  if (await getUserByUsername(username)) throw badRequest('该用户名已被注册')
+  if (phone && await get('SELECT id FROM users WHERE phone = :phone', { phone })) {
     throw badRequest('该手机号已被注册')
   }
 
   const { hash, salt } = await hashPassword(password)
   const now = new Date().toISOString()
-  const inserted = run(
-    `INSERT INTO users (username, password_hash, salt, name, phone, email, role, status, remark, created_at, updated_at)
-     VALUES (:username, :hash, :salt, :name, :phone, :email, 'user', 'active', :remark, :created_at, :updated_at)`,
-    {
-      username,
-      hash,
-      salt,
-      name,
-      phone,
-      email,
-      remark: '自助注册',
-      created_at: now,
-      updated_at: now,
-    }
-  )
-  const user = getUserById(Number(inserted.lastInsertRowid))
-  writeLoginLog({ user, username, req: ctx.req, success: true, message: '注册成功并自动登录' })
-  writeOpLog({ user, req: ctx.req, action: '用户注册', targetType: 'user', targetId: user.id, detail: `新用户 ${username} 注册` })
+  const user = await tx(async () => {
+    const inserted = await run(
+      `INSERT INTO users (username, password_hash, salt, name, phone, email, role, status, remark, created_at, updated_at)
+       VALUES (:username, :hash, :salt, :name, :phone, :email, 'user', 'active', :remark, :created_at, :updated_at)`,
+      {
+        username,
+        hash,
+        salt,
+        name,
+        phone,
+        email,
+        remark: '自助注册',
+        created_at: now,
+        updated_at: now,
+      }
+    )
+    const createdUser = await getUserById(Number(inserted.lastInsertRowid))
+    await writeLoginLog({ user: createdUser, username, req: ctx.req, success: true, message: '注册成功并自动登录' })
+    await writeOpLog({ user: createdUser, req: ctx.req, action: '用户注册', targetType: 'user', targetId: createdUser.id, detail: `新用户 ${username} 注册` })
+    return createdUser
+  })
   log('auth', `register ${username}`)
-  return { token: issueToken(user), user: publicUser(user), permissions: getRolePermissions(user.role) }
+  return { token: issueToken(user), user: publicUser(user), permissions: await getRolePermissions(user.role) }
 }
 
 // 登录
@@ -120,39 +123,39 @@ const login = async (ctx) => {
   if (!username || !password) throw badRequest('请输入用户名和密码')
   requireCaptcha(body)
 
-  const user = getUserByUsername(username)
+  const user = await getUserByUsername(username)
   if (!user) {
-    writeLoginLog({ username, req: ctx.req, success: false, message: '用户名不存在' })
+    await writeLoginLog({ username, req: ctx.req, success: false, message: '用户名不存在' })
     throw unauthorized('用户名或密码错误')
   }
   if (process.env.NODE_ENV === 'production' && isBuiltInDemoAccount(user)) {
-    writeLoginLog({ user, username, req: ctx.req, success: false, message: '演示账号尚未完成生产管理员引导' })
+    await writeLoginLog({ user, username, req: ctx.req, success: false, message: '演示账号尚未完成生产管理员引导' })
     throw unauthorized('系统内置演示账号已停用，请先完成管理员安全引导')
   }
   const valid = await verifyPassword(password, user.password_hash, user.salt)
   if (!valid) {
-    writeLoginLog({ user, username, req: ctx.req, success: false, message: '密码错误' })
+    await writeLoginLog({ user, username, req: ctx.req, success: false, message: '密码错误' })
     throw unauthorized('用户名或密码错误')
   }
   if (user.status !== 'active') {
-    writeLoginLog({ user, username, req: ctx.req, success: false, message: '账号已禁用' })
+    await writeLoginLog({ user, username, req: ctx.req, success: false, message: '账号已禁用' })
     throw forbidden('账号已被禁用，请联系管理员')
   }
 
   const ip = ctx.ip || ''
-  run(
+  await run(
     `UPDATE users SET login_count = login_count + 1, last_login_at = :now, last_login_ip = :ip, updated_at = :now
      WHERE id = :id`,
     { now: new Date().toISOString(), ip, id: user.id }
   )
-  const fresh = getUserById(user.id)
-  writeLoginLog({ user: fresh, username, req: ctx.req, success: true, message: '登录成功' })
-  return { token: issueToken(fresh), user: publicUser(fresh), permissions: getRolePermissions(fresh.role) }
+  const fresh = await getUserById(user.id)
+  await writeLoginLog({ user: fresh, username, req: ctx.req, success: true, message: '登录成功' })
+  return { token: issueToken(fresh), user: publicUser(fresh), permissions: await getRolePermissions(fresh.role) }
 }
 
 const logout = async (ctx) => {
   const user = ctx.user
-  if (user) writeOpLog({ user, req: ctx.req, action: '退出登录', targetType: 'user', targetId: user.id })
+  if (user) await writeOpLog({ user, req: ctx.req, action: '退出登录', targetType: 'user', targetId: user.id })
   return { loggedOut: true }
 }
 
@@ -160,12 +163,12 @@ const me = async (ctx) => {
   const user = requireAuth(ctx)
   return {
     user: publicUser(user),
-    permissions: getRolePermissions(user.role),
+    permissions: await getRolePermissions(user.role),
     config: {
-      siteName: getConfig('system.site_name', '铁路信号机数字孪生监测与可视化分析平台'),
-      version: getConfig('system.copyright', 'V1.0'),
-      defaultModel: getConfig('ai.default_model', ''),
-      ttsVoice: getConfig('voice.tts_voice', 'zh-CN-XiaoxiaoNeural'),
+      siteName: await getConfig('system.site_name', '铁路信号机数字孪生监测与可视化分析平台'),
+      version: await getConfig('system.copyright', 'V1.0'),
+      defaultModel: await getConfig('ai.default_model', ''),
+      ttsVoice: await getConfig('voice.tts_voice', 'zh-CN-XiaoxiaoNeural'),
     },
   }
 }
@@ -185,11 +188,11 @@ const changePassword = async (ctx) => {
   if (!valid) throw badRequest('原密码不正确')
 
   const { hash, salt } = await hashPassword(newPassword)
-  run(
+  await run(
     `UPDATE users SET password_hash = :hash, salt = :salt, updated_at = :now WHERE id = :id`,
     { hash, salt, now: new Date().toISOString(), id: user.id }
   )
-  writeOpLog({ user, req: ctx.req, action: '修改密码', targetType: 'user', targetId: user.id })
+  await writeOpLog({ user, req: ctx.req, action: '修改密码', targetType: 'user', targetId: user.id })
   return { updated: true, message: '密码修改成功，请使用新密码重新登录' }
 }
 
@@ -202,21 +205,21 @@ const forgotPassword = async (ctx) => {
   if (!phone) throw badRequest('请输入注册时预留的手机号')
   requireCaptcha(body)
 
-  const user = getUserByUsername(username)
+  const user = await getUserByUsername(username)
   if (!user) throw notFound('该用户名不存在')
   if (!user.phone || user.phone !== phone) throw badRequest('手机号与注册信息不一致')
   if (user.status !== 'active') throw forbidden('账号已被禁用，请联系管理员')
 
   const token = randomToken(24)
   const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString()
-  run('UPDATE password_resets SET used = 1 WHERE user_id = :uid AND used = 0', { uid: user.id })
-  run(
+  await run('UPDATE password_resets SET used = 1 WHERE user_id = :uid AND used = 0', { uid: user.id })
+  await run(
     `INSERT INTO password_resets (user_id, username, token, used, expires_at, created_at)
      VALUES (:user_id, :username, :token, 0, :expires_at, :created_at)`,
     { user_id: user.id, username: user.username, token, expires_at: expiresAt, created_at: new Date().toISOString() }
   )
-  writeOpLog({ user, req: ctx.req, action: '申请重置密码', targetType: 'user', targetId: user.id })
-  const visible = getConfig('system.reset_token_visible', '1') === '1'
+  await writeOpLog({ user, req: ctx.req, action: '申请重置密码', targetType: 'user', targetId: user.id })
+  const visible = await getConfig('system.reset_token_visible', '1') === '1'
   return {
     issued: true,
     expiresAt,
@@ -238,7 +241,7 @@ const resetPassword = async (ctx) => {
   assertPassword(newPassword)
   assertConfirm(newPassword, body.confirmPassword)
 
-  const record = get(
+  const record = await get(
     'SELECT * FROM password_resets WHERE token = :token AND username = :username ORDER BY id DESC LIMIT 1',
     { token, username }
   )
@@ -246,16 +249,16 @@ const resetPassword = async (ctx) => {
   if (Number(record.used) === 1) throw badRequest('重置令牌已使用')
   if (new Date(record.expires_at).getTime() < Date.now()) throw badRequest('重置令牌已过期，请重新申请')
 
-  const user = getUserById(record.user_id)
+  const user = await getUserById(record.user_id)
   if (!user) throw notFound('用户不存在')
 
   const { hash, salt } = await hashPassword(newPassword)
-  run(
+  await run(
     `UPDATE users SET password_hash = :hash, salt = :salt, updated_at = :now WHERE id = :id`,
     { hash, salt, now: new Date().toISOString(), id: user.id }
   )
-  run('UPDATE password_resets SET used = 1 WHERE id = :id', { id: record.id })
-  writeOpLog({ user, req: ctx.req, action: '重置密码', targetType: 'user', targetId: user.id })
+  await run('UPDATE password_resets SET used = 1 WHERE id = :id', { id: record.id })
+  await writeOpLog({ user, req: ctx.req, action: '重置密码', targetType: 'user', targetId: user.id })
   log('auth', `reset password for ${username}`)
   return { updated: true, message: '密码已重置，请使用新密码登录' }
 }
@@ -272,16 +275,16 @@ const updateProfile = async (ctx) => {
   if (phone && !PHONE_RE.test(phone)) throw badRequest('手机号格式不正确')
   if (email && !EMAIL_RE.test(email)) throw badRequest('邮箱格式不正确')
   if (phone) {
-    const exists = get('SELECT id FROM users WHERE phone = :phone AND id <> :id', { phone, id: user.id })
+    const exists = await get('SELECT id FROM users WHERE phone = :phone AND id <> :id', { phone, id: user.id })
     if (exists) throw badRequest('该手机号已被其他账号使用')
   }
-  run(
+  await run(
     `UPDATE users SET name = :name, phone = :phone, email = :email, avatar = :avatar, updated_at = :now
      WHERE id = :id`,
     { name, phone, email, avatar, now: new Date().toISOString(), id: user.id }
   )
-  const fresh = getUserById(user.id)
-  writeOpLog({ user, req: ctx.req, action: '修改个人资料', targetType: 'user', targetId: user.id })
+  const fresh = await getUserById(user.id)
+  await writeOpLog({ user, req: ctx.req, action: '修改个人资料', targetType: 'user', targetId: user.id })
   return { user: publicUser(fresh) }
 }
 
@@ -289,7 +292,7 @@ const updateProfile = async (ctx) => {
 const myLoginLogs = async (ctx) => {
   const user = requireAuth(ctx)
   const { page, pageSize } = ctx.pagination
-  return pageQuery({
+  return await pageQuery({
     from: 'FROM login_logs',
     where: 'WHERE user_id = :uid',
     params: { uid: user.id },

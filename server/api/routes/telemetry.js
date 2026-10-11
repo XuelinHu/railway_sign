@@ -1,6 +1,6 @@
 // 遥测接口：接收 8036 遥测桥转发上来的数据并落库，供管理台「遥测记录」分页查询。
 
-import { get, run, pageQuery } from '../lib/db.js'
+import { get, run, pageQuery } from '../lib/postgres.js'
 import { badRequest, notFound, unauthorized, str } from '../lib/http.js'
 import { requirePermission } from '../lib/auth.js'
 import { isTelemetryIngestAuthorized } from '../lib/telemetry-auth.js'
@@ -19,7 +19,7 @@ const ingest = async (ctx) => {
   const payload = ctx.body || {}
   const deviceId = str(payload.device_id, 'unknown')
   const now = new Date().toISOString()
-  const inserted = run(
+  const inserted = await run(
     `INSERT INTO telemetry_records (device_id, device, distance_cm, distance_m, water_active,
        wifi_ip, uptime_ms, ts_ms, raw, created_at)
      VALUES (:device_id, :device, :distance_cm, :distance_m, :water_active,
@@ -41,19 +41,19 @@ const ingest = async (ctx) => {
 }
 
 const latest = async (ctx) => {
-  requirePermission(ctx, 'telemetry:view')
-  const row = get('SELECT * FROM telemetry_records ORDER BY id DESC LIMIT 1')
+  await requirePermission(ctx, 'telemetry:view')
+  const row = await get('SELECT * FROM telemetry_records ORDER BY id DESC LIMIT 1')
   return { record: row || null }
 }
 
 const list = async (ctx) => {
-  requirePermission(ctx, 'telemetry:view')
+  await requirePermission(ctx, 'telemetry:view')
   const keyword = str(ctx.query.get('keyword'))
   const deviceId = str(ctx.query.get('deviceId'))
   const conditions = []
   const params = {}
   if (keyword) {
-    conditions.push("(device LIKE :kw ESCAPE '\\' OR device_id LIKE :kw ESCAPE '\\')")
+    conditions.push("(device ILIKE :kw ESCAPE '\\' OR device_id ILIKE :kw ESCAPE '\\')")
     params.kw = `%${keyword}%`
   }
   if (deviceId && deviceId !== 'all') {
@@ -61,7 +61,7 @@ const list = async (ctx) => {
     params.device_id = deviceId
   }
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
-  return pageQuery({
+  return await pageQuery({
     from: 'FROM telemetry_records',
     where,
     params,
@@ -72,12 +72,12 @@ const list = async (ctx) => {
 }
 
 const remove = async (ctx) => {
-  requirePermission(ctx, 'telemetry:view')
+  await requirePermission(ctx, 'telemetry:view')
   const id = Number(ctx.params.id)
   if (!Number.isInteger(id) || id <= 0) throw badRequest('无效的 ID')
-  const row = get('SELECT * FROM telemetry_records WHERE id = :id', { id })
+  const row = await get('SELECT * FROM telemetry_records WHERE id = :id', { id })
   if (!row) throw notFound('记录不存在')
-  run('DELETE FROM telemetry_records WHERE id = :id', { id })
+  await run('DELETE FROM telemetry_records WHERE id = :id', { id })
   return { deleted: true }
 }
 

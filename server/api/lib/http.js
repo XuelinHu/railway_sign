@@ -88,6 +88,7 @@ export const likeParam = (value) => `%${str(value).replace(/[%_\\]/g, (m) => `\\
 
 export const parseJsonColumn = (value, fallback) => {
   if (!value) return fallback
+  if (typeof value === 'object') return value
   try {
     return JSON.parse(value)
   } catch (_) {
