@@ -57,6 +57,9 @@
         <button class="rs-btn primary block login-btn" type="submit" :disabled="submitting">
           {{ submitting ? '登录中…' : '登 录' }}
         </button>
+        <button class="rs-btn block oidc-btn" type="button" :disabled="oidcLoading" @click="onOidcLogin">
+          {{ oidcLoading ? '正在跳转…' : '使用统一账号登录' }}
+        </button>
       </form>
 
       <footer class="auth-foot">
@@ -72,7 +75,7 @@
 // 登录页：用户名 + 密码 + 图形验证码，成功后按 redirect 参数回到原页面。
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { authState, login, getCaptcha } from '../../services/auth.js'
+import { authState, login, getCaptcha, beginOidc } from '../../services/auth.js'
 import { toast } from '../../components/common/AppToast.vue'
 
 const route = useRoute()
@@ -85,6 +88,17 @@ const captchaId = ref('')
 const captchaSvg = ref('')
 const captchaLoading = ref(false)
 const submitting = ref(false)
+const oidcLoading = ref(false)
+
+const onOidcLogin = async () => {
+  oidcLoading.value = true
+  try {
+    await beginOidc('login')
+  } catch (error) {
+    toast.error(error.message)
+    oidcLoading.value = false
+  }
+}
 
 const loadCaptcha = async () => {
   captchaLoading.value = true
@@ -129,7 +143,14 @@ const onSubmit = async () => {
   }
 }
 
-onMounted(loadCaptcha)
+onMounted(() => {
+  const message = sessionStorage.getItem('railway_sign_oidc_error')
+  if (message) {
+    sessionStorage.removeItem('railway_sign_oidc_error')
+    toast.error(message)
+  }
+  loadCaptcha()
+})
 </script>
 
 <style scoped>

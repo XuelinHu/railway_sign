@@ -30,6 +30,24 @@ const applySession = (data) => {
 
 export const getCaptcha = () => http.get('/auth/captcha')
 
+export const beginOidc = async (mode = 'login') => {
+  const redirectUri = `${window.location.origin}/oidc/callback`
+  const result = await http.post('/auth/oidc/start', { mode, redirectUri })
+  window.location.assign(result.authorizationUrl)
+}
+
+export const finishOidc = async ({ code, state }) => {
+  const result = await http.post('/auth/oidc/callback', { code, state })
+  if (result.mode === 'login') {
+    setToken(result.token)
+    applySession(result)
+    authState.ready = true
+  }
+  return result
+}
+
+export const getOidcStatus = () => http.get('/auth/oidc/status')
+
 export const login = async (payload) => {
   const data = await http.post('/auth/login', payload)
   setToken(data.token)

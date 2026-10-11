@@ -137,6 +137,17 @@
         </section>
       </div>
 
+      <section class="rs-panel card">
+        <div class="card-head">
+          <h3 class="card-title">统一账号</h3>
+          <span class="rs-tag" :class="oidcLinked ? 'green' : 'blue'">{{ oidcLinked ? '已绑定' : '未绑定' }}</span>
+        </div>
+        <p class="hint">绑定后可使用共享账号登录 Railway Sign。绑定只关联当前本地账号，不会按用户名或邮箱自动合并。</p>
+        <button v-if="!oidcLinked" class="rs-btn primary" type="button" :disabled="oidcLoading" @click="onLinkOidc">
+          {{ oidcLoading ? '正在跳转…' : '绑定统一账号' }}
+        </button>
+      </section>
+
       <!-- 三、我的登录记录 -->
       <section class="rs-panel card">
         <div class="card-head">
@@ -173,7 +184,7 @@
 // 个人中心：基本资料 / 修改密码 / 我的登录记录。
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { authState, logout, updateProfile, changePassword, myLoginLogs } from '../../services/auth.js'
+import { authState, logout, updateProfile, changePassword, myLoginLogs, getOidcStatus, beginOidc } from '../../services/auth.js'
 import { toast } from '../../components/common/AppToast.vue'
 import DataTable from '../../components/common/DataTable.vue'
 import Pagination from '../../components/common/Pagination.vue'
@@ -342,6 +353,17 @@ const page = ref(1)
 const pageSize = ref(10)
 const total = ref(0)
 const totalPages = ref(1)
+const oidcLinked = ref(false)
+const oidcLoading = ref(false)
+
+const loadOidcStatus = async () => {
+  try { oidcLinked.value = Boolean((await getOidcStatus()).linked) } catch (_) { oidcLinked.value = false }
+}
+
+const onLinkOidc = async () => {
+  oidcLoading.value = true
+  try { await beginOidc('link') } catch (error) { toast.error(error.message); oidcLoading.value = false }
+}
 
 const loadLogs = async () => {
   logsLoading.value = true
@@ -369,7 +391,7 @@ const onLogout = async () => {
 watch(() => authState.user, syncProfileForm)
 syncProfileForm()
 
-onMounted(loadLogs)
+onMounted(() => { loadLogs(); loadOidcStatus() })
 </script>
 
 <style scoped>

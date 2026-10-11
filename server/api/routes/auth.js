@@ -29,6 +29,7 @@ import {
   writeLoginLog,
   writeOpLog,
 } from '../lib/auth.js'
+import { beginOidc, exchangeOidcCode, oidcEnabled, takeOidcTransaction } from '../lib/oidc.js'
 
 const ROLES = ['admin', 'operator', 'user']
 const TOKEN_TTL_SECONDS = 7 * 24 * 3600
@@ -60,6 +61,58 @@ const requireCaptcha = (body) => {
 
 const issueToken = (user) =>
   signToken({ uid: user.id, username: user.username, role: user.role }, TOKEN_TTL_SECONDS)
+
+const oidcCookieKey = (req) => String(req.headers.cookie || '').split(';').map((part) => part.trim())
+  .find((part) => part.startsWith('railway_sign_oidc='))?.slice('railway_sign_oidc='.length) || ''
+
+const oidcConfig = async () => ({ enabled: oidcEnabled() })
+
+const oidcStart = async (ctx) => {
+  const mode = ctx.body?.mode === 'link' ? 'link' : 'login'
+  if (mode === 'link') requireAuth(ctx)
+  const result = await beginOidc({
+    mode,
+    userId: mode === 'link' ? ctx.user.id : null,
+    redirectUri: String(ctx.body?.redirectUri || ''),
+  })
+  const secure = new URL(String(ctx.body.redirectUri)).protocol === 'https:'
+  ctx.res.appendHeader('Set-Cookie', `railway_sign_oidc=${result.cookieKey}; HttpOnly; SameSite=Lax; Path=/api/auth/oidc; Max-Age=600${secure ? '; Secure' : ''}`)
+  return { authorizationUrl: result.authorizationUrl }
+}
+
+const oidcCallback = async (ctx) => {
+  const body = ctx.body || {}
+  const transaction = takeOidcTransaction(oidcCookieKey(ctx.req), String(body.state || ''))
+  ctx.res.appendHeader('Set-Cookie', `railway_sign_oidc=; HttpOnly; SameSite=Lax; Path=/api/auth/oidc; Max-Age=0${transaction?.redirectUri?.startsWith('https:') ? '; Secure' : ''}`)
+  if (!transaction) throw unauthorized('统一登录状态已过期，请重新开始')
+  if (transaction.mode === 'link' && Number(ctx.user?.id) !== Number(transaction.userId)) {
+    throw unauthorized('绑定账号的登录状态已失效，请重新登录后重试')
+  }
+  const { subject } = await exchangeOidcCode(transaction, String(body.code || ''))
+  if (transaction.mode === 'link') {
+    await tx(async () => {
+      const current = await get('SELECT id, oidc_subject FROM users WHERE id = :id AND status = \'active\' FOR UPDATE', { id: transaction.userId })
+      if (!current) throw unauthorized('本地账号不存在或已停用')
+      if (current.oidc_subject && current.oidc_subject !== subject) throw badRequest('该本地账号已绑定其他统一身份')
+      const duplicate = await get('SELECT id FROM users WHERE oidc_subject = :subject AND id <> :id', { subject, id: transaction.userId })
+      if (duplicate) throw badRequest('该统一身份已绑定其他 Railway Sign 账号')
+      await run('UPDATE users SET oidc_subject = :subject, updated_at = :now WHERE id = :id', { subject, now: new Date().toISOString(), id: transaction.userId })
+    })
+    return { mode: 'link', linked: true }
+  }
+  const user = await get('SELECT * FROM users WHERE oidc_subject = :subject', { subject })
+  if (!user || user.status !== 'active') throw unauthorized('该统一身份尚未绑定有效的 Railway Sign 账号，请先用本地账号登录并绑定')
+  await run('UPDATE users SET login_count = login_count + 1, last_login_at = :now, updated_at = :now WHERE id = :id', { now: new Date().toISOString(), id: user.id })
+  const fresh = await getUserById(user.id)
+  await writeLoginLog({ user: fresh, username: fresh.username, req: ctx.req, success: true, message: '统一账号登录成功' })
+  return { mode: 'login', token: issueToken(fresh), user: publicUser(fresh), permissions: await getRolePermissions(fresh.role) }
+}
+
+const oidcStatus = async (ctx) => {
+  const user = requireAuth(ctx)
+  const row = await get('SELECT oidc_subject IS NOT NULL AS linked FROM users WHERE id = :id', { id: user.id })
+  return { enabled: oidcEnabled(), linked: Boolean(row?.linked) }
+}
 
 // 图形验证码：返回 SVG（前端直接渲染，无需图片接口）。
 const captcha = async () => {
@@ -303,6 +356,10 @@ const myLoginLogs = async (ctx) => {
 }
 
 export const authRoutes = [
+  { method: 'GET', path: '/api/auth/oidc/config', handler: oidcConfig, public: true },
+  { method: 'POST', path: '/api/auth/oidc/start', handler: oidcStart, public: true },
+  { method: 'POST', path: '/api/auth/oidc/callback', handler: oidcCallback, public: true },
+  { method: 'GET', path: '/api/auth/oidc/status', handler: oidcStatus },
   { method: 'GET', path: '/api/auth/captcha', handler: captcha, public: true },
   { method: 'POST', path: '/api/auth/register', handler: register, public: true },
   { method: 'POST', path: '/api/auth/login', handler: login, public: true },

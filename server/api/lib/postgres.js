@@ -172,6 +172,7 @@ const migrationFiles = [
   ['001_initial_schema', fileURLToPath(new URL('../postgres/schema.sql', import.meta.url))],
   ['002_query_indexes', fileURLToPath(new URL('../postgres/migrations/002_query_indexes.sql', import.meta.url))],
   ['003_telemetry_raw_text', fileURLToPath(new URL('../postgres/migrations/003_telemetry_raw_text.sql', import.meta.url))],
+  ['004_oidc_identity', fileURLToPath(new URL('../postgres/migrations/004_oidc_identity.sql', import.meta.url))],
 ]
 
 async function applyMigrations() {

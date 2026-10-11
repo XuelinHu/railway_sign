@@ -69,6 +69,8 @@ List responses are always `{list, total, page, pageSize, totalPages}`; query par
 | `API_PORT` | `8037` | API listen port |
 | `API_HOST` | `0.0.0.0` | API bind address |
 | `API_JWT_SECRET` | auto-generated, persisted to `.data/secret` | JWT signing key |
+| `OIDC_ISSUER` / `OIDC_CLIENT_ID` | unset | shared Keycloak issuer and public Web client; OIDC login stays disabled until configured |
+| `OIDC_REDIRECT_ORIGINS` | localhost and LAN port 4028 | exact allowed web origins for `/oidc/callback` |
 | `API_DATA_DIR` | `<repo>/.data` | TTS cache and encrypted backup directory |
 | `PGHOST` / `PGPORT` | `127.0.0.1` / `5432` | PostgreSQL host and port |
 | `PGDATABASE` | `railway_sign` | this project's database |
