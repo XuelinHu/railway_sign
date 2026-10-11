@@ -91,3 +91,9 @@ __pycache__/
 
 # 端到端自测产物（浏览器 profile 与截图）
 .e2e-output/
+
+/android/.gradle/
+/android/local.properties
+/android/app/build/
+/android/build/
+/dist/*.apk

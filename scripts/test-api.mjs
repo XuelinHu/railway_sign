@@ -2,6 +2,8 @@
 // 用法：node scripts/test-api.mjs [baseUrl]   默认 http://127.0.0.1:8037
 
 const BASE = process.argv[2] || 'http://127.0.0.1:8037'
+const DEMO_PASSWORD = process.env.API_DEMO_PASSWORD
+if (!DEMO_PASSWORD) throw new Error('Set API_DEMO_PASSWORD to the isolated API seed password before running this test.')
 
 let passed = 0
 let failed = 0
@@ -64,14 +66,14 @@ const run = async () => {
 
   section('登录与鉴权')
   const badCaptcha = await request('POST', '/api/auth/login', {
-    body: { username: 'admin', password: 'Admin@123', captchaId: 'nope', captchaCode: 'XXXX' },
+    body: { username: 'admin', password: DEMO_PASSWORD, captchaId: 'nope', captchaCode: 'XXXX' },
   })
   check('错误验证码被拒绝', badCaptcha.status === 400, `status=${badCaptcha.status}`)
 
   const wrongPassword = await login('admin', 'WrongPass123')
   check('错误密码被拒绝', wrongPassword.status === 401, `status=${wrongPassword.status}`)
 
-  const adminLogin = await login('admin', 'Admin@123')
+  const adminLogin = await login('admin', DEMO_PASSWORD)
   check('管理员登录成功', adminLogin.json?.ok === true, adminLogin.text.slice(0, 120))
   const adminToken = adminLogin.json?.data?.token || ''
   check('登录返回令牌与权限', Boolean(adminToken) && Array.isArray(adminLogin.json?.data?.permissions))
@@ -160,7 +162,7 @@ const run = async () => {
   check('重置令牌不可重复使用', reuse.status === 400, `status=${reuse.status}`)
 
   section('管理台权限隔离')
-  const operatorLogin = await login('operator', 'Operator@123')
+  const operatorLogin = await login('operator', DEMO_PASSWORD)
   const operatorToken = operatorLogin.json?.data?.token || ''
   check('运维账号可登录', Boolean(operatorToken))
   const operatorUsers = await request('GET', '/api/admin/users', { token: operatorToken })

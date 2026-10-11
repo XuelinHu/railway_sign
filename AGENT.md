@@ -13,7 +13,7 @@
 - FRP URL: `http://47.120.48.245:14028/`.
 - Dev: `npm run dev`.
 - Build: `npm run build`.
-- Preview: `npm run preview` (serves `dist/`, also proxies `/api`).
+- Preview: `npm run preview` (serves `dist/web/`, also proxies `/api`; APK artifacts stay in `dist/`).
 - Dev all-in-one: `npm run dev:all` (api + telemetry + web via `concurrently`).
 - API self-test: `npm run test:api`. Browser end-to-end: `npm run test:e2e` (see Codex Notes).
 - PM2 helper: `scripts/start-pm2.sh`, default `WEB_PORT=4028`; modes `web` / `api` / `voice` / `telemetry` / `all`.
@@ -72,7 +72,10 @@ List responses are always `{list, total, page, pageSize, totalPages}`; query par
 | `API_DATA_DIR` | `<repo>/.data` | runtime data directory |
 | `API_DB_FILE` | `<repo>/.data/railway_sign.db` | SQLite file |
 | `API_MAX_BODY_BYTES` | `8388608` | JSON body limit |
-| `API_INGEST_TOKEN` | `railway-sign-ingest` | telemetry ingest shared secret |
+| `API_INGEST_TOKEN` | empty | optional shared secret for remote telemetry bridge → API forwarding; loopback forwarding is allowed without it |
+| `API_ENABLE_DEMO_SEED` | `0` | explicit opt-in for development/test demo-account seeding; ignored in production |
+| `API_DEMO_PASSWORD` | unset | strong shared password used only by explicitly seeded isolated demo accounts |
+| `API_BOOTSTRAP_ADMIN_PASSWORD` | unset | one-time strong password consumed by `npm run admin:bootstrap` |
 | `API_INGEST_URL` | `http://127.0.0.1:8037/api/telemetry/ingest` | bridge → API forwarding target (empty string disables forwarding) |
 | `API_INGEST_TIMEOUT_MS` | `5000` | forwarding timeout |
 | `TELEMETRY_PORT` | `8036` | bridge port |
@@ -87,28 +90,47 @@ List responses are always `{list, total, page, pageSize, totalPages}`; query par
 | `VOICE_ASR_THREADS` | `4` | ASR decode threads |
 | `VOICE_TTS_VOICE` | `zh-CN-XiaoxiaoNeural` | default edge-tts voice |
 | `VOICE_MAX_AUDIO_BYTES` | `12582912` | API-side ASR upload limit |
+| `TTS_CACHE_TTL_MS` | `604800000` | TTS cache idle expiry (7 days, based on last access) |
+| `TTS_CACHE_MAX_BYTES` | `268435456` | TTS disk-cache size cap (256 MiB; least-recently-used entries are evicted first) |
 | `VOICE_PYTHON` / `PYTHON` | `python3` | interpreter used by `npm run voice` |
 
 ## Data Storage
 
-- Database: **SQLite via `node:sqlite`**, single file `.data/railway_sign.db` (git-ignored, created
-  and seeded automatically on first API start — no migration step to run by hand).
+- Database: **SQLite via `node:sqlite`**, single file `.data/railway_sign.db` (git-ignored; schema
+  and reference data are initialized on API start; demo accounts require explicit development/test opt-in).
 - Tables: `users`, `roles`, `signals`, `alarms`, `work_orders`, `telemetry_records`, `ai_sessions`,
   `ai_messages`, `ai_models`, `login_logs`, `op_logs`, `system_configs`, `password_resets`.
-- Seed data includes demo accounts, ~40 signal devices, alarms, work orders, telemetry history,
-  login/op logs and AI sessions, so every admin menu has multiple pages to page through.
+- Reference seed data includes ~40 signal devices, alarms, work orders, telemetry history,
+  login/op logs and AI sessions, so every admin menu has multiple pages to page through. Demo accounts
+  are never created in production and use a locally supplied password in isolated development/test databases.
 - To start over: stop the API and delete `.data/railway_sign.db` (schema + seed are recreated on
   the next start). `.data/secret` holds the generated JWT key.
 - Do not commit `.data/`, `voice_service/models/`, or any real credentials.
+- Telemetry ingestion trusts the socket peer address for its loopback exception. Requests from other hosts require the same explicitly configured random `API_INGEST_TOKEN` in both bridge and API processes; never rely on forwarded client-IP headers for authorization.
 
-### Demo accounts (seeded)
+### Database backup and restore
 
-| Username | Password | Role |
-| --- | --- | --- |
-| `admin` | `Admin@123` | admin (all permissions) |
-| `operator` | `Operator@123` | operator |
-| `user` | `User@123` | user |
-| `demo01` … `demo24` | `Demo@123` | user |
+- `npm run db:backup` creates a consistent `VACUUM INTO` snapshot under `.data/backups/` and checks
+  it with `PRAGMA integrity_check`. Pass `-- --destination PATH` to select a new output path; existing
+  files are never overwritten. On POSIX systems, backup files are restricted to owner read/write.
+- Stop the API before restoring. `npm run db:restore -- --source PATH` targets the configured DB file
+  and refuses to replace it unless `--replace` is explicit. The existing database and SQLite sidecars
+  are retained as `.pre-restore-*` rollback files; the restored target is integrity-checked.
+- `npm run test:db-maintenance` verifies WAL-consistent backup, immutable snapshots, overwrite
+  refusal, explicit restore and rollback retention using only a temporary directory.
+
+### Production administrator bootstrap
+
+Set `NODE_ENV=production`, `API_BOOTSTRAP_ADMIN_PASSWORD` to a unique 16+ character password with
+uppercase, lowercase, a digit and a symbol, and the same `API_DATA_DIR`/`API_DB_FILE` that the API
+will use; then run `npm run admin:bootstrap` once before starting the API. A legacy seeded admin is
+rotated, other built-in demo accounts are disabled, and the password is never printed. Existing
+non-demo admin accounts are not overwritten. Production API startup refuses to serve a database with
+no active admin, and login rejects legacy built-in demo accounts until the bootstrap is completed.
+
+For an isolated development/test database only, set `API_ENABLE_DEMO_SEED=1` and a strong
+`API_DEMO_PASSWORD` before the first API start. All generated demo accounts use that process-local
+password; production ignores the seed opt-in.
 
 ## Voice Sidecar (`voice_service/`)
 
@@ -142,12 +164,16 @@ is documented in `docs/安卓端语音集成.md` with copy-ready Kotlin under `d
 - Code style: Vue 3 `<script setup>`, no TypeScript, no Pinia, no UI library; 2-space indent,
   single quotes, no trailing semicolons.
 - Self-tests, both runnable against an already-started stack:
-  - `npm run test:api` (`scripts/test-api.mjs`, needs the API on 8037) — auth flows, RBAC
-    isolation and pagination for all 12 admin menus.
+  - `npm run test:api` (`scripts/test-api.mjs`, needs an isolated API on 8037 and `API_DEMO_PASSWORD`) — auth flows, RBAC isolation and pagination for all 12 admin menus.
+  - `npm run test:production-bootstrap` — verifies production first-admin setup, legacy demo-account rotation, login and refusal to start without an active admin using only temporary SQLite databases.
+  - `npm run test:voice-proxy` — starts an isolated API and local voice-sidecar stub to verify
+    authentication, WAV forwarding, TTS audio responses and cache hits without changing `.data`.
+  - `npm run test:ingest-auth` — verifies loopback-only fallback and remote shared-token authorization.
   - `npm run test:e2e` (`scripts/e2e-browser.mjs`, needs the frontend on 4028 **and** the API) —
     drives a real headless Chrome over CDP through login (captcha read from the DOM), the three
     original visualization tabs, every admin menu, and the agent dialog. Screenshots land in
-    `.e2e-output/` (git-ignored). Pass a base URL as `argv[2]` to point it elsewhere.
+    `.e2e-output/` (git-ignored). Pass a base URL as `argv[2]` to point it elsewhere. Set
+    `CHROME_BIN` to the installed Chrome executable when it is not named `google-chrome`.
   - `scripts/e2e-browser.mjs` deliberately launches Chrome with `--remote-debugging-port=0` and
     reads the port from `DevToolsActivePort`: other sessions on this machine also run headless
     Chrome, and with a fixed port ours can fail to bind while the script silently attaches to

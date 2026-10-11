@@ -58,7 +58,7 @@ npm install
 ### 启动全部服务
 
 ```bash
-npm run api        # 统一后台 API，默认 8037（首次启动自动建库 + 灌入演示数据）
+npm run api        # 统一后台 API，默认 8037（首次启动自动建表和参考数据）
 npm run telemetry  # 遥测桥接，默认 8036
 npm run dev        # 前端开发服务器，4028
 
@@ -66,11 +66,42 @@ npm run dev        # 前端开发服务器，4028
 npm run dev:all
 ```
 
-访问 http://localhost:4028 ，使用演示账号登录（`admin` / `Admin@123`）后即可看到：
+全新开发环境不会自动创建账号。仅在隔离的开发/测试数据库需要演示用户时，先显式配置随机强口令：
+
+```powershell
+$env:API_ENABLE_DEMO_SEED = '1'
+$env:API_DEMO_PASSWORD = '<16 位以上随机强口令>'
+npm run dev:all
+```
+
+同机运行的遥测桥默认仅通过 loopback 向 API 写入，无需共享令牌。若遥测桥和 API 分布在不同机器，
+请在两端进程环境配置同一个随机 `API_INGEST_TOKEN`（建议 `openssl rand -hex 32` 生成）；未配置时 API 会拒绝非 loopback 上报。
+
+访问 http://localhost:4028 ，使用已配置的管理员账号登录后即可看到：
 - **Cesium 大地图** - 真实地理信息系统
 - **Three.js 小地图** - 精细3D场景
 - **数据可视化平台** - ECharts 统计面板
 - 右上角进入**管理台**，右下角 🤖 打开**智能体**
+
+### SQLite 备份与恢复
+
+```bash
+npm run db:backup
+npm run db:restore -- --source ".data/backups/备份文件.sqlite" --replace
+```
+
+备份使用 SQLite 一致性快照并执行完整性检查，不覆盖已存在文件。恢复前必须停止 API；已有数据库会保留为
+`.pre-restore-*` 回滚文件。请先确认备份路径，再显式使用 `--replace`。
+
+### 生产管理员引导
+
+生产环境首次启动前，使用与 API 相同的数据库路径设置 `NODE_ENV=production` 和一次性强口令
+`API_BOOTSTRAP_ADMIN_PASSWORD`，再运行 `npm run admin:bootstrap`。该命令创建管理员，或轮换旧版
+内置演示管理员口令，并停用其他内置演示账号；口令不会打印。不要在现有业务库上改 `API_DATA_DIR`
+或 `API_DB_FILE`。引导后移除一次性密码环境变量，再启动 API。
+
+旧版已运行数据库不会自动改变账号或密码。生产登录会拒绝仍标记为内置演示账号的账号；管理员须先
+使用上述命令完成轮换，业务表和用户资料不会被重建。
 
 ### 语音服务（可选）
 
@@ -88,6 +119,32 @@ npm run voice                          # 默认 127.0.0.1:8039
 
 ```bash
 npm run build
+```
+
+### 语音代理集成测试
+
+```bash
+npm run test:voice-proxy
+```
+
+该测试会创建临时 SQLite 数据库和本地语音服务 stub，验证登录鉴权、WAV 转发、TTS 音频响应及缓存；不会读取项目 `.data` 或调用 Ollama。
+
+数据库备份/恢复隔离测试：
+
+```bash
+npm run test:db-maintenance
+```
+
+遥测写入授权测试：
+
+```bash
+npm run test:ingest-auth
+```
+
+生产管理员引导集成测试（只使用临时 SQLite 数据库）：
+
+```bash
+npm run test:production-bootstrap
 ```
 
 ### 预览生产版本

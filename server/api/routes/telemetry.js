@@ -3,14 +3,18 @@
 import { get, run, pageQuery } from '../lib/db.js'
 import { badRequest, notFound, unauthorized, str } from '../lib/http.js'
 import { requirePermission } from '../lib/auth.js'
+import { isTelemetryIngestAuthorized } from '../lib/telemetry-auth.js'
 
 // 遥测桥与本服务同为内网服务，用一个共享令牌防止外部伪造上报。
-const INGEST_TOKEN = process.env.API_INGEST_TOKEN || 'railway-sign-ingest'
+const INGEST_TOKEN = process.env.API_INGEST_TOKEN || ''
 
 const ingest = async (ctx) => {
   const token = str(ctx.req.headers['x-ingest-token'])
-  const fromLoopback = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(ctx.ip)
-  if (token !== INGEST_TOKEN && !fromLoopback) throw unauthorized('遥测上报令牌无效')
+  if (!isTelemetryIngestAuthorized({
+    providedToken: token,
+    expectedToken: INGEST_TOKEN,
+    remoteAddress: ctx.req.socket?.remoteAddress,
+  })) throw unauthorized('遥测上报令牌无效')
 
   const payload = ctx.body || {}
   const deviceId = str(payload.device_id, 'unknown')

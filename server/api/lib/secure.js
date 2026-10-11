@@ -15,6 +15,21 @@ const SCRYPT_PARAMS = { N: 2 ** 15, r: 8, p: 1, maxmem: 64 * 1024 * 1024 }
 const KEY_LEN = 64
 const DEFAULT_TTL_SECONDS = 7 * 24 * 3600
 
+export const meetsStrongBootstrapPasswordPolicy = (value) => {
+  const password = String(value || '')
+  return password.length >= 16 && password.length <= 128 &&
+    /[a-z]/.test(password) && /[A-Z]/.test(password) && /\d/.test(password) && /[^A-Za-z0-9]/.test(password)
+}
+
+export const isBuiltInDemoAccount = (user) => {
+  if (user?.remark === '生产管理员（安全引导）') return false
+  if (user?.remark === '系统内置演示账号') return true
+  const username = String(user?.username || '').toLowerCase()
+  const email = String(user?.email || '').toLowerCase()
+  const demoMatch = username.match(/^demo(\d{2})$/)
+  return Boolean(demoMatch && email === `demo${Number(demoMatch[1])}@railway.local`)
+}
+
 let cachedSecret = null
 
 export const getJwtSecret = () => {

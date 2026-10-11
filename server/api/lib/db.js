@@ -9,7 +9,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
-import { hashPassword } from './secure.js'
+import { hashPassword, meetsStrongBootstrapPasswordPolicy } from './secure.js'
 import { DATA_DIR, DB_FILE } from './paths.js'
 
 export { DATA_DIR, DB_FILE }
@@ -503,11 +503,16 @@ const SIGNAL_STATUS = ['green', 'red', 'yellow', 'off']
 const seedUsers = async (rng) => {
   const existing = get('SELECT COUNT(*) AS total FROM users')
   if (Number(existing?.total || 0) > 0) return
+  if (process.env.NODE_ENV === 'production' || process.env.API_ENABLE_DEMO_SEED !== '1') return
+  const demoPassword = process.env.API_DEMO_PASSWORD || ''
+  if (!meetsStrongBootstrapPasswordPolicy(demoPassword)) {
+    throw new Error('API_DEMO_PASSWORD must be 16-128 characters with upper/lowercase letters, a digit, and a symbol')
+  }
   const now = nowIso()
   const rows = [
-    { username: 'admin', password: 'Admin@123', name: '系统管理员', role: 'admin', phone: '13800000001', email: 'admin@railway.local' },
-    { username: 'operator', password: 'Operator@123', name: '值班运维员', role: 'operator', phone: '13800000002', email: 'operator@railway.local' },
-    { username: 'user', password: 'User@123', name: '演示用户', role: 'user', phone: '13800000003', email: 'user@railway.local' },
+    { username: 'admin', password: demoPassword, name: '系统管理员', role: 'admin', phone: '13800000001', email: 'admin@railway.local' },
+    { username: 'operator', password: demoPassword, name: '运维人员', role: 'operator', phone: '13800000002', email: 'operator@railway.local' },
+    { username: 'user', password: demoPassword, name: '演示用户', role: 'user', phone: '13800000003', email: 'user@railway.local' },
   ]
   const surnames = ['张', '王', '李', '赵', '刘', '陈', '杨', '黄', '周', '吴', '徐', '孙', '马', '朱', '胡', '郭']
   const given = ['伟', '芳', '娜', '强', '磊', '洋', '静', '敏', '杰', '涛', '明', '超', '霞', '平', '刚', '丽']
@@ -516,7 +521,7 @@ const seedUsers = async (rng) => {
     const name = `${pick(rng, surnames)}${pick(rng, given)}${i % 3 === 0 ? pick(rng, given) : ''}`
     rows.push({
       username: `demo${String(i + 1).padStart(2, '0')}`,
-      password: 'Demo@123',
+      password: demoPassword,
       name,
       role,
       phone: `139${String(10000000 + Math.floor(rng() * 8999999))}`,
@@ -545,7 +550,7 @@ const seedUsers = async (rng) => {
           email: row.email,
           role: row.role,
           status: index % 17 === 5 ? 'disabled' : 'active',
-          remark: index < 3 ? '系统内置演示账号' : '',
+          remark: '系统内置演示账号',
           created_at: createdAt,
           updated_at: createdAt,
         }

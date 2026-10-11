@@ -59,22 +59,6 @@
         </button>
       </form>
 
-      <div class="demo-box">
-        <div class="demo-title">演示账号（点击一键填入）</div>
-        <div class="demo-list">
-          <button
-            v-for="item in demoAccounts"
-            :key="item.username"
-            class="demo-chip"
-            type="button"
-            @click="fillDemo(item)"
-          >
-            <b>{{ item.label }}</b>
-            <span>{{ item.username }} / {{ item.password }}</span>
-          </button>
-        </div>
-      </div>
-
       <footer class="auth-foot">
         <router-link to="/register">注册账号</router-link>
         <span class="sep">|</span>
@@ -102,12 +86,6 @@ const captchaSvg = ref('')
 const captchaLoading = ref(false)
 const submitting = ref(false)
 
-const demoAccounts = [
-  { label: '管理员', username: 'admin', password: 'Admin@123' },
-  { label: '运维人员', username: 'operator', password: 'Operator@123' },
-  { label: '普通用户', username: 'user', password: 'User@123' },
-]
-
 const loadCaptcha = async () => {
   captchaLoading.value = true
   try {
@@ -121,12 +99,6 @@ const loadCaptcha = async () => {
   } finally {
     captchaLoading.value = false
   }
-}
-
-const fillDemo = (item) => {
-  form.username = item.username
-  form.password = item.password
-  toast.info(`已填入${item.label}演示账号，请输入验证码后登录`)
 }
 
 const onSubmit = async () => {
@@ -287,57 +259,6 @@ onMounted(loadCaptcha)
   height: 42px;
   font-size: 15px;
   letter-spacing: 4px;
-}
-
-.demo-box {
-  margin-top: 20px;
-  padding: 12px;
-  border: 1px dashed rgba(0, 200, 255, 0.28);
-  border-radius: var(--rs-radius);
-  background: rgba(0, 40, 70, 0.35);
-}
-
-.demo-title {
-  font-size: 12px;
-  color: var(--rs-text-dim);
-  margin-bottom: 8px;
-}
-
-.demo-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.demo-chip {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 6px 10px;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  background: rgba(0, 100, 150, 0.22);
-  color: var(--rs-text);
-  font-family: inherit;
-  font-size: 12px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.demo-chip b {
-  color: var(--rs-primary);
-  font-size: 12px;
-}
-
-.demo-chip span {
-  color: var(--rs-text-dim);
-  font-family: Consolas, monospace;
-}
-
-.demo-chip:hover {
-  border-color: var(--rs-primary);
-  background: rgba(0, 100, 150, 0.45);
 }
 
 .auth-foot {

@@ -57,6 +57,11 @@ log_lock = threading.Lock()
 
 def log(message):
     with log_lock:
+        if hasattr(sys.stdout, "reconfigure"):
+            try:
+                sys.stdout.reconfigure(errors="backslashreplace")
+            except (OSError, ValueError):
+                pass
         print(f"{time.strftime('%Y-%m-%dT%H:%M:%S')} [voice] {message}", flush=True)
 
 
@@ -261,7 +266,10 @@ class VoiceHandler(BaseHTTPRequestHandler):
                 return self._send(400, {"ok": False, "error": "没有收到音频数据"})
             try:
                 result = transcribe(raw)
-                log(f"asr ok: {result['duration_ms']}ms 音频 / {result['elapsed_ms']}ms 解码 → {result['text'][:40]}")
+                log(
+                    f"asr ok: audio_ms={result['duration_ms']} "
+                    f"decode_ms={result['elapsed_ms']} text_chars={len(result['text'])}"
+                )
                 return self._send(200, result)
             except Exception as exc:  # noqa: BLE001
                 log(f"asr failed: {exc}")
@@ -283,7 +291,10 @@ class VoiceHandler(BaseHTTPRequestHandler):
             except Exception as exc:  # noqa: BLE001
                 log(f"tts failed: {exc}")
                 return self._send(503, {"ok": False, "error": f"语音合成失败：{exc}"})
-            log(f"tts ok: {len(text)} 字 → {len(audio)} 字节 / {round((time.time() - started) * 1000)}ms")
+            log(
+                f"tts ok: text_chars={len(text)} audio_bytes={len(audio)} "
+                f"elapsed_ms={round((time.time() - started) * 1000)}"
+            )
             return self._send(200, audio, content_type="audio/mpeg")
 
         return self._send(404, {"ok": False, "error": "Not Found"})

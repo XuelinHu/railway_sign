@@ -9,7 +9,7 @@
 
 import http, { getToken } from './http.js'
 
-const ANDROID_BRIDGE_TIMEOUT_MS = 30000
+const ANDROID_BRIDGE_TIMEOUT_MS = 120000
 
 const getBridge = () => (typeof window !== 'undefined' ? window.RailwayVoice : null)
 
@@ -37,6 +37,18 @@ export const capabilities = () => ({
 
 // —— 安卓桥：识别结果由 App 通过 window.__railwayVoiceResult(text) 异步回调 ——
 let bridgeResolver = null
+let bridgeStartResolver = null
+let bridgeAudioResolver = null
+
+const resolveBridgeWaiter = (kind, error, value) => {
+  const resolver = kind === 'start' ? bridgeStartResolver : bridgeAudioResolver
+  if (!resolver) return
+  if (kind === 'start') bridgeStartResolver = null
+  else bridgeAudioResolver = null
+  clearTimeout(resolver.timer)
+  if (error) resolver.reject(new Error(String(error)))
+  else resolver.resolve(value)
+}
 
 if (typeof window !== 'undefined') {
   window.__railwayVoiceResult = (text, error) => {
@@ -46,6 +58,25 @@ if (typeof window !== 'undefined') {
     clearTimeout(timer)
     if (error) reject(new Error(String(error)))
     else resolve(String(text || ''))
+  }
+  window.__railwayVoiceStarted = (error) => resolveBridgeWaiter('start', error, true)
+  window.__railwayVoiceAudio = (base64, error) => {
+    if (error) {
+      resolveBridgeWaiter('audio', error)
+      return
+    }
+    if (!base64) {
+      resolveBridgeWaiter('audio', '没有收到录音数据')
+      return
+    }
+    try {
+      const binary = atob(base64)
+      const bytes = new Uint8Array(binary.length)
+      for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index)
+      resolveBridgeWaiter('audio', null, new Blob([bytes], { type: 'audio/wav' }))
+    } catch (_) {
+      resolveBridgeWaiter('audio', '录音数据格式无效')
+    }
   }
 }
 
@@ -69,7 +100,63 @@ const listenAndroidBridge = () => {
   })
 }
 
+const startAndroidRecording = async () => {
+  const bridge = getBridge()
+  const started = new Promise((resolve, reject) => {
+    bridgeStartResolver = {
+      resolve,
+      reject,
+      timer: setTimeout(() => {
+        bridgeStartResolver = null
+        try { bridge.stopVoiceInput?.() } catch (_) { /* ignore */ }
+        reject(new Error('安卓麦克风启动超时'))
+      }, ANDROID_BRIDGE_TIMEOUT_MS),
+    }
+    try {
+      bridge.startVoiceInput()
+    } catch (error) {
+      resolveBridgeWaiter('start', error?.message || error)
+    }
+  })
+  await started
+
+  const cancel = () => {
+    for (const [kind, resolver] of [['start', bridgeStartResolver], ['audio', bridgeAudioResolver]]) {
+      if (!resolver) continue
+      resolveBridgeWaiter(kind, '语音录制已取消')
+    }
+    try { bridge.stopVoiceInput?.() } catch (_) { /* ignore */ }
+  }
+
+  return {
+    source: 'record',
+    finish: async () => {
+      const audio = new Promise((resolve, reject) => {
+        bridgeAudioResolver = {
+          resolve,
+          reject,
+          timer: setTimeout(() => {
+            bridgeAudioResolver = null
+            try { bridge.stopVoiceInput?.() } catch (_) { /* ignore */ }
+            reject(new Error('录音处理超时'))
+          }, ANDROID_BRIDGE_TIMEOUT_MS),
+        }
+        try {
+          bridge.finishVoiceInput()
+        } catch (error) {
+          resolveBridgeWaiter('audio', error?.message || error)
+        }
+      })
+      return transcribe(await audio)
+    },
+    cancel,
+  }
+}
+
 const stopAndroidBridge = () => {
+  for (const [kind, resolver] of [['start', bridgeStartResolver], ['audio', bridgeAudioResolver]]) {
+    if (resolver) resolveBridgeWaiter(kind, '语音录制已取消')
+  }
   try {
     getBridge()?.stopVoiceInput?.()
   } catch (_) {
@@ -259,6 +346,7 @@ export const listen = async ({ prefer = 'auto', lang = 'zh-CN', onLevel } = {}) 
   const caps = capabilities()
 
   if (prefer !== 'record' && caps.android) {
+    if (typeof getBridge()?.finishVoiceInput === 'function') return startAndroidRecording()
     return { text: await listenAndroidBridge(), source: 'android' }
   }
   if (prefer !== 'record' && caps.recognition) {
@@ -290,12 +378,20 @@ export const listen = async ({ prefer = 'auto', lang = 'zh-CN', onLevel } = {}) 
 
 /** 上传 WAV 到后端做识别 */
 export const transcribe = async (wavBlob) => {
-  const data = await http.post('/ai/asr', wavBlob, {
+  const response = await http.post('/ai/asr', wavBlob, {
     raw: true,
     headers: { 'Content-Type': 'audio/wav' },
     timeout: 60000,
   })
-  return { text: data?.text || '', source: 'server', engine: data?.engine, elapsedMs: data?.elapsedMs }
+  const payload = await response.json()
+  if (payload?.ok === false) throw new Error(payload.error || '语音识别失败')
+  const data = payload?.data ?? payload
+  return {
+    text: typeof data?.text === 'string' ? data.text : '',
+    source: 'server',
+    engine: data?.engine,
+    elapsedMs: data?.elapsedMs,
+  }
 }
 
 export const stopListening = () => {
@@ -346,9 +442,14 @@ export const speakByServer = async (text, { voice = 'zh-CN-XiaoxiaoNeural', rate
 
 /** 浏览器/安卓原生 TTS 播报（后端不可用时的降级路径） */
 export const speakBySystem = (text, { lang = 'zh-CN' } = {}) => {
-  if (hasAndroidBridge() && typeof getBridge().speak === 'function') {
+  const bridge = getBridge()
+  if (
+    hasAndroidBridge() &&
+    typeof bridge.speak === 'function' &&
+    (typeof bridge.isTtsAvailable !== 'function' || bridge.isTtsAvailable())
+  ) {
     try {
-      getBridge().speak(text)
+      bridge.speak(text)
       return Promise.resolve({ ok: true, source: 'android' })
     } catch (_) {
       /* 继续尝试浏览器 */

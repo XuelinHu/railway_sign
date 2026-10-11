@@ -4,7 +4,7 @@
 // 启动：npm run api
 
 import http from 'node:http'
-import { initDatabase, DB_FILE, getConfig } from './api/lib/db.js'
+import { initDatabase, DB_FILE, get, getConfig } from './api/lib/db.js'
 import {
   writeCommonHeaders,
   sendJson,
@@ -138,9 +138,12 @@ const server = http.createServer(async (req, res) => {
 
 const bootstrap = async () => {
   const { dbFile } = await initDatabase()
+  if (process.env.NODE_ENV === 'production') {
+    const admin = get("SELECT id FROM users WHERE role = 'admin' AND status = 'active' LIMIT 1")
+    if (!admin) throw new Error('生产环境尚无可用管理员；请先运行 npm run admin:bootstrap')
+  }
   server.listen(PORT, HOST, () => {
     log('api', `listening: http://${HOST}:${PORT}  (db: ${dbFile})`)
-    log('api', '默认账号：admin/Admin@123  operator/Operator@123  user/User@123')
   })
 }
 

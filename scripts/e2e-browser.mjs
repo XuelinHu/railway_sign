@@ -10,6 +10,8 @@ import { writeFileSync, readFileSync, rmSync, mkdirSync } from 'node:fs'
 import WebSocket from 'ws'
 
 const BASE = process.argv[2] || 'http://127.0.0.1:4028'
+const DEMO_PASSWORD = process.env.API_DEMO_PASSWORD
+if (!DEMO_PASSWORD) throw new Error('Set API_DEMO_PASSWORD for the isolated demo account before running browser E2E.')
 // 默认 0 = 由 Chrome 自选空闲端口（见下方说明）；只有排查问题时才用 E2E_DEBUG_PORT 固定端口
 const PORT = Number(process.env.E2E_DEBUG_PORT || 0)
 const OUT = process.env.E2E_OUT_DIR || '.e2e-output'
@@ -31,7 +33,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const PROFILE = `${OUT}/chrome-profile`
 mkdirSync(OUT, { recursive: true })
 rmSync(PROFILE, { recursive: true, force: true })
-const chrome = spawn('google-chrome', [
+const chrome = spawn(process.env.CHROME_BIN || 'google-chrome', [
   '--headless=new', '--disable-gpu', '--no-sandbox', '--disable-dev-shm-usage',
   `--remote-debugging-port=${PORT}`, '--window-size=1440,900', '--no-first-run',
   `--user-data-dir=${PROFILE}`, 'about:blank',
@@ -117,6 +119,12 @@ const hash1 = await evaluate('location.hash')
 check('未登录重定向到 #/login', hash1.startsWith('#/login'), `hash=${hash1}`)
 const hasForm = await evaluate(`!!document.querySelector('input[type="password"]')`)
 check('登录表单已渲染', hasForm)
+const demoUi = await evaluate(`({
+  hasDemoAccounts: Boolean(document.querySelector('.demo-box, .demo-chip')),
+  username: document.querySelector('#login-username')?.value || '',
+  password: document.querySelector('#login-password')?.value || '',
+})`)
+check('登录页不显示演示账号且字段为空', !demoUi.hasDemoAccounts && !demoUi.username && !demoUi.password)
 await shot('01-login')
 
 console.log('\n== 2. 用真实界面登录（验证码从 DOM 里读，等同于人工识别）==')
@@ -144,7 +152,7 @@ const filled = await evaluate(`
     const cap = inputs.find(i => /不区分大小写|验证码/.test(i.placeholder || ''));
     if (!user || !pwd || !cap) return 'missing:' + inputs.map(i => i.placeholder).join('|');
     set(user, 'admin');
-    set(pwd, 'Admin@123');
+    set(pwd, ${JSON.stringify(DEMO_PASSWORD)});
     set(cap, ${JSON.stringify(captchaText)});
     return 'ok';
   })()

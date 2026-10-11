@@ -11,6 +11,51 @@ import { DATA_DIR } from '../lib/paths.js'
 const VOICE_HOST = (process.env.VOICE_HOST || 'http://127.0.0.1:8039').replace(/\/$/, '')
 const MAX_AUDIO_BYTES = Number(process.env.VOICE_MAX_AUDIO_BYTES || 12 * 1024 * 1024)
 const TTS_CACHE_DIR = path.join(DATA_DIR, 'tts-cache')
+const TTS_CACHE_TTL_MS = positiveInteger(process.env.TTS_CACHE_TTL_MS, 7 * 24 * 60 * 60 * 1000)
+const TTS_CACHE_MAX_BYTES = positiveInteger(process.env.TTS_CACHE_MAX_BYTES, 256 * 1024 * 1024)
+
+function positiveInteger(value, fallback) {
+  const parsed = Number(value)
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback
+}
+
+function pruneTtsCache(now = Date.now()) {
+  let files
+  try {
+    files = fs.readdirSync(TTS_CACHE_DIR, { withFileTypes: true })
+  } catch (error) {
+    if (error.code !== 'ENOENT') log('voice', `tts cache scan failed: ${error?.message}`)
+    return
+  }
+
+  const entries = []
+  for (const file of files) {
+    if (!file.isFile() || path.extname(file.name) !== '.mp3') continue
+    const filePath = path.join(TTS_CACHE_DIR, file.name)
+    try {
+      const stat = fs.statSync(filePath)
+      if (now - stat.mtimeMs > TTS_CACHE_TTL_MS) {
+        fs.unlinkSync(filePath)
+      } else {
+        entries.push({ path: filePath, size: stat.size, mtimeMs: stat.mtimeMs })
+      }
+    } catch (error) {
+      if (error.code !== 'ENOENT') log('voice', `tts cache cleanup failed: ${error?.message}`)
+    }
+  }
+
+  let totalBytes = entries.reduce((total, entry) => total + entry.size, 0)
+  entries.sort((left, right) => left.mtimeMs - right.mtimeMs)
+  while (totalBytes > TTS_CACHE_MAX_BYTES && entries.length) {
+    const oldest = entries.shift()
+    try {
+      fs.unlinkSync(oldest.path)
+      totalBytes -= oldest.size
+    } catch (error) {
+      if (error.code !== 'ENOENT') log('voice', `tts cache eviction failed: ${error?.message}`)
+    }
+  }
+}
 
 const voiceUnavailable = (detail) =>
   new HttpError(503, `本地语音服务不可用（${VOICE_HOST}）`, detail || '未启动或未安装依赖')
@@ -58,8 +103,11 @@ const tts = async (ctx) => {
   const cacheKey = crypto.createHash('sha1').update(`${voice}|${rate}|${text}`).digest('hex')
   const cacheFile = path.join(TTS_CACHE_DIR, `${cacheKey}.mp3`)
 
+  pruneTtsCache()
   if (fs.existsSync(cacheFile)) {
     const buffer = fs.readFileSync(cacheFile)
+    const accessedAt = new Date()
+    fs.utimesSync(cacheFile, accessedAt, accessedAt)
     ctx.res.statusCode = 200
     ctx.res.setHeader('Content-Type', 'audio/mpeg')
     ctx.res.setHeader('Content-Length', String(buffer.length))
@@ -90,6 +138,7 @@ const tts = async (ctx) => {
   try {
     fs.mkdirSync(TTS_CACHE_DIR, { recursive: true })
     fs.writeFileSync(cacheFile, buffer)
+    pruneTtsCache()
   } catch (error) {
     log('voice', `tts cache write failed: ${error?.message}`)
   }

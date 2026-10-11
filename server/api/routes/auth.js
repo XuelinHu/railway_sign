@@ -10,7 +10,13 @@ import {
   str,
   log,
 } from '../lib/http.js'
-import { hashPassword, verifyPassword, signToken, randomToken } from '../lib/secure.js'
+import {
+  hashPassword,
+  verifyPassword,
+  signToken,
+  randomToken,
+  isBuiltInDemoAccount,
+} from '../lib/secure.js'
 import {
   createCaptcha,
   verifyCaptcha,
@@ -118,6 +124,10 @@ const login = async (ctx) => {
   if (!user) {
     writeLoginLog({ username, req: ctx.req, success: false, message: '用户名不存在' })
     throw unauthorized('用户名或密码错误')
+  }
+  if (process.env.NODE_ENV === 'production' && isBuiltInDemoAccount(user)) {
+    writeLoginLog({ user, username, req: ctx.req, success: false, message: '演示账号尚未完成生产管理员引导' })
+    throw unauthorized('系统内置演示账号已停用，请先完成管理员安全引导')
   }
   const valid = await verifyPassword(password, user.password_hash, user.salt)
   if (!valid) {

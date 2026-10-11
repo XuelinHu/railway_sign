@@ -9,7 +9,7 @@ const MAX_BODY_BYTES = Number(process.env.TELEMETRY_MAX_BODY_BYTES || 32 * 1024)
 // 统一后台（8037）遥测入库接口：转发一份归一化后的数据，管理台「遥测记录」菜单才有历史可分页。
 // 置空 API_INGEST_URL 可关闭转发；转发失败只记日志，不影响对设备与 WebSocket 的原有响应。
 const API_INGEST_URL = process.env.API_INGEST_URL ?? 'http://127.0.0.1:8037/api/telemetry/ingest'
-const API_INGEST_TOKEN = process.env.API_INGEST_TOKEN || 'railway-sign-ingest'
+const API_INGEST_TOKEN = process.env.API_INGEST_TOKEN || ''
 const API_INGEST_TIMEOUT_MS = Number(process.env.API_INGEST_TIMEOUT_MS || 5000)
 
 const now = () => new Date().toISOString()
@@ -70,9 +70,11 @@ const forwardToApi = (msg) => {
     water_active: msg.water_active,
     raw: msg.raw
   }
+  const headers = { 'Content-Type': 'application/json' }
+  if (API_INGEST_TOKEN) headers['x-ingest-token'] = API_INGEST_TOKEN
   fetch(API_INGEST_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-ingest-token': API_INGEST_TOKEN },
+    headers,
     body: JSON.stringify(payload),
     signal: AbortSignal.timeout(API_INGEST_TIMEOUT_MS)
   })

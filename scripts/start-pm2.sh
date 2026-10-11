@@ -48,7 +48,7 @@ Environment variables:
   API_PORT            Port used by the unified API. Default: 8037
   VOICE_PORT          Port used by the voice sidecar. Default: 8039
   API_JWT_SECRET      JWT signing key. Default: auto-generated into .data/secret
-  API_INGEST_TOKEN    Shared secret for telemetry ingest. Default: railway-sign-ingest
+  API_INGEST_TOKEN    Optional shared secret for remote telemetry ingest; set the same random value on bridge and API.
 EOF
 }
 
@@ -139,7 +139,7 @@ start_telemetry() {
   ensure_port_free "${TELEMETRY_PORT}" "${TELEMETRY_NAME}"
 
   echo "Starting telemetry service: ${TELEMETRY_NAME} (port=${TELEMETRY_PORT})"
-  NODE_ENV=production TELEMETRY_PORT="${TELEMETRY_PORT}" pm2 start npm \
+  NODE_ENV=production TELEMETRY_PORT="${TELEMETRY_PORT}" API_INGEST_TOKEN="${API_INGEST_TOKEN:-}" pm2 start npm \
     --name "${TELEMETRY_NAME}" \
     --cwd "${PROJECT_ROOT}" \
     -- run telemetry
@@ -150,7 +150,7 @@ start_api() {
   ensure_port_free "${API_PORT}" "${API_NAME}"
 
   echo "Starting unified API: ${API_NAME} (port=${API_PORT})"
-  NODE_ENV=production API_PORT="${API_PORT}" API_INGEST_TOKEN="${API_INGEST_TOKEN:-railway-sign-ingest}" \
+  NODE_ENV=production API_PORT="${API_PORT}" API_INGEST_TOKEN="${API_INGEST_TOKEN:-}" \
     pm2 start npm \
       --name "${API_NAME}" \
       --cwd "${PROJECT_ROOT}" \
