@@ -25,7 +25,7 @@ import { telemetryRoutes } from './api/routes/telemetry.js'
 import { voiceRoutes } from './api/routes/voice.js'
 
 const PORT = Number(process.env.API_PORT || 8037)
-const HOST = process.env.API_HOST || '0.0.0.0'
+const HOST = process.env.API_HOST || '127.0.0.1'
 
 const routes = [...authRoutes, ...adminRoutes, ...aiRoutes, ...telemetryRoutes, ...voiceRoutes]
 
