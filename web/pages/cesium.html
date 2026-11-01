@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cesium 大地图 - 山区铁道信号灯数字孪生</title>
+  <!-- 引入 ECharts -->
+  <script src="https://cdn.jsdelivr.net/npm/echarts@6.0.0/dist/echarts.min.js"></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: 'Microsoft YaHei', Arial, sans-serif;
+      background: #000;
+    }
+
+    #cesiumContainer {
+      width: 100%;
+      height: 100%;
+    }
+
+    .back-btn {
+      position: absolute;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 1000;
+      padding: 10px 25px;
+      background: rgba(0, 20, 40, 0.8);
+      border: 1px solid rgba(0, 200, 255, 0.3);
+      border-radius: 5px;
+      color: #00d4ff;
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.3s;
+      backdrop-filter: blur(10px);
+    }
+
+    .back-btn:hover {
+      background: rgba(0, 40, 80, 0.9);
+      box-shadow: 0 0 15px rgba(0, 200, 255, 0.5);
+    }
+
+    .info-panel {
+      position: absolute;
+      top: 70px;
+      left: 20px;
+      bottom: 100px;
+      width: 320px;
+      background: rgba(0, 20, 40, 0.5);
+      border: 1px solid rgba(0, 200, 255, 0.3);
+      border-radius: 8px;
+      padding: 20px;
+      color: #fff;
+      overflow-y: auto;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 4px 20px rgba(0, 200, 255, 0.2);
+    }
+
+    .panel-section {
+      margin-bottom: 25px;
+    }
+
+    .panel-section:last-child {
+      margin-bottom: 0;
+    }
+
+    .panel-title {
+      color: #00d4ff;
+      font-size: 16px;
+      margin-bottom: 15px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid rgba(0, 200, 255, 0.3);
+    }
+
+    .signal-item {
+      display: flex;
+      align-items: center;
+      margin: 12px 0;
+      padding: 10px;
+      background: rgba(0, 100, 150, 0.2);
+      border-radius: 5px;
+      border-left: 3px solid #00d4ff;
+    }
+
+    .signal-light {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      margin-right: 12px;
+      box-shadow: 0 0 10px currentColor;
+      animation: blink 2s infinite;
+    }
+
+    .signal-red { background: #ff3333; color: #ff3333; }
+    .signal-green { background: #33ff33; color: #33ff33; }
+    .signal-yellow { background: #ffff33; color: #ffff33; }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.6; }
+    }
+
+    .signal-info {
+      flex: 1;
+    }
+
+    .signal-name {
+      font-size: 14px;
+      font-weight: bold;
+      margin-bottom: 4px;
+    }
+
+    .signal-status {
+      font-size: 12px;
+      color: #aaa;
+    }
+
+    .stats-panel {
+      position: absolute;
+      top: 70px;
+      right: 20px;
+      bottom: 100px;
+      width: 320px;
+      background: rgba(0, 20, 40, 0.5);
+      border: 1px solid rgba(0, 200, 255, 0.3);
+      border-radius: 8px;
+      padding: 20px;
+      color: #fff;
+      overflow-y: auto;
+      backdrop-filter: blur(10px);
+    }
+
+    .stat-item {
+      display: flex;
+      justify-content: space-between;
+      margin: 8px 0;
+      font-size: 13px;
+    }
+
+    .stat-label { color: #aaa; }
+    .stat-value { color: #00d4ff; font-weight: bold; }
+
+    .data-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin: 10px 0;
+    }
+
+    .data-card {
+      background: rgba(0, 100, 150, 0.2);
+      padding: 12px;
+      border-radius: 5px;
+      text-align: center;
+    }
+
+    .data-card-label {
+      font-size: 12px;
+      color: #aaa;
+      margin-bottom: 5px;
+    }
+
+    .data-card-value {
+      font-size: 18px;
+      font-weight: bold;
+      color: #00d4ff;
+    }
+
+    .progress-bar {
+      width: 100%;
+      height: 8px;
+      background: rgba(0, 100, 150, 0.3);
+      border-radius: 4px;
+      overflow: hidden;
+      margin: 8px 0;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #0066cc, #00d4ff);
+      border-radius: 4px;
+      transition: width 0.5s;
+    }
+
+    .chart-container {
+      width: 100%;
+      height: 150px;
+      background: rgba(0, 100, 150, 0.2);
+      border-radius: 5px;
+      margin: 10px 0;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .chart-bar {
+      position: absolute;
+      bottom: 0;
+      width: 40px;
+      background: linear-gradient(to top, #0066cc, #00d4ff);
+      border-radius: 3px 3px 0 0;
+      transition: height 0.5s;
+    }
+
+    .alert-item {
+      background: rgba(255, 50, 50, 0.2);
+      border-left: 3px solid #ff3333;
+      padding: 10px;
+      margin: 8px 0;
+      border-radius: 3px;
+      font-size: 13px;
+    }
+
+    .alert-item.warning {
+      background: rgba(255, 200, 50, 0.2);
+      border-left-color: #ffcc33;
+    }
+
+    .alert-time {
+      font-size: 11px;
+      color: #888;
+      margin-top: 5px;
+    }
+
+    .control-panel {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 20, 40, 0.85);
+      border: 1px solid rgba(0, 200, 255, 0.3);
+      border-radius: 8px;
+      padding: 15px 25px;
+      color: #fff;
+      display: flex;
+      gap: 15px;
+      backdrop-filter: blur(10px);
+    }
+
+    .control-btn {
+      padding: 10px 20px;
+      background: linear-gradient(135deg, #0066cc, #00d4ff);
+      border: none;
+      border-radius: 5px;
+      color: #fff;
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.3s;
+    }
+
+    .control-btn:hover {
+      background: linear-gradient(135deg, #0088ff, #00ffff);
+      box-shadow: 0 0 15px rgba(0, 200, 255, 0.5);
+    }
+
+    .loading {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: #000;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      color: #00d4ff;
+      font-size: 24px;
+      z-index: 9999;
+    }
+
+    .loading.hidden {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="loading" id="loading">
+    <div>
+      <div style="font-size: 24px; margin-bottom: 20px;">🌍 加载中...</div>
+      <div id="loadingStatus" style="font-size: 14px; color: #888;">正在初始化 Cesium</div>
+    </div>
+  </div>
+
+  <button class="back-btn" onclick="window.location.href='index.html'">← 返回首页</button>
+
+  <div id="cesiumContainer"></div>
+
+  <script>
+    // 添加加载状态更新
+    window.updateLoadingStatus = function(status) {
+      const statusEl = document.getElementById('loadingStatus');
+      if (statusEl) {
+        statusEl.textContent = status;
+        console.log('[加载状态]', status);
+      }
+    };
+
+    // 监听错误
+    window.addEventListener('error', function(e) {
+      console.error('[页面错误]', e.message, e.filename, e.lineno);
+      const statusEl = document.getElementById('loadingStatus');
+      if (statusEl) {
+        statusEl.textContent = '加载失败: ' + e.message;
+        statusEl.style.color = '#ff6666';
+      }
+    });
+  </script>
+
+  <!-- 左侧数据面板 -->
+  <div class="info-panel">
+    <div class="panel-section">
+      <h2 class="panel-title">🚦 信号灯监控</h2>
+      <div id="signalList"></div>
+    </div>
+
+    <div class="panel-section">
+      <h2 class="panel-title">📊 运营统计</h2>
+      <div id="operationChart" style="width: 100%; height: 160px;"></div>
+    </div>
+
+    <div class="panel-section">
+      <h2 class="panel-title">⚡ 设备状态</h2>
+      <div class="stat-item">
+        <span class="stat-label">信号机:</span>
+        <span class="stat-value">正常</span>
+      </div>
+      <div class="progress-bar">
+        <div class="progress-fill" style="width: 100%"></div>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">轨道电路:</span>
+        <span class="stat-value">正常</span>
+      </div>
+      <div class="progress-bar">
+        <div class="progress-fill" style="width: 98%"></div>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">通信系统:</span>
+        <span class="stat-value">正常</span>
+      </div>
+      <div class="progress-bar">
+        <div class="progress-fill" style="width: 100%"></div>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <h2 class="panel-title">🚨 报警信息</h2>
+      <div class="alert-item warning">
+        <div>3号区间信号电压偏低</div>
+        <div class="alert-time">2025-01-25 14:23:15</div>
+      </div>
+      <div class="alert-item">
+        <div>5号道岔维护提醒</div>
+        <div class="alert-time">2025-01-25 12:00:00</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 右侧数据面板 -->
+  <div class="stats-panel">
+    <div class="panel-section">
+      <h2 class="panel-title">📍 位置信息</h2>
+      <div class="stat-item">
+        <span class="stat-label">经度:</span>
+        <span class="stat-value" id="longitude">102.5000°E</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">纬度:</span>
+        <span class="stat-value" id="latitude">25.5000°N</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">海拔高度:</span>
+        <span class="stat-value" id="altitude">2800m</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">当前位置:</span>
+        <span class="stat-value" id="coordinates">--</span>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <h2 class="panel-title">🌡️ 环境监测</h2>
+      <div id="envGaugeChart" style="width: 100%; height: 160px;"></div>
+    </div>
+
+    <div class="panel-section">
+      <h2 class="panel-title">📈 24小时流量统计</h2>
+      <div id="trafficChart" style="width: 100%; height: 180px;"></div>
+    </div>
+
+    <div class="panel-section">
+      <h2 class="panel-title">📊 设备运行趋势</h2>
+      <div id="deviceTrendChart" style="width: 100%; height: 180px;"></div>
+    </div>
+
+    <div class="panel-section">
+      <h2 class="panel-title">🔧 系统状态</h2>
+      <div class="stat-item">
+        <span class="stat-label">运行状态:</span>
+        <span class="stat-value" id="systemStatus">正常</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">信号灯数量:</span>
+        <span class="stat-value" id="signalCount">5</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">运行时间:</span>
+        <span class="stat-value" id="uptime">72天</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">最后更新:</span>
+        <span class="stat-value" id="lastUpdate">--</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="control-panel">
+    <button class="control-btn" onclick="window.resetView()">🎯 复位视角</button>
+    <button class="control-btn" onclick="window.toggleSignals()">🚦 切换信号</button>
+    <button class="control-btn" onclick="window.trainSimulation()">🚂 列车模拟</button>
+  </div>
+
+  <script type="module" src="/src/js/cesium.js"></script>
+</body>
+</html>
