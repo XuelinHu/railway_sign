@@ -1,6 +1,7 @@
 <template>
   <!-- 全站悬浮入口：点击弹出智能体对话框 -->
   <div class="agent-launcher">
+    <a class="imagegen-link" :href="`http://${window.location.hostname}:4050/`" target="_blank" rel="noopener noreferrer" title="AI 绘画" aria-label="AI 绘画">绘画</a>
     <button class="agent-fab" type="button" :title="tip" @click="open = true">
       <span class="icon">🤖</span>
       <span class="label">智能体</span>
@@ -28,7 +29,11 @@ const tip = computed(() => (voiceReady.value ? '打开智能体（支持语音�
   right: 22px;
   bottom: 22px;
   z-index: 2000;
+  display: flex;
+  align-items: center;
 }
+
+.imagegen-link { display: inline-block; padding: 9px 12px; margin-right: 8px; border-radius: 4px; background: #126a62; color: #fff; text-decoration: none; }
 
 .agent-fab {
   display: flex;
